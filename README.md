@@ -4,9 +4,9 @@ A NeoForge 1.21.1 mod that adds a **subgrid engine** — place and interact with
 
 ## How it works
 
-Clicking any solid block face with a Tiny item places a piece inside an invisible **SubgridBlock** in the adjacent air space. Pieces have real collision, individual hitboxes, and can be broken one by one. The crack animation and break particles target only the piece being mined.
+Clicking any solid block face with a Tiny item places a piece inside an invisible **SubgridBlock** in the adjacent air space. Pieces have real collision, individual hitboxes, and can be broken one by one. The crack animation and particles target only the piece being mined.
 
-## Current pieces
+## Items
 
 | Item | Description |
 |------|-------------|
@@ -14,7 +14,11 @@ Clicking any solid block face with a Tiny item places a piece inside an invisibl
 
 ## For mod developers
 
-`PieceDefinition` is the extension point. Register a new piece by subclassing it:
+TinyBlocks exposes a `PieceDefinition` API so any mod can add custom tiny blocks with their own rendering, hardness, drops, NBT persistence, ticking, and GUI — without touching TinyBlocks internals.
+
+See [docs/developer-guide.md](docs/developer-guide.md) for the full API reference and examples.
+
+Quick example:
 
 ```java
 public static final PieceDefinition MY_PIECE = new PieceDefinition(
@@ -25,21 +29,8 @@ public static final PieceDefinition MY_PIECE = new PieceDefinition(
     public BlockState renderState(Direction.Axis axis) {
         return Blocks.IRON_BLOCK.defaultBlockState();
     }
-
-    @Override
-    public float destroyTime() { return 5f; }
-
-    @Override
-    public boolean requiresCorrectTool() { return true; }
-
-    @Override
-    public List<ItemStack> drops(PlacedPiece piece) {
-        return List.of(new ItemStack(Items.IRON_INGOT));
-    }
 };
 ```
-
-For interactive pieces, override `onUse()`, `requiresTick()` + `tick()`, `onLoaded()`, and `onSaving()` to manage GUI, state, and NBT persistence.
 
 ## Commands
 
