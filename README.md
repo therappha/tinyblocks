@@ -1,24 +1,25 @@
 # TinyBlocks
 
-A NeoForge 1.21.1 mod that adds a **subgrid engine** — place and interact with blocks at 1/8 or 1/16 scale inside a single block space.
+A NeoForge 1.21.1 subgrid engine that adds an invisible grid inside a single block space, letting other mods place and interact with scaled-down blocks at any even subdivision — 1/2, 1/4, 1/8, 1/16, or beyond.
 
 ## How it works
 
-Clicking any solid block face with a Tiny item places a piece inside an invisible **SubgridBlock** in the adjacent air space. Pieces have real collision, individual hitboxes, and can be broken one by one. The crack animation and particles target only the piece being mined.
+Clicking any solid block face with a placement item places a piece inside a SubgridBlock in the adjacent air space. Pieces have real collision, individual hitboxes, per-piece hardness, tool requirements, and drops. The crack animation and break particles target only the piece being mined.
 
-## Items
+## Debug items
 
-| Item | Description |
-|------|-------------|
-| Tiny Furnace | 1×1×1 functional furnace with smelting, fuel, and GUI |
+TinyBlocks ships no creative tab. All items are for development and testing only, obtainable via `/give`:
+
+| Item | Command |
+|------|---------|
+| Subgrid block (8×8×8) | `/give @s tinyblocks:subgrid_block` |
+| Subgrid block (16×16×16) | `/give @s tinyblocks:subgrid_block_16` |
+| Tiny Stone (places in 8³ grid) | `/give @s tinyblocks:tiny_stone_block` |
+| Tiny Stone (places in 16³ grid) | `/give @s tinyblocks:tiny_stone_block_16` |
 
 ## For mod developers
 
-TinyBlocks exposes a `PieceDefinition` API so any mod can add custom tiny blocks with their own rendering, hardness, drops, NBT persistence, ticking, and GUI — without touching TinyBlocks internals.
-
-See [docs/developer-guide.md](docs/developer-guide.md) for the full API reference and examples.
-
-Quick example:
+`PieceDefinition` is the extension point. Register a new piece by subclassing it:
 
 ```java
 public static final PieceDefinition MY_PIECE = new PieceDefinition(
@@ -31,6 +32,8 @@ public static final PieceDefinition MY_PIECE = new PieceDefinition(
     }
 };
 ```
+
+See [docs/developer-guide.md](docs/developer-guide.md) for the full API reference and examples.
 
 ## Commands
 
