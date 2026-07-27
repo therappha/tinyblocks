@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# NeoForge / ModDevGradle generated (root-level, not our mod's files)
+src/generated/resources/
+run/
+runs/
+assets/
+data/
+net/
+reports/
+META-INF/
+pack.mcmeta
+forge.exc
+forge.sas
+forge.srg
+neoforge.mixins.json
+neoforged_logo.png
+mcplogo.png
+url.png
+
+# Claude Code
+.claude/
+claude.md
+
+# OS
+.DS_Store
+Thumbs.db

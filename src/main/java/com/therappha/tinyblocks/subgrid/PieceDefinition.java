@@ -1,0 +1,89 @@
+package com.therappha.tinyblocks.subgrid;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.Vec3i;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public abstract class PieceDefinition {
+
+    private static final Map<ResourceLocation, PieceDefinition> REGISTRY = new LinkedHashMap<>();
+
+    private final ResourceLocation id;
+    private final Vec3i baseFootprint;
+
+    protected PieceDefinition(ResourceLocation id, Vec3i baseFootprint) {
+        this.id = id;
+        this.baseFootprint = baseFootprint;
+        REGISTRY.put(id, this);
+    }
+
+    public ResourceLocation id() { return id; }
+
+    /** Size in grid cells, defined along the Z axis. Rotated at placement time. */
+    public Vec3i baseFootprint() { return baseFootprint; }
+
+    /** BlockState used by the BER to render this piece. */
+    public abstract BlockState renderState(Direction.Axis axis);
+
+    /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */
+    public float destroyTime() { return 1.5f; }
+
+    /** If true, wrong tool gives no drops and mines 3x slower. */
+    public boolean requiresCorrectTool() { return false; }
+
+    /** Items dropped when this piece is broken with the correct tool. */
+    public List<ItemStack> drops(PlacedPiece piece) { return List.of(); }
+
+    /** Called after a piece is loaded from NBT. Initialize runtimeState here from extraData. */
+    public void onLoaded(PlacedPiece piece, HolderLookup.Provider registries) {}
+
+    /** Called before a piece is saved. Flush runtimeState into extraData here. */
+    public void onSaving(PlacedPiece piece, HolderLookup.Provider registries) {}
+
+    /** True if this piece needs a server-side tick every game tick. */
+    public boolean requiresTick() { return false; }
+
+    /**
+     * Called each server tick when requiresTick() is true.
+     * Return true if state changed and the BE should mark itself dirty.
+     */
+    public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) { return false; }
+
+    /**
+     * Called when a player right-clicks this piece.
+     * On client side: return SUCCESS to consume without side effects.
+     * On server side: open menus, change state, etc.
+     */
+    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos, Player player, BlockHitResult hit) {
+        return InteractionResult.PASS;
+    }
+
+    public static PieceDefinition get(ResourceLocation id) {
+        return REGISTRY.get(id);
+    }
+
+    public static PieceDefinition getOrThrow(ResourceLocation id) {
+        PieceDefinition def = REGISTRY.get(id);
+        if (def == null) throw new IllegalArgumentException("Unknown PieceDefinition: " + id);
+        return def;
+    }
+
+    public static Collection<PieceDefinition> all() {
+        return Collections.unmodifiableCollection(REGISTRY.values());
+    }
+}

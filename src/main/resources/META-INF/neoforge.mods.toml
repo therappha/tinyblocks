@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+    modId = "tinyblocks"
+    version = "${file.jarVersion}"
+    displayName = "TinyBlocks"
+    authors = "therappha"
+    description = '''
+Compact kinetic mechanisms inside a single block for Create mod.
+'''
+
+[[dependencies.tinyblocks]]
+    modId = "neoforge"
+    type = "required"
+    versionRange = "[21.1,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.tinyblocks]]
+    modId = "minecraft"
+    type = "required"
+    versionRange = "[1.21.1,1.22)"
+    ordering = "NONE"
+    side = "BOTH"
+
