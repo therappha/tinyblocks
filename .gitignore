@@ -17,8 +17,8 @@ assets/
 data/
 net/
 reports/
-META-INF/
-pack.mcmeta
+/META-INF/
+/pack.mcmeta
 forge.exc
 forge.sas
 forge.srg

@@ -1,6 +1,6 @@
 modLoader = "javafml"
 loaderVersion = "[4,)"
-license = "MIT"
+license = "CC-BY-NC-SA-4.0"
 
 [[mods]]
     modId = "tinyblocks"
@@ -8,7 +8,7 @@ license = "MIT"
     displayName = "TinyBlocks"
     authors = "therappha"
     description = '''
-Compact kinetic mechanisms inside a single block for Create mod.
+Subgrid engine for NeoForge 1.21.1 — place and interact with blocks at 1/8 or 1/16 scale inside a single block space.
 '''
 
 [[dependencies.tinyblocks]]

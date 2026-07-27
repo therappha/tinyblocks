@@ -1,16 +1,16 @@
-# TinyGears
+# TinyBlocks
 
-A NeoForge 1.21.1 mod that adds a **subgrid engine** — an invisible 8×8×8 grid that lives inside a single block space, allowing tiny pieces to be placed, connected, and interacted with at 1/8 scale.
+A NeoForge 1.21.1 mod that adds a **subgrid engine** — place and interact with blocks at 1/8 or 1/16 scale inside a single block space.
 
-## Concept
+## How it works
 
-Clicking any solid block face with a Tiny item places a piece inside an invisible **SubgridBlock** in the adjacent air space. Pieces have real collision, real hitboxes, and can be broken individually. Multiple SubgridBlocks can connect seamlessly at their boundaries.
+Clicking any solid block face with a Tiny item places a piece inside an invisible **SubgridBlock** in the adjacent air space. Pieces have real collision, individual hitboxes, and can be broken one by one. The crack animation and break particles target only the piece being mined.
 
 ## Current pieces
 
 | Item | Description |
 |------|-------------|
-| Tiny Stone Block | 1×1×1 decorative piece |
+| Tiny Furnace | 1×1×1 functional furnace with smelting, fuel, and GUI |
 
 ## For mod developers
 
@@ -25,21 +25,29 @@ public static final PieceDefinition MY_PIECE = new PieceDefinition(
     public BlockState renderState(Direction.Axis axis) {
         return Blocks.IRON_BLOCK.defaultBlockState();
     }
+
+    @Override
+    public float destroyTime() { return 5f; }
+
+    @Override
+    public boolean requiresCorrectTool() { return true; }
+
+    @Override
+    public List<ItemStack> drops(PlacedPiece piece) {
+        return List.of(new ItemStack(Items.IRON_INGOT));
+    }
 };
 ```
 
-Kinetic pieces override `ports(Direction.Axis axis)` to expose `KineticPort` connections.
+For interactive pieces, override `onUse()`, `requiresTick()` + `tick()`, `onLoaded()`, and `onSaving()` to manage GUI, state, and NBT persistence.
 
 ## Commands
 
-- `/tinygears status` — inspect the SubgridBlock you're looking at
-- `/tinygears help` — list commands
+- `/tinyblocks status` — inspect the SubgridBlock you're looking at
 
 ## Dependencies
 
-- NeoForge 21.1.244
-- Create 6.0.10-280
-- Flywheel 1.0.6 (runtime)
+- NeoForge 21.1.x
 
 ## Building
 
@@ -47,4 +55,8 @@ Kinetic pieces override `ports(Direction.Axis axis)` to expose `KineticPort` con
 ./gradlew build
 ```
 
-Run client: `./gradlew runClient` (do NOT use IntelliJ Run with Coverage — causes a LinkageError).
+Run client: `./gradlew runClient`
+
+## License
+
+[CC BY-NC-SA 4.0](LICENSE) — free to use and modify, no commercial use, derivatives must use the same license.
