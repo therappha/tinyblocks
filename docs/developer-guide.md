@@ -215,3 +215,41 @@ TinyBlocks ships two SubgridBlock variants:
 | `subgrid_block_16` | 16×16×16 | 1/16 of a block |
 
 Piece footprints are expressed in cells of whichever grid hosts them.
+
+---
+
+## What you can build
+
+TinyBlocks is intentionally a generic engine. Here are some examples of what the API already supports:
+
+**Decorative pieces** — override only `renderState()`. Any block model works, including modded ones.
+
+**Tool-sensitive pieces** — override `destroyTime()` and `requiresCorrectTool()` so a pickaxe is required to break a stone piece, an axe for wood, etc.
+
+**Pieces with custom drops** — override `drops()` to return any `ItemStack` list, including NBT-tagged items.
+
+**Interactive pieces with GUI** — override `onUse()` to open a `AbstractContainerMenu`. The TinyFurnace built into TinyBlocks is a reference implementation.
+
+**Ticking pieces** — override `requiresTick()` + `tick()` for anything that needs per-tick server logic: fuel burning, energy accumulation, cooldowns.
+
+**Pieces with persistent state** — use `piece.extraData` (a `CompoundTag`) to survive chunk unload. Populate it in `onSaving()` and restore it in `onLoaded()`.
+
+**Multi-cell pieces** — set `footprint` to e.g. `new Vec3i(2, 1, 1)` for a piece that occupies two cells horizontally. TinyBlocks will claim all cells in the footprint and block placement into them.
+
+---
+
+## Integrating another mod's blocks
+
+Any `BlockState` can be used as `renderState()`, including blocks from other mods. The piece renders that block's model at mini scale — the actual block is never placed in the world, so it does not need to be a real neighbour of anything.
+
+```java
+// Renders Create's Andesite Casing at 1/8 scale
+@Override
+public BlockState renderState(Direction.Axis axis) {
+    return ForgeRegistries.BLOCKS.getValue(
+        ResourceLocation.fromNamespaceAndPath("create", "andesite_casing"))
+        .defaultBlockState();
+}
+```
+
+Make sure the other mod is listed as a dependency in your `neoforge.mods.toml` and is `compileOnly` in your `build.gradle`.
