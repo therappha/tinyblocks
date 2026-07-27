@@ -1,5 +1,6 @@
 plugins {
     id 'net.neoforged.moddev' version '2.0.142'
+    id 'com.modrinth.minotaur' version '2.+'
 }
 
 version = mod_version
@@ -41,4 +42,15 @@ repositories {
 }
 
 dependencies {
+}
+
+modrinth {
+    token = System.getenv("MODRINTH_TOKEN")
+    projectId = "tinyblocks"
+    versionNumber = mod_version
+    versionType = "release"
+    uploadFile = jar
+    gameVersions = ["1.21.1"]
+    loaders = ["neoforge"]
+    changelog = System.getenv("CHANGELOG") ?: ""
 }
