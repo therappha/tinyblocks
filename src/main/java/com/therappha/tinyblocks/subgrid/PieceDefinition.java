@@ -65,6 +65,14 @@ public abstract class PieceDefinition {
     public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) { return false; }
 
     /**
+     * Called on the server when a piece adjacent to this one (within the same subgrid) is
+     * placed, removed, or reports a state change from tick(). Mirrors vanilla neighborChanged.
+     * Interactive pieces that change state in onUse() can trigger this themselves by calling
+     * be.notifyNeighbors(piece) after mutating state.
+     */
+    public void onNeighborChanged(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, PlacedPiece changedNeighbor) {}
+
+    /**
      * Called when a player right-clicks this piece.
      * On client side: return SUCCESS to consume without side effects.
      * On server side: open menus, change state, etc.

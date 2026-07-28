@@ -17,6 +17,7 @@ Right-clicking a solid block face with a placement item places a piece inside a 
 - Per-piece hardness, tool requirements, and drops
 - Crack animation and break particles scoped to the targeted piece only
 - Right-click interaction (GUI, state changes — defined by the piece)
+- Neighbor propagation between adjacent pieces in the same subgrid
 
 SubgridBlocks come in four grid sizes:
 

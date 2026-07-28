@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.subgrid;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
@@ -19,7 +20,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class SubgridBlockEntity extends BlockEntity {
 
@@ -51,6 +54,7 @@ public class SubgridBlockEntity extends BlockEntity {
         if (!canFit(piece)) return false;
         addToGrid(piece);
         notifyUpdate();
+        notifyNeighbors(piece);
         return true;
     }
 
@@ -68,17 +72,45 @@ public class SubgridBlockEntity extends BlockEntity {
         PlacedPiece removed = pieces.get(idx);
         rebuildAfterRemove(idx);
         notifyUpdate();
+        notifyNeighbors(removed);
         return removed;
     }
 
     public void serverTick(ServerLevel level) {
         boolean dirty = false;
         for (PlacedPiece piece : pieces) {
-            if (piece.definition.requiresTick()) {
-                dirty |= piece.definition.tick(piece, level, worldPosition, this);
+            if (piece.definition.requiresTick() && piece.definition.tick(piece, level, worldPosition, this)) {
+                dirty = true;
+                notifyNeighbors(piece);
             }
         }
         if (dirty) setChanged();
+    }
+
+    /**
+     * Calls onNeighborChanged on every piece adjacent to changed's footprint within this
+     * subgrid. Adjacency is face-to-face at the grid-cell level; it does not cross the
+     * subgrid's own boundary into the outside world.
+     */
+    public void notifyNeighbors(PlacedPiece changed) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        for (PlacedPiece neighbor : adjacentPieces(changed)) {
+            neighbor.definition.onNeighborChanged(neighbor, serverLevel, worldPosition, this, changed);
+        }
+    }
+
+    private Set<PlacedPiece> adjacentPieces(PlacedPiece piece) {
+        Set<PlacedPiece> result = new LinkedHashSet<>();
+        for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX(); x++)
+            for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY(); y++)
+                for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ(); z++)
+                    for (Direction dir : Direction.values()) {
+                        int nx = x + dir.getStepX(), ny = y + dir.getStepY(), nz = z + dir.getStepZ();
+                        if (outOfBounds(nx, ny, nz) || piece.occupies(nx, ny, nz)) continue;
+                        short idx = cellOwner[indexOf(nx, ny, nz)];
+                        if (idx != EMPTY) result.add(pieces.get(idx));
+                    }
+        return result;
     }
 
     public void notifyUpdate() {

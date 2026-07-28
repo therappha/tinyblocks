@@ -118,6 +118,34 @@ public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridP
 
 Return `InteractionResult.PASS` to fall through to SubgridBlock's default behaviour.
 
+### Neighbor propagation
+
+Mirrors vanilla `neighborChanged`. Fires when a piece adjacent to this one (touching face-to-face, within the same subgrid) is placed, removed, or has its `tick()` return `true`:
+
+```java
+@Override
+public void onNeighborChanged(PlacedPiece piece, ServerLevel level, BlockPos subgridPos,
+                              SubgridBlockEntity be, PlacedPiece changedNeighbor) {
+    // react to the neighbor, e.g. re-check a redstone-like signal
+}
+```
+
+Adjacency is cell-level and does not cross the subgrid's own boundary — pieces on the edge of the grid are not notified about real blocks outside the SubgridBlock.
+
+For state changes made from `onUse()` rather than `tick()`, trigger propagation yourself:
+
+```java
+@Override
+public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos,
+                               Player player, BlockHitResult hit) {
+    if (!level.isClientSide() && level.getBlockEntity(subgridPos) instanceof SubgridBlockEntity be) {
+        // mutate piece state here
+        be.notifyNeighbors(piece);
+    }
+    return InteractionResult.SUCCESS;
+}
+```
+
 ---
 
 ## Runtime state
