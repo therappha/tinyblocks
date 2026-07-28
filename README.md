@@ -12,10 +12,14 @@ TinyBlocks ships no creative tab. All items are for development and testing only
 
 | Item | Command |
 |------|---------|
-| Subgrid block (8×8×8) | `/give @s tinyblocks:subgrid_block` |
-| Subgrid block (16×16×16) | `/give @s tinyblocks:subgrid_block_16` |
-| Tiny Stone (places in 8³ grid) | `/give @s tinyblocks:tiny_stone_block` |
-| Tiny Stone (places in 16³ grid) | `/give @s tinyblocks:tiny_stone_block_16` |
+| Subgrid block (2×2×2, 1/2 scale) | `/give @s tinyblocks:subgrid_block_2` |
+| Subgrid block (4×4×4, 1/4 scale) | `/give @s tinyblocks:subgrid_block_4` |
+| Subgrid block (8×8×8, 1/8 scale) | `/give @s tinyblocks:subgrid_block` |
+| Subgrid block (16×16×16, 1/16 scale) | `/give @s tinyblocks:subgrid_block_16` |
+| Tiny Stone (2³ grid) | `/give @s tinyblocks:tiny_stone_block_2` |
+| Tiny Stone (4³ grid) | `/give @s tinyblocks:tiny_stone_block_4` |
+| Tiny Stone (8³ grid) | `/give @s tinyblocks:tiny_stone_block` |
+| Tiny Stone (16³ grid) | `/give @s tinyblocks:tiny_stone_block_16` |
 
 ## For mod developers
 
