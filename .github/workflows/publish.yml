@@ -16,8 +16,12 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
       - name: Build and publish
-        run: ./gradlew build modrinth
+        run: ./gradlew build modrinth -Pmod_version=${{ steps.get_version.outputs.version }}
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CHANGELOG: ${{ github.event.release.body }}

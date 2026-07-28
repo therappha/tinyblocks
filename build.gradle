@@ -47,7 +47,7 @@ dependencies {
 modrinth {
     token = System.getenv("MODRINTH_TOKEN")
     projectId = "tinyblocks"
-    versionNumber = mod_version
+    versionNumber = version
     versionType = "release"
     uploadFile = jar
     gameVersions = ["1.21.1"]
