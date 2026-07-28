@@ -1,0 +1,10 @@
+{
+  "block.tinyblocks.subgrid_block_2": "Subgrid Block (1/2)",
+  "block.tinyblocks.subgrid_block_4": "Subgrid Block (1/4)",
+  "block.tinyblocks.subgrid_block": "Subgrid Block (1/8)",
+  "block.tinyblocks.subgrid_block_16": "Subgrid Block (1/16)",
+  "item.tinyblocks.tiny_stone_block_2": "Tiny Stone Block (1/2)",
+  "item.tinyblocks.tiny_stone_block_4": "Tiny Stone Block (1/4)",
+  "item.tinyblocks.tiny_stone_block": "Tiny Stone Block (1/8)",
+  "item.tinyblocks.tiny_stone_block_16": "Tiny Stone Block (1/16)"
+}
