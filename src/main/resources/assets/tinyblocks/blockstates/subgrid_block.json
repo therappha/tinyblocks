@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "tinyblocks:block/subgrid_block"
+    }
+  }
+}

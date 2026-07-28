@@ -79,6 +79,10 @@ public class Registration {
                 @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_16.get(); }
             });
 
+    // Test tool for the PieceRemoverTool capability — only obtainable via /give
+    public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
+            ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
+
     public static void register(IEventBus eventBus) {
         BLOCKS.register(eventBus);
         ITEMS.register(eventBus);

@@ -13,9 +13,9 @@ out/
 src/generated/resources/
 run/
 runs/
-assets/
-data/
-net/
+/assets/
+/data/
+/net/
 reports/
 /META-INF/
 /pack.mcmeta

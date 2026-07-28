@@ -6,16 +6,23 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import java.util.List;
 import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.setup.TinyBlocksCapabilities;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -29,6 +36,7 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import javax.annotation.Nullable;
+import java.util.List;
 
 public class SubgridBlock extends BaseEntityBlock {
 
@@ -88,16 +96,8 @@ public class SubgridBlock extends BaseEntityBlock {
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return 0f;
 
-        Vec3 hitLoc = bhr.getLocation();
-        Direction face = bhr.getDirection();
-        int gs = be.gridSize;
-        int max = gs - 1;
-        double nudge = 0.5 / gs;
-        int gx = Mth.clamp((int)(((hitLoc.x - pos.getX()) - face.getStepX() * nudge) * gs), 0, max);
-        int gy = Mth.clamp((int)(((hitLoc.y - pos.getY()) - face.getStepY() * nudge) * gs), 0, max);
-        int gz = Mth.clamp((int)(((hitLoc.z - pos.getZ()) - face.getStepZ() * nudge) * gs), 0, max);
-
-        PlacedPiece piece = be.getPieceAt(gx, gy, gz);
+        Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
+        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return 0f;
 
         float hardness = piece.definition.destroyTime();
@@ -121,19 +121,37 @@ public class SubgridBlock extends BaseEntityBlock {
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return InteractionResult.PASS;
 
-        Vec3 hitLoc = hit.getLocation();
-        Direction face = hit.getDirection();
-        int gs = be.gridSize;
-        int max = gs - 1;
-        double nudge = 0.5 / gs;
-        int gx = Mth.clamp((int)(((hitLoc.x - pos.getX()) - face.getStepX() * nudge) * gs), 0, max);
-        int gy = Mth.clamp((int)(((hitLoc.y - pos.getY()) - face.getStepY() * nudge) * gs), 0, max);
-        int gz = Mth.clamp((int)(((hitLoc.z - pos.getZ()) - face.getStepZ() * nudge) * gs), 0, max);
-
-        PlacedPiece piece = be.getPieceAt(gx, gy, gz);
+        Vec3i cell = GridRay.cellAt(pos, hit.getLocation(), hit.getDirection(), be.gridSize);
+        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return InteractionResult.PASS;
 
         return piece.definition.onUse(piece, level, pos, player, hit);
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
+                                               Player player, InteractionHand hand, BlockHitResult hit) {
+        if (stack.getCapability(TinyBlocksCapabilities.PIECE_REMOVER) == null) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return ItemInteractionResult.FAIL;
+        if (level.isClientSide()) return ItemInteractionResult.SUCCESS;
+
+        Vec3i cell = GridRay.cellAt(pos, hit.getLocation(), hit.getDirection(), be.gridSize);
+        PlacedPiece removed = be.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
+        if (removed == null) return ItemInteractionResult.FAIL;
+
+        List<ItemStack> drops = removed.definition.drops(removed);
+        double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+        for (ItemStack drop : drops) {
+            level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+        }
+
+        if (be.getPieces().isEmpty()) {
+            level.removeBlock(pos, false);
+        }
+
+        return ItemInteractionResult.SUCCESS;
     }
 
     @Override
