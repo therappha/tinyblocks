@@ -2,6 +2,7 @@ package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.items.TinyPieceItem;
 import com.therappha.tinyblocks.setup.Registration;
@@ -13,8 +14,10 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -27,6 +30,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
@@ -48,6 +52,30 @@ public class ClientSetup {
 
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 class SubgridClientHandler {
+
+    @SubscribeEvent
+    public static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(
+            Commands.literal("tinyblocks")
+                .then(Commands.literal("highlight")
+                    .executes(ctx -> toggleHighlight(16))
+                    .then(Commands.argument("radius", IntegerArgumentType.integer(1, 64))
+                        .executes(ctx -> toggleHighlight(IntegerArgumentType.getInteger(ctx, "radius")))
+                    )
+                )
+        );
+    }
+
+    private static int toggleHighlight(int radius) {
+        boolean on = SubgridHighlight.toggle(radius);
+        Minecraft.getInstance().player.displayClientMessage(
+            Component.literal(on
+                ? "[TinyBlocks] Highlight ON (radius " + radius + ")"
+                : "[TinyBlocks] Highlight OFF"),
+            true
+        );
+        return 1;
+    }
 
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
@@ -120,6 +148,11 @@ class SubgridClientHandler {
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+
+        if (SubgridHighlight.isEnabled()) {
+            renderHighlightedSubgrids(mc, event);
+        }
+
         if (!(mc.hitResult instanceof BlockHitResult hit)) return;
         if (hit.getType() == HitResult.Type.MISS) return;
 
@@ -179,5 +212,28 @@ class SubgridClientHandler {
         poseStack.popPose();
 
         bufferSource.endBatch();
+    }
+
+    private static void renderHighlightedSubgrids(Minecraft mc, RenderLevelStageEvent event) {
+        Vec3 camera = event.getCamera().getPosition();
+        PoseStack poseStack = event.getPoseStack();
+        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
+        VertexConsumer lines = bufferSource.getBuffer(RenderType.lines());
+
+        BlockPos center = mc.player.blockPosition();
+        int r = SubgridHighlight.getRadius();
+
+        BlockPos.betweenClosed(
+            center.offset(-r, -r, -r),
+            center.offset(r, r, r)
+        ).forEach(pos -> {
+            if (!(mc.level.getBlockState(pos).getBlock() instanceof SubgridBlock)) return;
+            poseStack.pushPose();
+            poseStack.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
+            LevelRenderer.renderLineBox(poseStack, lines, 0, 0, 0, 1, 1, 1, 0f, 1f, 1f, 0.6f);
+            poseStack.popPose();
+        });
+
+        bufferSource.endBatch(RenderType.lines());
     }
 }
