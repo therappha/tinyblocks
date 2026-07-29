@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -34,6 +35,15 @@ public class SubgridBlockEntity extends BlockEntity {
     private final short[] cellOwner;
     private final List<PlacedPiece> pieces = new ArrayList<>();
     private VoxelShape cachedShape = Shapes.empty();
+
+    /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
+    public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}
+    private final List<ScheduledPieceTick> scheduledTicks = new ArrayList<>();
+
+    /** Queues piece.definition.scheduledTick(...) to fire once level.getGameTime() reaches targetGameTime. */
+    public void scheduleTick(int x, int y, int z, long targetGameTime) {
+        scheduledTicks.add(new ScheduledPieceTick(x, y, z, targetGameTime));
+    }
 
     public SubgridBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -92,6 +102,36 @@ public class SubgridBlockEntity extends BlockEntity {
             }
         }
         if (dirty) notifyUpdate();
+
+        drainScheduledTicks(level);
+        sampleRandomTicks(level);
+    }
+
+    /** Fires piece.definition.scheduledTick(...) for every request whose target tick has arrived. */
+    private void drainScheduledTicks(ServerLevel level) {
+        if (scheduledTicks.isEmpty()) return;
+        long now = level.getGameTime();
+        List<ScheduledPieceTick> due = new ArrayList<>();
+        scheduledTicks.removeIf(st -> {
+            if (st.targetGameTime() > now) return false;
+            due.add(st);
+            return true;
+        });
+        for (ScheduledPieceTick st : due) {
+            PlacedPiece piece = getPieceAt(st.x(), st.y(), st.z());
+            if (piece != null) piece.definition.scheduledTick(piece, level, worldPosition, this);
+        }
+    }
+
+    /** Mirrors vanilla's per-chunk-section random tick speed (3), scaled down to a handful of pieces. */
+    private void sampleRandomTicks(ServerLevel level) {
+        if (pieces.isEmpty()) return;
+        RandomSource random = level.getRandom();
+        int sampleCount = Math.min(pieces.size(), 3);
+        for (int i = 0; i < sampleCount; i++) {
+            PlacedPiece piece = pieces.get(random.nextInt(pieces.size()));
+            piece.definition.randomTick(piece, level, worldPosition, this);
+        }
     }
 
     public void clientTick(Level level) {
@@ -296,6 +336,19 @@ public class SubgridBlockEntity extends BlockEntity {
         for (PlacedPiece p : pieces)
             list.add(p.save());
         tag.put("pieces", list);
+
+        if (!scheduledTicks.isEmpty()) {
+            ListTag tickList = new ListTag();
+            for (ScheduledPieceTick st : scheduledTicks) {
+                CompoundTag t = new CompoundTag();
+                t.putInt("x", st.x());
+                t.putInt("y", st.y());
+                t.putInt("z", st.z());
+                t.putLong("time", st.targetGameTime());
+                tickList.add(t);
+            }
+            tag.put("scheduledTicks", tickList);
+        }
     }
 
     @Override
@@ -308,6 +361,15 @@ public class SubgridBlockEntity extends BlockEntity {
             PlacedPiece piece = PlacedPiece.load(list.getCompound(i));
             addToGrid(piece);
             piece.definition.onLoaded(piece, registries);
+        }
+
+        scheduledTicks.clear();
+        if (tag.contains("scheduledTicks")) {
+            ListTag tickList = tag.getList("scheduledTicks", Tag.TAG_COMPOUND);
+            for (int i = 0; i < tickList.size(); i++) {
+                CompoundTag t = tickList.getCompound(i);
+                scheduledTicks.add(new ScheduledPieceTick(t.getInt("x"), t.getInt("y"), t.getInt("z"), t.getLong("time")));
+            }
         }
     }
 

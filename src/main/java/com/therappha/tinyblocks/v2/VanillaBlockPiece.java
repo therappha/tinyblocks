@@ -31,8 +31,8 @@ import java.util.Map;
  * v2: a single generic PieceDefinition that can hold ANY real vanilla BlockState, instead of
  * one hand-written PieceDefinition per block type (see PieceDefinitions.java for the old way).
  * Stores the actual BlockState in piece.runtimeState and runs interact/neighborChanged/hardness
- * through a fake, in-memory position space (FakeCellGetter/FakeLevel) built from this piece's
- * SubgridBlockEntity siblings — real vanilla behavior, zero reimplementation.
+ * through a fake, in-memory position space (FakeCellGetter/FakeServerLevel) built from this
+ * piece's SubgridBlockEntity siblings — real vanilla behavior, zero reimplementation.
  */
 public final class VanillaBlockPiece extends PieceDefinition {
 
@@ -119,13 +119,13 @@ public final class VanillaBlockPiece extends PieceDefinition {
             return InteractionResult.SUCCESS;
         }
 
-        FakeLevel fakeLevel = buildFakeSpace(be, serverLevel);
+        FakeServerLevel fakeLevel = buildFakeSpace(be, serverLevel);
         Map<BlockPos, BlockState> before = snapshot(be);
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(piece.anchor), hit.getDirection(), piece.anchor, hit.isInside());
         InteractionResult result = fakeLevel.cells().getBlockState(piece.anchor).useWithoutItem(fakeLevel, player, fakeHit);
 
-        applyChanges(be, fakeLevel.cells(), before);
+        applyChanges(be, fakeLevel, before, serverLevel);
         return result;
     }
 
@@ -139,7 +139,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         BlockPos fakeNeighborPos = dir != null ? piece.anchor.relative(dir) : piece.anchor;
         BlockState neighborState = changedNeighbor.definition.renderState(changedNeighbor);
 
-        FakeLevel fakeLevel = buildFakeSpace(be, level);
+        FakeServerLevel fakeLevel = buildFakeSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
 
         fakeLevel.cells().getBlockState(piece.anchor)
@@ -157,13 +157,39 @@ public final class VanillaBlockPiece extends PieceDefinition {
             fakeLevel.cells().set(piece.anchor, reshaped);
         }
 
-        applyChanges(be, fakeLevel.cells(), before);
+        applyChanges(be, fakeLevel, before, level);
+    }
+
+    @Override
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {
+        BlockState state = stateOf(piece);
+        if (state == null) return;
+
+        FakeServerLevel fakeLevel = buildFakeSpace(be, level);
+        Map<BlockPos, BlockState> before = snapshot(be);
+
+        fakeLevel.cells().getBlockState(piece.anchor).tick(fakeLevel, piece.anchor, level.getRandom());
+
+        applyChanges(be, fakeLevel, before, level);
+    }
+
+    @Override
+    public void randomTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {
+        BlockState state = stateOf(piece);
+        if (state == null || !state.isRandomlyTicking()) return;
+
+        FakeServerLevel fakeLevel = buildFakeSpace(be, level);
+        Map<BlockPos, BlockState> before = snapshot(be);
+
+        fakeLevel.cells().getBlockState(piece.anchor).randomTick(fakeLevel, piece.anchor, level.getRandom());
+
+        applyChanges(be, fakeLevel, before, level);
     }
 
     // --- Fake space plumbing, shared with SubgridEventHandler's placement flow ---
 
-    /** Builds a FakeLevel whose cell space mirrors every VanillaBlockPiece sibling in be. */
-    public static FakeLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
+    /** Builds a FakeServerLevel whose cell space mirrors every VanillaBlockPiece sibling in be. */
+    public static FakeServerLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
         SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be);
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
@@ -171,7 +197,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 if (s != null) cells.set(p.anchor, s);
             }
         }
-        return new FakeLevel(serverLevel, cells, be.getBlockPos());
+        return FakeServerLevel.create(serverLevel, cells, be.getBlockPos());
     }
 
     /** Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla view. */
@@ -193,8 +219,16 @@ public final class VanillaBlockPiece extends PieceDefinition {
         return map;
     }
 
-    /** Writes any sibling states that changed during the fake-space call back into their pieces. */
-    private static void applyChanges(SubgridBlockEntity be, FakeCellGetter cells, Map<BlockPos, BlockState> before) {
+    /**
+     * Writes any sibling states that changed during the fake-space call back into their pieces,
+     * and merges any scheduleTick requests the vanilla logic made (e.g. a redstone lamp asking
+     * to turn itself off in 4 ticks) into be's own persistent queue — FakeServerLevel captures
+     * these instead of touching a real tick list, since scheduledTick(...) below is what
+     * actually drains and fires them later.
+     */
+    private static void applyChanges(SubgridBlockEntity be, FakeServerLevel fakeLevel,
+                                      Map<BlockPos, BlockState> before, ServerLevel realLevel) {
+        FakeCellGetter cells = fakeLevel.cells();
         boolean anyChanged = false;
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition != INSTANCE) continue;
@@ -204,6 +238,11 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 be.notifyNeighbors(p);
                 anyChanged = true;
             }
+        }
+        for (FakeServerLevel.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
+            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
+                    realLevel.getGameTime() + entry.delay());
+            anyChanged = true;
         }
         if (anyChanged) be.notifyUpdate();
     }

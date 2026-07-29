@@ -7,7 +7,7 @@ import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
-import com.therappha.tinyblocks.v2.FakeLevel;
+import com.therappha.tinyblocks.v2.FakeServerLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -178,7 +178,7 @@ public class SubgridEventHandler {
         if (be.getPieceAt(nx, ny, nz) != null) return;
 
         BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
+        FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, hit.isInside());
         BlockPlaceContext placeCtx = new BlockPlaceContext(
                 new UseOnContext(fakeLevel, player, event.getHand(), stack, fakeHit));
