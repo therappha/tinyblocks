@@ -32,7 +32,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         }
 
         for (PlacedPiece piece : be.getPieces()) {
-            BlockState state = piece.definition.renderState(piece.axis);
+            BlockState state = piece.definition.renderState(piece);
             if (state == null) continue;
 
             poseStack.pushPose();

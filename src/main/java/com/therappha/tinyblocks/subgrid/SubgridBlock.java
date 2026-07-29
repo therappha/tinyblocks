@@ -103,7 +103,7 @@ public class SubgridBlock extends BaseEntityBlock {
         float hardness = piece.definition.destroyTime();
         if (hardness < 0) return 0f;
 
-        BlockState renderState = piece.definition.renderState(piece.axis);
+        BlockState renderState = piece.definition.renderState(piece);
         float digSpeed = player.getDigSpeed(renderState, pos);
         boolean correct = !piece.definition.requiresCorrectTool() || player.hasCorrectToolForDrops(renderState);
         return digSpeed / hardness / (correct ? 30f : 100f);
@@ -141,10 +141,12 @@ public class SubgridBlock extends BaseEntityBlock {
         PlacedPiece removed = be.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return ItemInteractionResult.FAIL;
 
-        List<ItemStack> drops = removed.definition.drops(removed);
-        double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
-        for (ItemStack drop : drops) {
-            level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+        if (!player.isCreative()) {
+            List<ItemStack> drops = removed.definition.drops(removed);
+            double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+            for (ItemStack drop : drops) {
+                level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+            }
         }
 
         if (be.getPieces().isEmpty()) {

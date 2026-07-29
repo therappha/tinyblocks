@@ -55,6 +55,11 @@ public class SubgridBlockEntity extends BlockEntity {
         addToGrid(piece);
         notifyUpdate();
         notifyNeighbors(piece);
+        // The piece also needs to react to the neighbors it was just placed next to —
+        // notifyNeighbors() only informs the pieces around it, not itself.
+        if (level instanceof ServerLevel serverLevel) {
+            piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+        }
         return true;
     }
 
@@ -84,33 +89,76 @@ public class SubgridBlockEntity extends BlockEntity {
                 notifyNeighbors(piece);
             }
         }
-        if (dirty) setChanged();
+        if (dirty) notifyUpdate();
     }
 
+    /** A piece and the SubgridBlockEntity that hosts it — a neighbor may live in another block. */
+    public record Neighbor(SubgridBlockEntity be, PlacedPiece piece) {}
+
     /**
-     * Calls onNeighborChanged on every piece adjacent to changed's footprint within this
-     * subgrid. Adjacency is face-to-face at the grid-cell level; it does not cross the
-     * subgrid's own boundary into the outside world.
+     * Calls onNeighborChanged on every piece adjacent to changed's footprint, including pieces
+     * hosted by a neighboring SubgridBlock across the grid boundary (same grid size only).
      */
     public void notifyNeighbors(PlacedPiece changed) {
-        if (!(level instanceof ServerLevel serverLevel)) return;
-        for (PlacedPiece neighbor : adjacentPieces(changed)) {
-            neighbor.definition.onNeighborChanged(neighbor, serverLevel, worldPosition, this, changed);
+        if (!(level instanceof ServerLevel)) return;
+        for (Neighbor neighbor : neighborsOf(changed)) {
+            if (neighbor.be().level instanceof ServerLevel neighborLevel) {
+                neighbor.piece().definition.onNeighborChanged(
+                        neighbor.piece(), neighborLevel, neighbor.be().getBlockPos(), neighbor.be(), changed);
+            }
         }
     }
 
-    private Set<PlacedPiece> adjacentPieces(PlacedPiece piece) {
-        Set<PlacedPiece> result = new LinkedHashSet<>();
+    /**
+     * Pieces currently touching piece's footprint face-to-face. Cells on the edge of this grid
+     * also check the neighboring real-world block: if it hosts a SubgridBlockEntity with the
+     * same gridSize, the mirrored cell on its near face counts as touching too. Grids of
+     * different sizes never propagate into each other — their cells don't line up.
+     */
+    public Set<Neighbor> neighborsOf(PlacedPiece piece) {
+        Set<Neighbor> result = new LinkedHashSet<>();
         for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX(); x++)
             for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY(); y++)
                 for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ(); z++)
                     for (Direction dir : Direction.values()) {
-                        int nx = x + dir.getStepX(), ny = y + dir.getStepY(), nz = z + dir.getStepZ();
-                        if (outOfBounds(nx, ny, nz) || piece.occupies(nx, ny, nz)) continue;
-                        short idx = cellOwner[indexOf(nx, ny, nz)];
-                        if (idx != EMPTY) result.add(pieces.get(idx));
+                        if (piece.occupies(x + dir.getStepX(), y + dir.getStepY(), z + dir.getStepZ())) continue;
+                        Neighbor neighbor = neighborAt(x, y, z, dir);
+                        if (neighbor != null) result.add(neighbor);
                     }
         return result;
+    }
+
+    /**
+     * The single piece touching cell (piece.anchor + dir), if any. Only meaningful for
+     * single-cell (1x1x1 footprint) pieces — larger footprints should use neighborsOf instead.
+     */
+    @Nullable
+    public Neighbor neighborFacing(PlacedPiece piece, Direction dir) {
+        return neighborAt(piece.anchor.getX(), piece.anchor.getY(), piece.anchor.getZ(), dir);
+    }
+
+    @Nullable
+    private Neighbor neighborAt(int x, int y, int z, Direction dir) {
+        int nx = x + dir.getStepX(), ny = y + dir.getStepY(), nz = z + dir.getStepZ();
+        if (outOfBounds(nx, ny, nz)) return crossGridNeighborAt(dir, nx, ny, nz);
+        short idx = cellOwner[indexOf(nx, ny, nz)];
+        return idx != EMPTY ? new Neighbor(this, pieces.get(idx)) : null;
+    }
+
+    @Nullable
+    private Neighbor crossGridNeighborAt(Direction dir, int nx, int ny, int nz) {
+        if (!(level instanceof ServerLevel)) return null;
+        if (!(level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other)) return null;
+        if (other.gridSize != gridSize) return null;
+        int max = gridSize - 1;
+        PlacedPiece piece = other.getPieceAt(wrap(nx, max), wrap(ny, max), wrap(nz, max));
+        return piece != null ? new Neighbor(other, piece) : null;
+    }
+
+    private static int wrap(int v, int max) {
+        if (v < 0) return max;
+        if (v > max) return 0;
+        return v;
     }
 
     public void notifyUpdate() {
@@ -178,6 +226,10 @@ public class SubgridBlockEntity extends BlockEntity {
 
     private boolean outOfBounds(int x, int y, int z) {
         return x < 0 || x >= gridSize || y < 0 || y >= gridSize || z < 0 || z >= gridSize;
+    }
+
+    public boolean inBounds(int x, int y, int z) {
+        return !outOfBounds(x, y, z);
     }
 
     // --- NBT ---

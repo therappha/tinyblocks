@@ -44,10 +44,10 @@ public class SubgridEventHandler {
         PlacedPiece removed = subgrid.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return;
 
-        BlockState renderState = removed.definition.renderState(removed.axis);
+        BlockState renderState = removed.definition.renderState(removed);
         boolean correctTool = !removed.definition.requiresCorrectTool()
                 || player.hasCorrectToolForDrops(renderState);
-        if (correctTool) {
+        if (correctTool && !player.isCreative()) {
             List<ItemStack> drops = removed.definition.drops(removed);
             double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
             for (ItemStack stack : drops) {

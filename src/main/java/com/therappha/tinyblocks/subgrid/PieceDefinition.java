@@ -40,6 +40,14 @@ public abstract class PieceDefinition {
     /** BlockState used by the BER to render this piece. */
     public abstract BlockState renderState(Direction.Axis axis);
 
+    /**
+     * Per-instance variant. Defaults to renderState(piece.axis); override this instead when
+     * appearance depends on piece.extraData/runtimeState (e.g. an on/off indicator).
+     */
+    public BlockState renderState(PlacedPiece piece) {
+        return renderState(piece.axis);
+    }
+
     /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */
     public float destroyTime() { return 1.5f; }
 
