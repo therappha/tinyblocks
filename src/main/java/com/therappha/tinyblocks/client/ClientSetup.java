@@ -94,9 +94,10 @@ class SubgridClientHandler {
         BlockPos pos = hit.getBlockPos();
         BlockState state = mc.level.getBlockState(pos);
         if (!(state.getBlock() instanceof SubgridBlock)) {
-            // Not a subgrid yet — if the Minimizer is equipped, preview where its cells would
-            // land on the hovered face without touching the normal vanilla outline.
+            // Not a subgrid yet — if the Minimizer is equipped, replace vanilla's normal single
+            // outline with a preview grid showing where its cells would land on this face.
             if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem minimizer) {
+                event.setCanceled(true);
                 renderMinimizerFaceGrid(event, pos, hit.getDirection(), minimizer.preferredSubgrid().gridSize);
             }
             return;

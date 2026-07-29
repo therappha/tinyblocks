@@ -115,6 +115,13 @@ public class SubgridEventHandler {
                     && be.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ()) != null) {
                 return;
             }
+            if (isOutOfBounds(clickedCell, face, be.gridSize)) {
+                // A piece placed here would fall past this grid's edge — only intercept if the
+                // adjacent real-world position is valid to continue the pillar into.
+                BlockPos targetPos = pos.relative(face);
+                BlockState targetState = level.getBlockState(targetPos);
+                if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
+            }
         } else {
             BlockPos targetPos = pos.relative(face);
             BlockState targetState = level.getBlockState(targetPos);
@@ -130,16 +137,31 @@ public class SubgridEventHandler {
 
         if (clickedIsSubgrid) {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
-            be = existing;
-            Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
-            int max = be.gridSize - 1;
-            nx = clickedCell.getX() + face.getStepX();
-            ny = clickedCell.getY() + face.getStepY();
-            nz = clickedCell.getZ() + face.getStepZ();
-            // Only placing additional pieces inside this existing SubgridBlock is in scope
-            // here — targeting past the grid edge (a new block, or a neighboring SubgridBlock)
-            // is not, even with the Minimizer active.
-            if (nx < 0 || nx > max || ny < 0 || ny > max || nz < 0 || nz > max) return;
+            Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
+            int max = existing.gridSize - 1;
+            int cx = clickedCell.getX() + face.getStepX();
+            int cy = clickedCell.getY() + face.getStepY();
+            int cz = clickedCell.getZ() + face.getStepZ();
+
+            if (cx >= 0 && cx <= max && cy >= 0 && cy <= max && cz >= 0 && cz <= max) {
+                be = existing;
+                nx = cx; ny = cy; nz = cz;
+            } else {
+                // Overflowed past this grid's edge — continue into the adjacent real-world
+                // position, same size as the grid being left (needed for cross-grid propagation
+                // to work at all — see SubgridBlockEntity.crossGridNeighborAt's gridSize check)
+                // and same wrap convention it already uses for that boundary.
+                BlockPos targetPos = pos.relative(face);
+                BlockState targetState = serverLevel.getBlockState(targetPos);
+                if (targetState.isAir()) {
+                    serverLevel.setBlock(targetPos, subgridBlockFor(existing.gridSize).defaultBlockState(), Block.UPDATE_ALL);
+                }
+                if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent)) return;
+                if (adjacent.gridSize != existing.gridSize) return;
+                be = adjacent;
+                int wmax = adjacent.gridSize - 1;
+                nx = wrap(cx, wmax); ny = wrap(cy, wmax); nz = wrap(cz, wmax);
+            }
         } else {
             BlockPos targetPos = pos.relative(face);
             BlockState targetState = serverLevel.getBlockState(targetPos);
@@ -175,6 +197,29 @@ public class SubgridEventHandler {
             serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
             serverLevel.getBlockTicks().schedule(new ScheduledTick<>(serverLevel.getBlockState(subgridPos).getBlock(), subgridPos, serverLevel.getGameTime() + 2, 0L));
         }
+    }
+
+    private static boolean isOutOfBounds(Vec3i clickedCell, Direction face, int gridSize) {
+        int max = gridSize - 1;
+        int cx = clickedCell.getX() + face.getStepX();
+        int cy = clickedCell.getY() + face.getStepY();
+        int cz = clickedCell.getZ() + face.getStepZ();
+        return cx < 0 || cx > max || cy < 0 || cy > max || cz < 0 || cz > max;
+    }
+
+    private static int wrap(int v, int max) {
+        if (v < 0) return max;
+        if (v > max) return 0;
+        return v;
+    }
+
+    private static SubgridBlock subgridBlockFor(int gridSize) {
+        return switch (gridSize) {
+            case 2 -> Registration.SUBGRID_BLOCK_2.get();
+            case 4 -> Registration.SUBGRID_BLOCK_4.get();
+            case 16 -> Registration.SUBGRID_BLOCK_16.get();
+            default -> Registration.SUBGRID_BLOCK.get();
+        };
     }
 
     /**
