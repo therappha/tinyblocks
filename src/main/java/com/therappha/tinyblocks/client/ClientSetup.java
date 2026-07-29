@@ -20,7 +20,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -210,12 +209,11 @@ class SubgridClientHandler {
         if (!(mc.hitResult instanceof BlockHitResult hit)) return;
         if (hit.getType() == HitResult.Type.MISS) return;
 
+        // Ghost preview stays for the hand-written debug pieces (TinyPieceItem); the Minimizer's
+        // grid overlay (onRenderBlockHighlight) already shows where a real BlockItem would land,
+        // so a floating ghost of the real block on top of that was redundant.
         Item held = mc.player.getMainHandItem().getItem();
-        MinimizerItem minimizer = mc.player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
-        boolean isPieceItem = held instanceof TinyPieceItem pieceItem2 && pieceItem2.showPreview();
-        boolean isMinimizedBlockItem = minimizer != null && held instanceof BlockItem heldBlockItem
-                && !(heldBlockItem.getBlock() instanceof SubgridBlock);
-        if (!isPieceItem && !isMinimizedBlockItem) return;
+        if (!(held instanceof TinyPieceItem pieceItem) || !pieceItem.showPreview()) return;
 
         BlockPos clickedPos = hit.getBlockPos();
         Direction face = hit.getDirection();
@@ -234,7 +232,7 @@ class SubgridClientHandler {
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
             gs = targetState.getBlock() instanceof SubgridBlock tsb
                 ? (mc.level.getBlockEntity(targetPos) instanceof SubgridBlockEntity tbe ? tbe.gridSize : tsb.gridSize)
-                : (minimizer != null ? minimizer.preferredSubgrid().gridSize : Registration.SUBGRID_BLOCK.get().gridSize);
+                : Registration.SUBGRID_BLOCK.get().gridSize;
         }
 
         int[] grid = TinyPieceItem.computeGridCell(clickedState, clickedPos, face, hitLoc, gs);
@@ -246,9 +244,7 @@ class SubgridClientHandler {
             if (be instanceof SubgridBlockEntity sg && sg.ownerAt(gx, gy, gz) != -1) return;
         }
 
-        BlockState ghostState = isPieceItem
-                ? ((TinyPieceItem) held).pieceDefinition().renderState(face)
-                : ((BlockItem) held).getBlock().defaultBlockState();
+        BlockState ghostState = pieceItem.pieceDefinition().renderState(face);
         if (ghostState == null) return;
 
         Vec3 camera = event.getCamera().getPosition();
