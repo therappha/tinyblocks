@@ -156,12 +156,12 @@ public class SubgridEventHandler {
         if (be.placePiece(piece)) {
             state.getBlock().setPlacedBy(fakeLevel, fakeAnchor, state, player, stack);
             if (!player.isCreative()) stack.shrink(1);
-            // Same fixup TinyPieceItem.useOn already needs: on a freshly-created SubgridBlock
-            // (targetState was air a moment ago), the initial setBlock's own sync packet beat
-            // placePiece's notifyUpdate() to the client, so it renders the BE as empty until an
-            // explicit resend here.
+            // Same NeoForge post-cancel resync race onBlockBreak/onLeftClickBlock already work
+            // around: an immediate sendBlockUpdated wasn't enough on a freshly-created
+            // SubgridBlock, so also schedule a delayed re-notify to land after that resync.
             BlockPos subgridPos = be.getBlockPos();
             level.sendBlockUpdated(subgridPos, level.getBlockState(subgridPos), level.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
+            level.getBlockTicks().schedule(new ScheduledTick<>(level.getBlockState(subgridPos).getBlock(), subgridPos, level.getGameTime() + 2, 0L));
         }
     }
 
