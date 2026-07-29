@@ -7,6 +7,10 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeCellGetter;
+import com.therappha.tinyblocks.v2.FakeLevel;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -37,6 +41,7 @@ public class TinyBlocksCommand {
             Commands.literal("tinyblocks")
                 .then(Commands.literal("status").executes(TinyBlocksCommand::executeStatus))
                 .then(Commands.literal("v2test").executes(TinyBlocksCommand::executeV2Test))
+                .then(Commands.literal("v2test2").executes(TinyBlocksCommand::executeV2Test2))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
         );
     }
@@ -71,6 +76,45 @@ public class TinyBlocksCommand {
         ), false);
 
         return signal;
+    }
+
+    /**
+     * v2 prototype checkpoint 2: proves a real vanilla block's useWithoutItem() — which needs
+     * a genuine Level, not just BlockGetter — runs correctly through FakeLevel against a fake
+     * position. Flips a real lever and reads its POWERED state back afterward.
+     */
+    private static int executeV2Test2(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+
+        if (!(source.getEntity() instanceof Player player)) {
+            source.sendFailure(Component.literal("Must be run by a player"));
+            return 0;
+        }
+
+        FakeCellGetter fake = new FakeCellGetter();
+        BlockPos leverPos = new BlockPos(0, 0, 0);
+        fake.set(leverPos, Blocks.LEVER.defaultBlockState());
+
+        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake);
+        BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(leverPos), Direction.UP, leverPos, false);
+
+        boolean before = fake.getBlockState(leverPos).getValue(BlockStateProperties.POWERED);
+        InteractionResult result = fake.getBlockState(leverPos).useWithoutItem(fakeLevel, player, hit);
+        boolean after = fake.getBlockState(leverPos).getValue(BlockStateProperties.POWERED);
+
+        source.sendSuccess(() -> Component.literal(
+            "[v2test2] lever.useWithoutItem() -> " + result
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            "[v2test2] POWERED before=" + before + " after=" + after
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            !before && after
+                ? "[v2test2] PASS — real vanilla interaction logic flipped state through FakeLevel"
+                : "[v2test2] FAIL — state didn't flip as expected"
+        ), false);
+
+        return after ? 1 : 0;
     }
 
     private static int executeHelp(CommandContext<CommandSourceStack> ctx) {
