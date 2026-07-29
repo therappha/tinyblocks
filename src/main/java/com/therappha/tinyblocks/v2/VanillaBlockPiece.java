@@ -43,6 +43,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
         super(ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "vanilla_block"), new Vec3i(1, 1, 1));
     }
 
+    /**
+     * Forces this class (and its PieceDefinition.REGISTRY registration) to load at mod setup,
+     * same as PieceDefinitions.init(). Without this, INSTANCE only loads lazily on first use
+     * (e.g. the first Minimizer/Phase C right-click) — but BlockEntity NBT loading can happen
+     * before that, so PieceDefinition.getOrThrow("tinyblocks:vanilla_block") would throw and
+     * silently drop any SubgridBlockEntity containing a saved VanillaBlockPiece.
+     */
+    public static void init() {}
+
     private static BlockState stateOf(PlacedPiece piece) {
         return (BlockState) piece.runtimeState;
     }
