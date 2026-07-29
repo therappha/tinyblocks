@@ -28,7 +28,7 @@ public final class PieceDefinitions {
             ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "stone_block"),
             new Vec3i(1, 1, 1)) {
         @Override
-        public BlockState renderState(Direction.Axis axis) {
+        public BlockState renderState(Direction facing) {
             return Blocks.STONE.defaultBlockState();
         }
 
@@ -49,7 +49,7 @@ public final class PieceDefinitions {
             ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "tiny_redstone_block"),
             new Vec3i(1, 1, 1)) {
         @Override
-        public BlockState renderState(Direction.Axis axis) {
+        public BlockState renderState(Direction facing) {
             return Blocks.REDSTONE_BLOCK.defaultBlockState();
         }
 
@@ -64,7 +64,7 @@ public final class PieceDefinitions {
             ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "tiny_redstone_dust"),
             new Vec3i(1, 1, 1)) {
         @Override
-        public BlockState renderState(Direction.Axis axis) {
+        public BlockState renderState(Direction facing) {
             return Blocks.REDSTONE_WIRE.defaultBlockState();
         }
 
@@ -93,21 +93,21 @@ public final class PieceDefinitions {
 
     /**
      * Debug piece for testing self-modifying pieces — places/removes its own TINY_PISTON_HEAD
-     * one cell ahead (along the positive direction of its placement axis) when it becomes
-     * adjacent to power. Only extends within the same subgrid; blocked at the grid edge.
+     * one cell ahead, in the direction it was placed facing, when it becomes adjacent to power.
+     * Only extends within the same subgrid; blocked at the grid edge.
      */
     public static final PieceDefinition TINY_PISTON = new PieceDefinition(
             ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "tiny_piston"),
             new Vec3i(1, 1, 1)) {
         @Override
-        public BlockState renderState(Direction.Axis axis) {
+        public BlockState renderState(Direction facing) {
             return Blocks.PISTON.defaultBlockState();
         }
 
         @Override
         public BlockState renderState(PlacedPiece piece) {
             return Blocks.PISTON.defaultBlockState()
-                    .setValue(BlockStateProperties.FACING, extendDirection(piece))
+                    .setValue(BlockStateProperties.FACING, piece.facing)
                     .setValue(BlockStateProperties.EXTENDED, piece.extraData.getBoolean("extended"));
         }
 
@@ -119,7 +119,7 @@ public final class PieceDefinitions {
         @Override
         public void onNeighborChanged(PlacedPiece piece, ServerLevel level, BlockPos subgridPos,
                                        SubgridBlockEntity be, PlacedPiece changedNeighbor) {
-            Direction dir = extendDirection(piece);
+            Direction dir = piece.facing;
             int tx = piece.anchor.getX() + dir.getStepX();
             int ty = piece.anchor.getY() + dir.getStepY();
             int tz = piece.anchor.getZ() + dir.getStepZ();
@@ -132,7 +132,7 @@ public final class PieceDefinitions {
             if (powered == hasOwnHead) return;
             piece.extraData.putBoolean("extended", powered);
             if (powered) {
-                if (atTarget == null) be.placePiece(new PlacedPiece(TINY_PISTON_HEAD, new BlockPos(tx, ty, tz), piece.axis));
+                if (atTarget == null) be.placePiece(new PlacedPiece(TINY_PISTON_HEAD, new BlockPos(tx, ty, tz), piece.facing));
             } else {
                 be.removePieceAt(tx, ty, tz);
             }
@@ -144,13 +144,13 @@ public final class PieceDefinitions {
             ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "tiny_piston_head"),
             new Vec3i(1, 1, 1)) {
         @Override
-        public BlockState renderState(Direction.Axis axis) {
+        public BlockState renderState(Direction facing) {
             return Blocks.PISTON_HEAD.defaultBlockState();
         }
 
         @Override
         public BlockState renderState(PlacedPiece piece) {
-            return Blocks.PISTON_HEAD.defaultBlockState().setValue(BlockStateProperties.FACING, extendDirection(piece));
+            return Blocks.PISTON_HEAD.defaultBlockState().setValue(BlockStateProperties.FACING, piece.facing);
         }
 
         @Override
@@ -163,17 +163,12 @@ public final class PieceDefinitions {
                                        SubgridBlockEntity be, PlacedPiece changedNeighbor) {
             // Self-destruct if the piston that placed this head is gone — the base is always
             // one cell behind, opposite of the direction this head faces.
-            Direction back = extendDirection(piece).getOpposite();
-            SubgridBlockEntity.Neighbor base = be.neighborFacing(piece, back);
+            SubgridBlockEntity.Neighbor base = be.neighborFacing(piece, piece.facing.getOpposite());
             if (base == null || base.piece().definition != TINY_PISTON) {
                 be.removePieceAt(piece.anchor.getX(), piece.anchor.getY(), piece.anchor.getZ());
             }
         }
     };
-
-    private static Direction extendDirection(PlacedPiece piece) {
-        return Direction.get(Direction.AxisDirection.POSITIVE, piece.axis);
-    }
 
     private static boolean isPowered(SubgridBlockEntity be, PlacedPiece piece) {
         for (SubgridBlockEntity.Neighbor neighbor : be.neighborsOf(piece)) {

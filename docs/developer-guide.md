@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly "maven.modrinth:tinyblocks:1.0.0"
+    compileOnly "maven.modrinth:tinyblocks:1.2.0"
 }
 ```
 
@@ -46,7 +46,7 @@ public static final PieceDefinition MY_PIECE = new PieceDefinition(
         new Vec3i(1, 1, 1))  // width × height × depth in grid cells
 {
     @Override
-    public BlockState renderState(Direction.Axis axis) {
+    public BlockState renderState(Direction facing) {
         return Blocks.IRON_BLOCK.defaultBlockState();
     }
 };
@@ -64,7 +64,7 @@ All hooks have default no-op implementations. Override only what you need.
 
 | Method | Default | Description |
 |--------|---------|-------------|
-| `renderState(Axis axis)` | **abstract** | Block whose model and texture are rendered at mini scale. `axis` is the placement axis for directional blocks. |
+| `renderState(Direction facing)` | **abstract** | Block whose model and texture are rendered at mini scale. `facing` is the full direction the piece was placed against (e.g. the clicked face), for directional blocks. |
 
 ### Mining
 
@@ -185,7 +185,7 @@ Populate it from NBT in `onLoaded()` and flush it in `onSaving()`.
 | `definition` | `PieceDefinition` | The registered definition for this piece. |
 | `anchor` | `Vec3i` | Bottom-left-front grid cell of this piece. |
 | `footprint` | `Vec3i` | Size in grid cells (from the definition). |
-| `axis` | `Direction.Axis` | Placement axis passed to `renderState`. |
+| `facing` | `Direction` | Full direction the piece was placed against (e.g. the clicked face). Passed to `renderState`. |
 | `extraData` | `CompoundTag` | Persistent NBT — read/write in `onLoaded`/`onSaving`. |
 | `runtimeState` | `Object` | In-memory only. Rebuild it from `extraData` in `onLoaded` if needed across restarts. |
 
@@ -221,7 +221,7 @@ public class EnergyCellDefinition extends PieceDefinition {
     }
 
     @Override
-    public BlockState renderState(Direction.Axis axis) {
+    public BlockState renderState(Direction facing) {
         return Blocks.AMETHYST_BLOCK.defaultBlockState();
     }
 
@@ -278,7 +278,7 @@ public class EnergyCellDefinition extends PieceDefinition {
 
 ```java
 @Override
-public BlockState renderState(Direction.Axis axis) {
+public BlockState renderState(Direction facing) {
     // Renders Create's Andesite Casing at mini scale
     Block block = BuiltInRegistries.BLOCK.get(
         ResourceLocation.fromNamespaceAndPath("create", "andesite_casing"));
