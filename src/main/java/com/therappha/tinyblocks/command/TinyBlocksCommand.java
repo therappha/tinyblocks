@@ -42,6 +42,7 @@ public class TinyBlocksCommand {
                 .then(Commands.literal("status").executes(TinyBlocksCommand::executeStatus))
                 .then(Commands.literal("v2test").executes(TinyBlocksCommand::executeV2Test))
                 .then(Commands.literal("v2test2").executes(TinyBlocksCommand::executeV2Test2))
+                .then(Commands.literal("v2test3").executes(TinyBlocksCommand::executeV2Test3))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
         );
     }
@@ -115,6 +116,54 @@ public class TinyBlocksCommand {
         ), false);
 
         return after ? 1 : 0;
+    }
+
+    /**
+     * v2 prototype checkpoint 3: proves a chain of real vanilla blocks (lever -> redstone wire
+     * -> redstone lamp) propagates correctly through repeated calls to the block's own
+     * handleNeighborChanged() — no scheduled tick involved, we drive the cascade ourselves.
+     * Real wire power calculation and lamp lighting logic, zero reimplementation.
+     */
+    private static int executeV2Test3(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+
+        if (!(source.getEntity() instanceof Player player)) {
+            source.sendFailure(Component.literal("Must be run by a player"));
+            return 0;
+        }
+
+        FakeCellGetter fake = new FakeCellGetter();
+        BlockPos leverPos = new BlockPos(0, 0, 0);
+        BlockPos wirePos = new BlockPos(1, 0, 0);
+        BlockPos lampPos = new BlockPos(2, 0, 0);
+        fake.set(leverPos, Blocks.LEVER.defaultBlockState());
+        fake.set(wirePos, Blocks.REDSTONE_WIRE.defaultBlockState());
+        fake.set(lampPos, Blocks.REDSTONE_LAMP.defaultBlockState());
+
+        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake);
+
+        BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(leverPos), Direction.UP, leverPos, false);
+        fake.getBlockState(leverPos).useWithoutItem(fakeLevel, player, hit);
+
+        fake.getBlockState(wirePos).handleNeighborChanged(fakeLevel, wirePos, Blocks.LEVER, leverPos, false);
+        int wirePower = fake.getBlockState(wirePos).getValue(BlockStateProperties.POWER);
+
+        fake.getBlockState(lampPos).handleNeighborChanged(fakeLevel, lampPos, Blocks.REDSTONE_WIRE, wirePos, false);
+        boolean lampLit = fake.getBlockState(lampPos).getValue(BlockStateProperties.LIT);
+
+        source.sendSuccess(() -> Component.literal(
+            "[v2test3] lever ON -> wire.POWER = " + wirePower + " (expected 15)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            "[v2test3] wire -> lamp.LIT = " + lampLit + " (expected true, or false if it needs a scheduled tick)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            wirePower == 15
+                ? "[v2test3] PASS (wire) — real redstone power calculation ran through FakeLevel"
+                : "[v2test3] FAIL (wire) — power didn't propagate as expected"
+        ), false);
+
+        return wirePower;
     }
 
     private static int executeHelp(CommandContext<CommandSourceStack> ctx) {
