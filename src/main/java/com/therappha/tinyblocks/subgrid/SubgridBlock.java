@@ -112,9 +112,10 @@ public class SubgridBlock extends BaseEntityBlock {
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide()) return null;
         return createTickerHelper(type, Registration.SUBGRID_BLOCK_ENTITY.get(),
-            (lvl, pos, blockState, be) -> be.serverTick((ServerLevel) lvl));
+            level.isClientSide()
+                ? (lvl, pos, blockState, be) -> be.clientTick(lvl)
+                : (lvl, pos, blockState, be) -> be.serverTick((ServerLevel) lvl));
     }
 
     @Override

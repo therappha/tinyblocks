@@ -72,6 +72,17 @@ public abstract class PieceDefinition {
      */
     public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) { return false; }
 
+    /** True if this piece needs a client-side tick every game tick, for local animation state. */
+    public boolean requiresClientTick() { return false; }
+
+    /**
+     * Called each client tick when requiresClientTick() is true. Client-only: use it to ease
+     * piece.runtimeState toward a target driven by extraData (e.g. a lid angle animating toward
+     * open/closed). Never mutate extraData here — it's server-authoritative and gets overwritten
+     * by the next sync packet; keep purely local animation state in runtimeState instead.
+     */
+    public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {}
+
     /**
      * Called on the server when a piece adjacent to this one (within the same subgrid) is
      * placed, removed, or reports a state change from tick(). Mirrors vanilla neighborChanged.

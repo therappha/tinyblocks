@@ -10,6 +10,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -90,6 +91,14 @@ public class SubgridBlockEntity extends BlockEntity {
             }
         }
         if (dirty) notifyUpdate();
+    }
+
+    public void clientTick(Level level) {
+        for (PlacedPiece piece : pieces) {
+            if (piece.definition.requiresClientTick()) {
+                piece.definition.clientTick(piece, level, worldPosition, this);
+            }
+        }
     }
 
     /** A piece and the SubgridBlockEntity that hosts it — a neighbor may live in another block. */

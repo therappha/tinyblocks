@@ -104,6 +104,19 @@ public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, S
 }
 ```
 
+For purely visual animation (easing a value toward a target rather than simulating logic), use the client-side counterpart instead. It never syncs anything and should only touch `piece.runtimeState` — `extraData` is server-authoritative and gets overwritten by the next sync packet:
+
+```java
+@Override
+public boolean requiresClientTick() { return true; }
+
+@Override
+public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {
+    // Called every client tick. Ease piece.runtimeState toward a target read from
+    // piece.extraData (e.g. an open/closed flag set server-side) for smooth animation.
+}
+```
+
 ### Interaction
 
 ```java
