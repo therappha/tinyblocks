@@ -77,14 +77,24 @@ public class FakeServerLevel extends ServerLevel {
                     (Constructor<FakeServerLevel>) rf.newConstructorForSerialization(FakeServerLevel.class, objectCtor);
             ctor.setAccessible(true);
             FakeServerLevel instance = ctor.newInstance();
-            instance.delegate = new FakeLevel(real, cells, realPos);
+            FakeLevel delegateLevel = new FakeLevel(real, cells, realPos);
+            instance.delegate = delegateLevel;
             instance.scheduled = new ArrayList<>();
 
-            // Level.neighborUpdater is `protected final`, normally set inside Level's own
-            // constructor — which never runs here, since reflection allocation bypasses the
-            // *entire* chain, not just ServerLevel's part. Being final, only reflection can set
-            // it now; every redstone/shape-update cascade routes through it, so without this
-            // even basic interactions (flipping a lever) NPE immediately.
+            // Reflection allocation skips the *entire* constructor chain, not just ServerLevel's
+            // part — none of Level's own fields (levelData, worldBorder, threadSafeRandom, ...)
+            // are set either. Rather than discovering and hand-patching each one via a fresh NPE,
+            // transplant every Level-declared field from delegateLevel, whose real constructor
+            // DID run (FakeLevel extends Level normally) and so has all of them properly set.
+            for (Field field : Level.class.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                field.setAccessible(true);
+                field.set(instance, field.get(delegateLevel));
+            }
+
+            // neighborUpdater specifically gets rebound to `instance` itself (not delegateLevel)
+            // so every redstone/shape-update cascade it drives operates through the object
+            // actually passed around as the ServerLevel, not a sibling reference to it.
             Field neighborUpdaterField = Level.class.getDeclaredField("neighborUpdater");
             neighborUpdaterField.setAccessible(true);
             neighborUpdaterField.set(instance, new CollectingNeighborUpdater(instance, 1000000));
