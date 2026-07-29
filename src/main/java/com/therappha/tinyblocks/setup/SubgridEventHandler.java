@@ -18,6 +18,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -85,7 +86,7 @@ public class SubgridEventHandler {
      */
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        Level level = event.getLevel();
         Player player = event.getEntity();
 
         ItemStack stack = event.getItemStack();
@@ -100,23 +101,36 @@ public class SubgridEventHandler {
         BlockHitResult hit = event.getHitVec();
         Direction face = hit.getDirection();
 
-        SubgridBlockEntity be;
-        int nx, ny, nz;
-
+        // Decide whether we're intercepting this click using only checks that resolve
+        // identically on both logical sides (read-only, no mutation yet) — needed so we can
+        // cancel on the CLIENT too. Cancelling only server-side left the client's own
+        // speculative "place the real block" prediction flashing before the correction landed.
         if (clickedIsSubgrid) {
-            if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
-            be = existing;
+            if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
-
             // If the exact cell being clicked already holds a piece, let vanilla's normal
-            // interaction resolution run instead — SubgridBlock.useWithoutItem finds that piece
-            // and calls its definition.onUse (e.g. flips a lever). Same priority vanilla gives
-            // "interact with what you clicked" over "place a new block", unless sneaking.
+            // interaction resolution run instead (e.g. flips a lever), unless sneaking.
             if (!player.isShiftKeyDown()
                     && be.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ()) != null) {
                 return;
             }
+        } else {
+            BlockPos targetPos = pos.relative(face);
+            BlockState targetState = level.getBlockState(targetPos);
+            if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
+        }
 
+        event.setCanceled(true);
+        if (!(level instanceof ServerLevel serverLevel)) return;
+
+        // --- Everything below is server-authoritative; recompute against live state. ---
+        SubgridBlockEntity be;
+        int nx, ny, nz;
+
+        if (clickedIsSubgrid) {
+            if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
+            be = existing;
+            Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
             int max = be.gridSize - 1;
             nx = clickedCell.getX() + face.getStepX();
             ny = clickedCell.getY() + face.getStepY();
@@ -127,12 +141,11 @@ public class SubgridEventHandler {
             if (nx < 0 || nx > max || ny < 0 || ny > max || nz < 0 || nz > max) return;
         } else {
             BlockPos targetPos = pos.relative(face);
-            BlockState targetState = level.getBlockState(targetPos);
-            if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
+            BlockState targetState = serverLevel.getBlockState(targetPos);
             if (targetState.isAir()) {
-                level.setBlock(targetPos, Registration.SUBGRID_BLOCK.get().defaultBlockState(), Block.UPDATE_ALL);
+                serverLevel.setBlock(targetPos, Registration.SUBGRID_BLOCK.get().defaultBlockState(), Block.UPDATE_ALL);
             }
-            if (!(level.getBlockEntity(targetPos) instanceof SubgridBlockEntity created)) return;
+            if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity created)) return;
             be = created;
             int[] cell = TinyPieceItem.computeGridCell(clickedState, pos, face, hit.getLocation(), be.gridSize);
             nx = cell[0]; ny = cell[1]; nz = cell[2];
@@ -140,10 +153,8 @@ public class SubgridEventHandler {
 
         if (be.getPieceAt(nx, ny, nz) != null) return;
 
-        event.setCanceled(true);
         BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
-
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
+        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, hit.isInside());
         BlockPlaceContext placeCtx = new BlockPlaceContext(
                 new UseOnContext(fakeLevel, player, event.getHand(), stack, fakeHit));
@@ -160,8 +171,8 @@ public class SubgridEventHandler {
             // around: an immediate sendBlockUpdated wasn't enough on a freshly-created
             // SubgridBlock, so also schedule a delayed re-notify to land after that resync.
             BlockPos subgridPos = be.getBlockPos();
-            level.sendBlockUpdated(subgridPos, level.getBlockState(subgridPos), level.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
-            level.getBlockTicks().schedule(new ScheduledTick<>(level.getBlockState(subgridPos).getBlock(), subgridPos, level.getGameTime() + 2, 0L));
+            serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
+            serverLevel.getBlockTicks().schedule(new ScheduledTick<>(serverLevel.getBlockState(subgridPos).getBlock(), subgridPos, serverLevel.getGameTime() + 2, 0L));
         }
     }
 
