@@ -14,12 +14,14 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.redstone.CollectingNeighborUpdater;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.ticks.TickPriority;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -50,7 +52,9 @@ public class FakeServerLevel extends ServerLevel {
     /** A scheduleTick request captured during this call, relative to when it was made. */
     public record ScheduledEntry(BlockPos pos, int delay) {}
 
-    private final List<ScheduledEntry> scheduled = new ArrayList<>();
+    // Not initialized inline — field initializers are compiled into the constructor, which never
+    // runs for a reflection-allocated instance. Set explicitly in create() instead.
+    private List<ScheduledEntry> scheduled;
 
     /** scheduleTick calls captured this call — the caller merges these into its own persistent queue. */
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
@@ -74,6 +78,17 @@ public class FakeServerLevel extends ServerLevel {
             ctor.setAccessible(true);
             FakeServerLevel instance = ctor.newInstance();
             instance.delegate = new FakeLevel(real, cells, realPos);
+            instance.scheduled = new ArrayList<>();
+
+            // Level.neighborUpdater is `protected final`, normally set inside Level's own
+            // constructor — which never runs here, since reflection allocation bypasses the
+            // *entire* chain, not just ServerLevel's part. Being final, only reflection can set
+            // it now; every redstone/shape-update cascade routes through it, so without this
+            // even basic interactions (flipping a lever) NPE immediately.
+            Field neighborUpdaterField = Level.class.getDeclaredField("neighborUpdater");
+            neighborUpdaterField.setAccessible(true);
+            neighborUpdaterField.set(instance, new CollectingNeighborUpdater(instance, 1000000));
+
             return instance;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to allocate FakeServerLevel", e);
