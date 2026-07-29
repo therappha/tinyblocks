@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPieceItem;
 import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
@@ -95,8 +96,8 @@ public class SubgridEventHandler {
         BlockPos pos = event.getPos();
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
-        boolean minimizerActive = player.getOffhandItem().getItem() == Registration.MINIMIZER.get();
-        if (!clickedIsSubgrid && !minimizerActive) return;
+        MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
+        if (!clickedIsSubgrid && minimizer == null) return;
 
         BlockHitResult hit = event.getHitVec();
         Direction face = hit.getDirection();
@@ -143,7 +144,7 @@ public class SubgridEventHandler {
             BlockPos targetPos = pos.relative(face);
             BlockState targetState = serverLevel.getBlockState(targetPos);
             if (targetState.isAir()) {
-                serverLevel.setBlock(targetPos, Registration.SUBGRID_BLOCK.get().defaultBlockState(), Block.UPDATE_ALL);
+                serverLevel.setBlock(targetPos, minimizer.preferredSubgrid().defaultBlockState(), Block.UPDATE_ALL);
             }
             if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity created)) return;
             be = created;

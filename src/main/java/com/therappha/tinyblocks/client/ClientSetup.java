@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPieceItem;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
@@ -92,7 +93,14 @@ class SubgridClientHandler {
         BlockHitResult hit = event.getTarget();
         BlockPos pos = hit.getBlockPos();
         BlockState state = mc.level.getBlockState(pos);
-        if (!(state.getBlock() instanceof SubgridBlock)) return;
+        if (!(state.getBlock() instanceof SubgridBlock)) {
+            // Not a subgrid yet — if the Minimizer is equipped, preview where its cells would
+            // land on the hovered face without touching the normal vanilla outline.
+            if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem minimizer) {
+                renderMinimizerFaceGrid(event, pos, hit.getDirection(), minimizer.preferredSubgrid().gridSize);
+            }
+            return;
+        }
 
         event.setCanceled(true);
 
@@ -144,6 +152,44 @@ class SubgridClientHandler {
         }
     }
 
+    /** Black gs-by-gs grid of lines on the hovered face of pos, without touching the normal outline. */
+    private static void renderMinimizerFaceGrid(RenderHighlightEvent.Block event, BlockPos pos, Direction face, int gs) {
+        Vec3 camera = event.getCamera().getPosition();
+        PoseStack poseStack = event.getPoseStack();
+        MultiBufferSource bufferSource = event.getMultiBufferSource();
+        VertexConsumer lines = bufferSource.getBuffer(RenderType.lines());
+
+        poseStack.pushPose();
+        poseStack.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
+
+        float fixed = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1f : 0f;
+        float step = 1f / gs;
+
+        for (int i = 0; i <= gs; i++) {
+            float t = i * step;
+            switch (face.getAxis()) {
+                case X -> {
+                    LevelRenderer.renderLineBox(poseStack, lines, fixed, t, 0, fixed, t, 1, 0f, 0f, 0f, 0.8f);
+                    LevelRenderer.renderLineBox(poseStack, lines, fixed, 0, t, fixed, 1, t, 0f, 0f, 0f, 0.8f);
+                }
+                case Y -> {
+                    LevelRenderer.renderLineBox(poseStack, lines, 0, fixed, t, 1, fixed, t, 0f, 0f, 0f, 0.8f);
+                    LevelRenderer.renderLineBox(poseStack, lines, t, fixed, 0, t, fixed, 1, 0f, 0f, 0f, 0.8f);
+                }
+                case Z -> {
+                    LevelRenderer.renderLineBox(poseStack, lines, 0, t, fixed, 1, t, fixed, 0f, 0f, 0f, 0.8f);
+                    LevelRenderer.renderLineBox(poseStack, lines, t, 0, fixed, t, 1, fixed, 0f, 0f, 0f, 0.8f);
+                }
+            }
+        }
+
+        poseStack.popPose();
+
+        if (bufferSource instanceof MultiBufferSource.BufferSource bs) {
+            bs.endBatch(RenderType.lines());
+        }
+    }
+
     @SubscribeEvent
     public static void onRenderLevel(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
@@ -159,9 +205,9 @@ class SubgridClientHandler {
         if (hit.getType() == HitResult.Type.MISS) return;
 
         Item held = mc.player.getMainHandItem().getItem();
-        boolean minimizerActive = mc.player.getOffhandItem().getItem() == Registration.MINIMIZER.get();
+        MinimizerItem minimizer = mc.player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
         boolean isPieceItem = held instanceof TinyPieceItem pieceItem2 && pieceItem2.showPreview();
-        boolean isMinimizedBlockItem = minimizerActive && held instanceof BlockItem heldBlockItem
+        boolean isMinimizedBlockItem = minimizer != null && held instanceof BlockItem heldBlockItem
                 && !(heldBlockItem.getBlock() instanceof SubgridBlock);
         if (!isPieceItem && !isMinimizedBlockItem) return;
 
@@ -182,7 +228,7 @@ class SubgridClientHandler {
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
             gs = targetState.getBlock() instanceof SubgridBlock tsb
                 ? (mc.level.getBlockEntity(targetPos) instanceof SubgridBlockEntity tbe ? tbe.gridSize : tsb.gridSize)
-                : Registration.SUBGRID_BLOCK.get().gridSize;
+                : (minimizer != null ? minimizer.preferredSubgrid().gridSize : Registration.SUBGRID_BLOCK.get().gridSize);
         }
 
         int[] grid = TinyPieceItem.computeGridCell(clickedState, clickedPos, face, hitLoc, gs);
