@@ -86,6 +86,12 @@ public class Registration {
     public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
             ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
 
+    // v2 debug tool: held in the offhand, lets any BlockItem in the main hand create/place into
+    // a subgrid instead of placing normally — only obtainable via /give
+    public static final DeferredHolder<Item, Item> MINIMIZER =
+            ITEMS.register("minimizer", () -> new Item(new Item.Properties()
+                    .component(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true)));
+
     // Debug pieces for testing neighbor propagation — 1/8 grid, only obtainable via /give
     public static final DeferredHolder<Item, TinyRedstoneBlockItem> TINY_REDSTONE_BLOCK =
             ITEMS.register("tiny_redstone_block", () -> new TinyRedstoneBlockItem(new Item.Properties()));

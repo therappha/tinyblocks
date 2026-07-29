@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.TinyPieceItem;
 import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
@@ -17,6 +18,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -76,33 +78,59 @@ public class SubgridEventHandler {
     /**
      * Phase C debug convenience (v2): holding any real BlockItem and right-clicking an existing
      * SubgridBlock places a real v2.VanillaBlockPiece using vanilla's own getStateForPlacement/
-     * canSurvive logic, instead of needing a dedicated debug item per vanilla block.
+     * canSurvive logic, instead of needing a dedicated debug item per vanilla block. Holding the
+     * Minimizer in the offhand additionally lets you right-click any normal block — a new
+     * subgrid_block is created there first (mirroring TinyPieceItem.useOn's own else branch),
+     * so you don't need an existing subgrid to reference before placing into one.
      */
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
-        BlockPos pos = event.getPos();
-        if (!(level.getBlockState(pos).getBlock() instanceof SubgridBlock)) return;
+        Player player = event.getEntity();
 
         ItemStack stack = event.getItemStack();
         if (!(stack.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof SubgridBlock) return;
 
-        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
+        BlockPos pos = event.getPos();
+        BlockState clickedState = level.getBlockState(pos);
+        boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
+        boolean minimizerActive = player.getOffhandItem().getItem() == Registration.MINIMIZER.get();
+        if (!clickedIsSubgrid && !minimizerActive) return;
 
         BlockHitResult hit = event.getHitVec();
         Direction face = hit.getDirection();
-        Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
-        int max = be.gridSize - 1;
-        int nx = clickedCell.getX() + face.getStepX();
-        int ny = clickedCell.getY() + face.getStepY();
-        int nz = clickedCell.getZ() + face.getStepZ();
-        // Only placing additional pieces inside this existing SubgridBlock is in scope here —
-        // targeting past the grid edge (a new block, or a neighboring SubgridBlock) is not.
-        if (nx < 0 || nx > max || ny < 0 || ny > max || nz < 0 || nz > max) return;
+
+        SubgridBlockEntity be;
+        int nx, ny, nz;
+
+        if (clickedIsSubgrid) {
+            if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
+            be = existing;
+            Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
+            int max = be.gridSize - 1;
+            nx = clickedCell.getX() + face.getStepX();
+            ny = clickedCell.getY() + face.getStepY();
+            nz = clickedCell.getZ() + face.getStepZ();
+            // Only placing additional pieces inside this existing SubgridBlock is in scope
+            // here — targeting past the grid edge (a new block, or a neighboring SubgridBlock)
+            // is not, even with the Minimizer active.
+            if (nx < 0 || nx > max || ny < 0 || ny > max || nz < 0 || nz > max) return;
+        } else {
+            BlockPos targetPos = pos.relative(face);
+            BlockState targetState = level.getBlockState(targetPos);
+            if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
+            if (targetState.isAir()) {
+                level.setBlock(targetPos, Registration.SUBGRID_BLOCK.get().defaultBlockState(), Block.UPDATE_ALL);
+            }
+            if (!(level.getBlockEntity(targetPos) instanceof SubgridBlockEntity created)) return;
+            be = created;
+            int[] cell = TinyPieceItem.computeGridCell(clickedState, pos, face, hit.getLocation(), be.gridSize);
+            nx = cell[0]; ny = cell[1]; nz = cell[2];
+        }
+
         if (be.getPieceAt(nx, ny, nz) != null) return;
 
         event.setCanceled(true);
-        Player player = event.getEntity();
         BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
 
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);

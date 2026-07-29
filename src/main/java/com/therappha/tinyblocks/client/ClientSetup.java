@@ -19,6 +19,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -158,7 +159,11 @@ class SubgridClientHandler {
         if (hit.getType() == HitResult.Type.MISS) return;
 
         Item held = mc.player.getMainHandItem().getItem();
-        if (!(held instanceof TinyPieceItem pieceItem) || !pieceItem.showPreview()) return;
+        boolean minimizerActive = mc.player.getOffhandItem().getItem() == Registration.MINIMIZER.get();
+        boolean isPieceItem = held instanceof TinyPieceItem pieceItem2 && pieceItem2.showPreview();
+        boolean isMinimizedBlockItem = minimizerActive && held instanceof BlockItem heldBlockItem
+                && !(heldBlockItem.getBlock() instanceof SubgridBlock);
+        if (!isPieceItem && !isMinimizedBlockItem) return;
 
         BlockPos clickedPos = hit.getBlockPos();
         Direction face = hit.getDirection();
@@ -189,7 +194,9 @@ class SubgridClientHandler {
             if (be instanceof SubgridBlockEntity sg && sg.ownerAt(gx, gy, gz) != -1) return;
         }
 
-        BlockState ghostState = pieceItem.pieceDefinition().renderState(face);
+        BlockState ghostState = isPieceItem
+                ? ((TinyPieceItem) held).pieceDefinition().renderState(face)
+                : ((BlockItem) held).getBlock().defaultBlockState();
         if (ghostState == null) return;
 
         Vec3 camera = event.getCamera().getPosition();
