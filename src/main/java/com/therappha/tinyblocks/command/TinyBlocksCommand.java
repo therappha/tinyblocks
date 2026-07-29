@@ -6,12 +6,15 @@ import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.FakeCellGetter;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -33,8 +36,41 @@ public class TinyBlocksCommand {
         dispatcher.register(
             Commands.literal("tinyblocks")
                 .then(Commands.literal("status").executes(TinyBlocksCommand::executeStatus))
+                .then(Commands.literal("v2test").executes(TinyBlocksCommand::executeV2Test))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
         );
+    }
+
+    /**
+     * v2 prototype checkpoint: proves real vanilla BlockState methods (getSignal,
+     * getDestroySpeed) run correctly against a fake, in-memory position space instead of a
+     * real chunk — no reimplementation of redstone/hardness logic on our side.
+     */
+    private static int executeV2Test(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+
+        FakeCellGetter fake = new FakeCellGetter();
+        BlockPos redstoneBlockPos = new BlockPos(0, 0, 0);
+        BlockPos stonePos = new BlockPos(1, 0, 0);
+        fake.set(redstoneBlockPos, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        fake.set(stonePos, Blocks.STONE.defaultBlockState());
+
+        int signal = fake.getBlockState(redstoneBlockPos).getSignal(fake, redstoneBlockPos, Direction.EAST);
+        float destroySpeed = fake.getBlockState(stonePos).getDestroySpeed(fake, stonePos);
+
+        source.sendSuccess(() -> Component.literal(
+            "[v2test] redstone_block.getSignal(fake, EAST) = " + signal + " (expected 15)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            "[v2test] stone.getDestroySpeed(fake) = " + destroySpeed + " (expected 1.5)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            signal == 15 && destroySpeed == 1.5f
+                ? "[v2test] PASS — real vanilla block methods work against the fake position space"
+                : "[v2test] FAIL — values don't match vanilla defaults"
+        ), false);
+
+        return signal;
     }
 
     private static int executeHelp(CommandContext<CommandSourceStack> ctx) {
