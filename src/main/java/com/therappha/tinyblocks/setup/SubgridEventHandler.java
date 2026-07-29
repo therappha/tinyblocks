@@ -13,6 +13,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
@@ -106,23 +107,11 @@ public class SubgridEventHandler {
         // identically on both logical sides (read-only, no mutation yet) — needed so we can
         // cancel on the CLIENT too. Cancelling only server-side left the client's own
         // speculative "place the real block" prediction flashing before the correction landed.
-        if (clickedIsSubgrid) {
-            if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
-            Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
-            // If the exact cell being clicked already holds a piece, let vanilla's normal
-            // interaction resolution run instead (e.g. flips a lever), unless sneaking.
-            if (!player.isShiftKeyDown()
-                    && be.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ()) != null) {
-                return;
-            }
-            if (isOutOfBounds(clickedCell, face, be.gridSize)) {
-                // A piece placed here would fall past this grid's edge — only intercept if the
-                // adjacent real-world position is valid to continue the pillar into.
-                BlockPos targetPos = pos.relative(face);
-                BlockState targetState = level.getBlockState(targetPos);
-                if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
-            }
-        } else {
+        // Whether the clicked cell should be interacted with (vs. placed next to) depends on
+        // whether its own onUse actually does anything, which can only be decided
+        // authoritatively server-side — so on an existing subgrid we always cancel, and work
+        // out interact-vs-place below.
+        if (!clickedIsSubgrid) {
             BlockPos targetPos = pos.relative(face);
             BlockState targetState = level.getBlockState(targetPos);
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
@@ -138,6 +127,18 @@ public class SubgridEventHandler {
         if (clickedIsSubgrid) {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
+
+            // Try interacting with whatever's at the exact clicked cell first — same priority
+            // vanilla gives "interact with what you clicked" over "place a new block" — but only
+            // defer to it if it actually did something (a lever flips); a non-interactive piece
+            // (stone, wire) falls through to placement, same as vanilla blocks with no
+            // useWithoutItem override do. Sneaking always skips straight to placement.
+            PlacedPiece existingPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
+            if (existingPiece != null && !player.isShiftKeyDown()) {
+                InteractionResult result = existingPiece.definition.onUse(existingPiece, serverLevel, pos, existing, player, hit);
+                if (result != InteractionResult.PASS) return;
+            }
+
             int max = existing.gridSize - 1;
             int cx = clickedCell.getX() + face.getStepX();
             int cy = clickedCell.getY() + face.getStepY();
@@ -197,14 +198,6 @@ public class SubgridEventHandler {
             serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
             serverLevel.getBlockTicks().schedule(new ScheduledTick<>(serverLevel.getBlockState(subgridPos).getBlock(), subgridPos, serverLevel.getGameTime() + 2, 0L));
         }
-    }
-
-    private static boolean isOutOfBounds(Vec3i clickedCell, Direction face, int gridSize) {
-        int max = gridSize - 1;
-        int cx = clickedCell.getX() + face.getStepX();
-        int cy = clickedCell.getY() + face.getStepY();
-        int cz = clickedCell.getZ() + face.getStepZ();
-        return cx < 0 || cx > max || cy < 0 || cy > max || cz < 0 || cz > max;
     }
 
     private static int wrap(int v, int max) {
