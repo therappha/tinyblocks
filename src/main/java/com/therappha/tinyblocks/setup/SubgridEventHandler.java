@@ -107,6 +107,16 @@ public class SubgridEventHandler {
             if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             be = existing;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, be.gridSize);
+
+            // If the exact cell being clicked already holds a piece, let vanilla's normal
+            // interaction resolution run instead — SubgridBlock.useWithoutItem finds that piece
+            // and calls its definition.onUse (e.g. flips a lever). Same priority vanilla gives
+            // "interact with what you clicked" over "place a new block", unless sneaking.
+            if (!player.isShiftKeyDown()
+                    && be.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ()) != null) {
+                return;
+            }
+
             int max = be.gridSize - 1;
             nx = clickedCell.getX() + face.getStepX();
             ny = clickedCell.getY() + face.getStepY();
