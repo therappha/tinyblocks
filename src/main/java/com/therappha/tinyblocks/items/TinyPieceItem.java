@@ -82,7 +82,7 @@ public abstract class TinyPieceItem extends Item {
             gx = grid[0]; gy = grid[1]; gz = grid[2];
         }
 
-        PlacedPiece piece = new PlacedPiece(pieceDefinition(), new BlockPos(gx, gy, gz), face.getAxis());
+        PlacedPiece piece = new PlacedPiece(pieceDefinition(), new BlockPos(gx, gy, gz), face);
 
         if (!level.isClientSide) {
             BlockState targetState = level.getBlockState(targetPos);

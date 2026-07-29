@@ -189,7 +189,7 @@ class SubgridClientHandler {
             if (be instanceof SubgridBlockEntity sg && sg.ownerAt(gx, gy, gz) != -1) return;
         }
 
-        BlockState ghostState = pieceItem.pieceDefinition().renderState(face.getAxis());
+        BlockState ghostState = pieceItem.pieceDefinition().renderState(face);
         if (ghostState == null) return;
 
         Vec3 camera = event.getCamera().getPosition();

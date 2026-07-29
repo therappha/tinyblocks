@@ -10,7 +10,7 @@ public class PlacedPiece {
 
     public final PieceDefinition definition;
     public final BlockPos anchor;
-    public final Direction.Axis axis;
+    public final Direction facing;
     public final Vec3i footprint;
     public float currentSpeed;
     /** Persistent data blob owned by the PieceDefinition (serialized by SubgridBlockEntity). */
@@ -18,11 +18,11 @@ public class PlacedPiece {
     /** Transient runtime state owned by the PieceDefinition (not saved directly). */
     public Object runtimeState;
 
-    public PlacedPiece(PieceDefinition definition, BlockPos anchor, Direction.Axis axis) {
+    public PlacedPiece(PieceDefinition definition, BlockPos anchor, Direction facing) {
         this.definition = definition;
         this.anchor = anchor;
-        this.axis = axis;
-        this.footprint = rotate(definition.baseFootprint(), axis);
+        this.facing = facing;
+        this.footprint = rotate(definition.baseFootprint(), facing.getAxis());
         this.currentSpeed = 0f;
     }
 
@@ -38,7 +38,7 @@ public class PlacedPiece {
         tag.putInt("ax", anchor.getX());
         tag.putInt("ay", anchor.getY());
         tag.putInt("az", anchor.getZ());
-        tag.putString("axis", axis.getName());
+        tag.putString("facing", facing.getName());
         tag.putFloat("speed", currentSpeed);
         if (!extraData.isEmpty()) tag.put("extra", extraData.copy());
         return tag;
@@ -48,8 +48,8 @@ public class PlacedPiece {
         ResourceLocation id = ResourceLocation.parse(tag.getString("type"));
         PieceDefinition def = PieceDefinition.getOrThrow(id);
         BlockPos anchor = new BlockPos(tag.getInt("ax"), tag.getInt("ay"), tag.getInt("az"));
-        Direction.Axis axis = Direction.Axis.byName(tag.getString("axis"));
-        PlacedPiece piece = new PlacedPiece(def, anchor, axis);
+        Direction facing = Direction.byName(tag.getString("facing"));
+        PlacedPiece piece = new PlacedPiece(def, anchor, facing);
         piece.currentSpeed = tag.getFloat("speed");
         if (tag.contains("extra")) piece.extraData = tag.getCompound("extra");
         return piece;

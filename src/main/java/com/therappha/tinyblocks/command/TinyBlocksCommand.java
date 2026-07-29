@@ -83,11 +83,11 @@ public class TinyBlocksCommand {
             PlacedPiece p = pieces.get(i);
             int fi = i;
             source.sendSuccess(() -> Component.literal(String.format(
-                "  [%d] %s  pos=(%d,%d,%d)  axis=%s",
+                "  [%d] %s  pos=(%d,%d,%d)  facing=%s",
                 fi,
                 p.definition.id().getPath(),
                 p.anchor.getX(), p.anchor.getY(), p.anchor.getZ(),
-                p.axis.getName()
+                p.facing.getName()
             )), false);
         }
 

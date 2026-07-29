@@ -38,14 +38,14 @@ public abstract class PieceDefinition {
     public Vec3i baseFootprint() { return baseFootprint; }
 
     /** BlockState used by the BER to render this piece. */
-    public abstract BlockState renderState(Direction.Axis axis);
+    public abstract BlockState renderState(Direction facing);
 
     /**
-     * Per-instance variant. Defaults to renderState(piece.axis); override this instead when
+     * Per-instance variant. Defaults to renderState(piece.facing); override this instead when
      * appearance depends on piece.extraData/runtimeState (e.g. an on/off indicator).
      */
     public BlockState renderState(PlacedPiece piece) {
-        return renderState(piece.axis);
+        return renderState(piece.facing);
     }
 
     /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */

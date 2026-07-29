@@ -40,7 +40,7 @@ public static final PieceDefinition MY_PIECE = new PieceDefinition(
         new Vec3i(1, 1, 1)) {
 
     @Override
-    public BlockState renderState(Direction.Axis axis) {
+    public BlockState renderState(Direction facing) {
         return Blocks.IRON_BLOCK.defaultBlockState();
     }
 
