@@ -1,6 +1,9 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.TinyPistonItem;
+import com.therappha.tinyblocks.items.TinyRedstoneBlockItem;
+import com.therappha.tinyblocks.items.TinyRedstoneDustItem;
 import com.therappha.tinyblocks.items.TinyStoneBlockItem;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
@@ -82,6 +85,16 @@ public class Registration {
     // Test tool for the PieceRemoverTool capability — only obtainable via /give
     public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
             ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
+
+    // Debug pieces for testing neighbor propagation — 1/8 grid, only obtainable via /give
+    public static final DeferredHolder<Item, TinyRedstoneBlockItem> TINY_REDSTONE_BLOCK =
+            ITEMS.register("tiny_redstone_block", () -> new TinyRedstoneBlockItem(new Item.Properties()));
+
+    public static final DeferredHolder<Item, TinyRedstoneDustItem> TINY_REDSTONE_DUST =
+            ITEMS.register("tiny_redstone_dust", () -> new TinyRedstoneDustItem(new Item.Properties()));
+
+    public static final DeferredHolder<Item, TinyPistonItem> TINY_PISTON =
+            ITEMS.register("tiny_piston", () -> new TinyPistonItem(new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         BLOCKS.register(eventBus);

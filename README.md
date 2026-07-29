@@ -74,6 +74,12 @@ TinyBlocks has no creative tab. All items are debug-only, obtainable via `/give`
 /give @s tinyblocks:tiny_stone_block_4
 /give @s tinyblocks:tiny_stone_block
 /give @s tinyblocks:tiny_stone_block_16
+
+/give @s tinyblocks:piece_remover_stick   # right-click a piece to remove it without vanilla mining (no flicker)
+
+/give @s tinyblocks:tiny_redstone_block   # always-powered source, for testing neighbor propagation
+/give @s tinyblocks:tiny_redstone_dust    # conducts power like redstone wire, connects visually
+/give @s tinyblocks:tiny_piston           # extends a piston head when powered, retracts when not
 ```
 
 Commands:
