@@ -100,7 +100,7 @@ public class SubgridBlock extends BaseEntityBlock {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return 0f;
 
-        float hardness = piece.definition.destroyTime();
+        float hardness = piece.definition.destroyTime(piece);
         if (hardness < 0) return 0f;
 
         BlockState renderState = piece.definition.renderState(piece);
@@ -126,7 +126,7 @@ public class SubgridBlock extends BaseEntityBlock {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return InteractionResult.PASS;
 
-        return piece.definition.onUse(piece, level, pos, player, hit);
+        return piece.definition.onUse(piece, level, pos, be, player, hit);
     }
 
     @Override

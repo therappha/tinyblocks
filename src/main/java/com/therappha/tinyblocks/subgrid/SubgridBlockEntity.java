@@ -12,6 +12,7 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -168,6 +169,49 @@ public class SubgridBlockEntity extends BlockEntity {
         if (v < 0) return max;
         if (v > max) return 0;
         return v;
+    }
+
+    /**
+     * Real vanilla view of cell (x,y,z), for v2 pieces running real BlockState logic against
+     * this grid. In-bounds returns the occupying piece's render state (or air if empty).
+     * Out-of-bounds on exactly one axis resolves to whatever is actually there in the real
+     * world: a same-gridSize neighboring SubgridBlockEntity's mirrored near-face cell (same
+     * trick notifyNeighbors/crossGridNeighborAt use for redstone propagation), or — if there's
+     * no such neighbor — the literal real-world block beyond this one. A piece on the bottom
+     * face of a grid sitting on real dirt should see real dirt, not fabricated air, when it
+     * checks canSurvive(). Diagonal/corner overflow (two or more axes out of bounds at once,
+     * rare for the face-adjacent queries vanilla actually makes) falls back to air.
+     */
+    public BlockState realBlockStateAt(int x, int y, int z) {
+        if (!outOfBounds(x, y, z)) {
+            PlacedPiece piece = getPieceAt(x, y, z);
+            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+        }
+        if (!(level instanceof ServerLevel)) return Blocks.AIR.defaultBlockState();
+
+        Direction dir = overflowDirection(x, y, z);
+        if (dir == null) return Blocks.AIR.defaultBlockState();
+
+        int max = gridSize - 1;
+        if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other
+                && other.gridSize == gridSize) {
+            PlacedPiece piece = other.getPieceAt(wrap(x, max), wrap(y, max), wrap(z, max));
+            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+        }
+        return level.getBlockState(worldPosition.relative(dir));
+    }
+
+    /** The single axis (x/y/z) that (x,y,z) overflows, or null if zero or multiple axes do. */
+    @Nullable
+    private Direction overflowDirection(int x, int y, int z) {
+        int max = gridSize - 1;
+        boolean overX = x < 0 || x > max;
+        boolean overY = y < 0 || y > max;
+        boolean overZ = z < 0 || z > max;
+        if ((overX ? 1 : 0) + (overY ? 1 : 0) + (overZ ? 1 : 0) != 1) return null;
+        if (overX) return x < 0 ? Direction.WEST : Direction.EAST;
+        if (overY) return y < 0 ? Direction.DOWN : Direction.UP;
+        return z < 0 ? Direction.NORTH : Direction.SOUTH;
     }
 
     public void notifyUpdate() {

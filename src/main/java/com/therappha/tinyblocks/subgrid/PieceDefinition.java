@@ -51,6 +51,9 @@ public abstract class PieceDefinition {
     /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */
     public float destroyTime() { return 1.5f; }
 
+    /** Per-instance variant. Override when hardness depends on piece.extraData/runtimeState. */
+    public float destroyTime(PlacedPiece piece) { return destroyTime(); }
+
     /** If true, wrong tool gives no drops and mines 3x slower. */
     public boolean requiresCorrectTool() { return false; }
 
@@ -96,7 +99,7 @@ public abstract class PieceDefinition {
      * On client side: return SUCCESS to consume without side effects.
      * On server side: open menus, change state, etc.
      */
-    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos, Player player, BlockHitResult hit) {
+    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be, Player player, BlockHitResult hit) {
         return InteractionResult.PASS;
     }
 

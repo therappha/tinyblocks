@@ -7,6 +7,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.alchemy.PotionBrewing;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.entity.LevelEntityGetter;
@@ -30,8 +31,16 @@ public class FakeLevel extends Level {
 
     private final Level real;
     private final FakeCellGetter cells;
+    /**
+     * The real-world position of the SubgridBlockEntity this fake space represents. A whole
+     * subgrid lives inside one real block, so it shares that one block's light/biome/weather —
+     * environment queries below substitute this for whatever fake position they're asked about,
+     * rather than reading meaningless small-integer local grid coordinates as if they were real
+     * world coordinates.
+     */
+    private final BlockPos realPos;
 
-    public FakeLevel(Level real, FakeCellGetter cells) {
+    public FakeLevel(Level real, FakeCellGetter cells, BlockPos realPos) {
         super(
             new DelegatingLevelData(real),
             real.dimension(),
@@ -45,7 +54,10 @@ public class FakeLevel extends Level {
         );
         this.real = real;
         this.cells = cells;
+        this.realPos = realPos;
     }
+
+    public FakeCellGetter cells() { return cells; }
 
     // --- Redirected to the fake cell space ---
 
@@ -160,7 +172,8 @@ public class FakeLevel extends Level {
 
     @Override
     public net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> getUncachedNoiseBiome(int x, int y, int z) {
-        return real.getUncachedNoiseBiome(x, y, z);
+        // Ignore the fake x,y,z — the whole subgrid shares the one real biome of its real position.
+        return real.getUncachedNoiseBiome(realPos.getX(), realPos.getY(), realPos.getZ());
     }
 
     @Override
@@ -173,7 +186,30 @@ public class FakeLevel extends Level {
     public net.minecraft.world.level.lighting.LevelLightEngine getLightEngine() { return real.getLightEngine(); }
 
     @Override
-    public int getBlockTint(BlockPos pos, net.minecraft.world.level.ColorResolver resolver) { return 0xFFFFFF; }
+    public int getBlockTint(BlockPos pos, net.minecraft.world.level.ColorResolver resolver) {
+        return real.getBlockTint(realPos, resolver);
+    }
+
+    // --- Light/sky queries: substitute the real position for whatever fake position is asked
+    // about. Same reasoning as getUncachedNoiseBiome above — a subgrid shares its one real
+    // block's light, it doesn't have per-cell sky access of its own. Without this, the default
+    // BlockAndTintGetter/LevelReader implementations of these would query the real light engine
+    // at small-integer fake coordinates like (0,0,0), which mean nothing in the real world. ---
+
+    @Override
+    public int getBrightness(LightLayer layer, BlockPos pos) {
+        return real.getBrightness(layer, realPos);
+    }
+
+    @Override
+    public int getRawBrightness(BlockPos pos, int amount) {
+        return real.getRawBrightness(realPos, amount);
+    }
+
+    @Override
+    public boolean canSeeSky(BlockPos pos) {
+        return real.canSeeSky(realPos);
+    }
 
     /** No entities live in the fake position space (yet). */
     private static final LevelEntityGetter<Entity> EMPTY_ENTITIES = new LevelEntityGetter<>() {

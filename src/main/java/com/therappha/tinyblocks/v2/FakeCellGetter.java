@@ -38,7 +38,17 @@ public class FakeCellGetter implements BlockGetter {
 
     @Override
     public BlockState getBlockState(BlockPos pos) {
-        return cells.getOrDefault(pos, Blocks.AIR.defaultBlockState());
+        BlockState state = cells.get(pos);
+        return state != null ? state : fallback(pos);
+    }
+
+    /**
+     * Called when no explicit state has been set for pos. Defaults to air; a subclass backed by
+     * a real SubgridBlockEntity overrides this to consult the wider context (sibling cells not
+     * yet touched this call, or the real world beyond the subgrid's bounds) instead.
+     */
+    protected BlockState fallback(BlockPos pos) {
+        return Blocks.AIR.defaultBlockState();
     }
 
     @Override

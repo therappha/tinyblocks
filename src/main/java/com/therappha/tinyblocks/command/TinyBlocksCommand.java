@@ -96,7 +96,7 @@ public class TinyBlocksCommand {
         BlockPos leverPos = new BlockPos(0, 0, 0);
         fake.set(leverPos, Blocks.LEVER.defaultBlockState());
 
-        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake);
+        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake, player.blockPosition());
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(leverPos), Direction.UP, leverPos, false);
 
         boolean before = fake.getBlockState(leverPos).getValue(BlockStateProperties.POWERED);
@@ -146,7 +146,7 @@ public class TinyBlocksCommand {
         fake.set(wirePos, Blocks.REDSTONE_WIRE.defaultBlockState());
         fake.set(lampPos, Blocks.REDSTONE_LAMP.defaultBlockState());
 
-        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake);
+        FakeLevel fakeLevel = new FakeLevel(source.getLevel(), fake, player.blockPosition());
 
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(leverPos), Direction.UP, leverPos, false);
         fake.getBlockState(leverPos).useWithoutItem(fakeLevel, player, hit);
