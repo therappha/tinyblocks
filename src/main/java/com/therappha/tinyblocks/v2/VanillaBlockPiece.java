@@ -18,7 +18,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -138,13 +137,25 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
         Direction dir = directionTo(be, piece, changedNeighbor);
         BlockPos fakeNeighborPos = dir != null ? piece.anchor.relative(dir) : piece.anchor;
-        Block neighborBlock = changedNeighbor.definition.renderState(changedNeighbor).getBlock();
+        BlockState neighborState = changedNeighbor.definition.renderState(changedNeighbor);
 
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
 
         fakeLevel.cells().getBlockState(piece.anchor)
-                .handleNeighborChanged(fakeLevel, piece.anchor, neighborBlock, fakeNeighborPos, false);
+                .handleNeighborChanged(fakeLevel, piece.anchor, neighborState.getBlock(), fakeNeighborPos, false);
+
+        if (dir != null) {
+            // handleNeighborChanged drives power-level-style self-mutation (a block reacting to
+            // and updating itself via its own setBlock call); it does NOT recompute
+            // connection-dependent shape state (which sides a fence/wall/wire visually connects
+            // to). That's a separate vanilla hook — real placement already runs it once via
+            // getStateForPlacement, but we don't have vanilla's automatic post-placement
+            // shape-update cascade, so ongoing neighbor changes need it called explicitly too.
+            BlockState reshaped = fakeLevel.cells().getBlockState(piece.anchor)
+                    .updateShape(dir, neighborState, fakeLevel, piece.anchor, fakeNeighborPos);
+            fakeLevel.cells().set(piece.anchor, reshaped);
+        }
 
         applyChanges(be, fakeLevel.cells(), before);
     }
