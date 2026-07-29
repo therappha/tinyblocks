@@ -162,7 +162,12 @@ class SubgridClientHandler {
         poseStack.pushPose();
         poseStack.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
 
-        float fixed = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1f : 0f;
+        // Nudged slightly off the block's surface (same reason vanilla's own selection outline
+        // isn't drawn exactly on the surface) so these lines don't depth-fight the block's own
+        // opaque face — without this, only the line(s) nearest the crosshair reliably win the
+        // depth test and everything else gets hidden behind the block's texture.
+        float epsilon = 0.002f;
+        float fixed = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1f + epsilon : -epsilon;
         float step = 1f / gs;
 
         for (int i = 0; i <= gs; i++) {
