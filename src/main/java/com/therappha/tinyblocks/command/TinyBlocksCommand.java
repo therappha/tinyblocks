@@ -136,6 +136,12 @@ public class TinyBlocksCommand {
         BlockPos leverPos = new BlockPos(0, 0, 0);
         BlockPos wirePos = new BlockPos(1, 0, 0);
         BlockPos lampPos = new BlockPos(2, 0, 0);
+        // Lever and redstone wire both require a solid supporting block beneath them to
+        // survive canSurvive() checks — without this they get destroyed (replaced with air)
+        // the moment handleNeighborChanged runs, which is why getValue(POWER) crashed before.
+        fake.set(leverPos.below(), Blocks.STONE.defaultBlockState());
+        fake.set(wirePos.below(), Blocks.STONE.defaultBlockState());
+        fake.set(lampPos.below(), Blocks.STONE.defaultBlockState());
         fake.set(leverPos, Blocks.LEVER.defaultBlockState());
         fake.set(wirePos, Blocks.REDSTONE_WIRE.defaultBlockState());
         fake.set(lampPos, Blocks.REDSTONE_LAMP.defaultBlockState());
