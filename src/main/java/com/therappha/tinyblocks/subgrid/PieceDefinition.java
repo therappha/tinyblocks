@@ -40,6 +40,14 @@ public abstract class PieceDefinition {
     /** BlockState used by the BER to render this piece. */
     public abstract BlockState renderState(Direction.Axis axis);
 
+    /**
+     * Per-instance variant. Defaults to renderState(piece.axis); override this instead when
+     * appearance depends on piece.extraData/runtimeState (e.g. an on/off indicator).
+     */
+    public BlockState renderState(PlacedPiece piece) {
+        return renderState(piece.axis);
+    }
+
     /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */
     public float destroyTime() { return 1.5f; }
 
@@ -63,6 +71,25 @@ public abstract class PieceDefinition {
      * Return true if state changed and the BE should mark itself dirty.
      */
     public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) { return false; }
+
+    /** True if this piece needs a client-side tick every game tick, for local animation state. */
+    public boolean requiresClientTick() { return false; }
+
+    /**
+     * Called each client tick when requiresClientTick() is true. Client-only: use it to ease
+     * piece.runtimeState toward a target driven by extraData (e.g. a lid angle animating toward
+     * open/closed). Never mutate extraData here — it's server-authoritative and gets overwritten
+     * by the next sync packet; keep purely local animation state in runtimeState instead.
+     */
+    public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {}
+
+    /**
+     * Called on the server when a piece adjacent to this one (within the same subgrid) is
+     * placed, removed, or reports a state change from tick(). Mirrors vanilla neighborChanged.
+     * Interactive pieces that change state in onUse() can trigger this themselves by calling
+     * be.notifyNeighbors(piece) after mutating state.
+     */
+    public void onNeighborChanged(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, PlacedPiece changedNeighbor) {}
 
     /**
      * Called when a player right-clicks this piece.

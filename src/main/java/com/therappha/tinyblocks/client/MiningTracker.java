@@ -75,7 +75,7 @@ public final class MiningTracker {
     private static float destroySpeed(Player player, PlacedPiece piece, BlockPos pos) {
         float hardness = piece.definition.destroyTime();
         if (hardness <= 0f) return 0f;
-        BlockState renderState = piece.definition.renderState(piece.axis);
+        BlockState renderState = piece.definition.renderState(piece);
         float digSpeed = player.getDigSpeed(renderState, pos);
         boolean correct = !piece.definition.requiresCorrectTool() || player.hasCorrectToolForDrops(renderState);
         return digSpeed / hardness / (correct ? 30f : 100f);

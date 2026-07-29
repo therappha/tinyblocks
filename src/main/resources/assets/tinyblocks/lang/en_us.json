@@ -7,5 +7,8 @@
   "item.tinyblocks.tiny_stone_block_4": "Tiny Stone Block (1/4)",
   "item.tinyblocks.tiny_stone_block": "Tiny Stone Block (1/8)",
   "item.tinyblocks.tiny_stone_block_16": "Tiny Stone Block (1/16)",
-  "item.tinyblocks.piece_remover_stick": "Piece Remover Stick"
+  "item.tinyblocks.piece_remover_stick": "Piece Remover Stick",
+  "item.tinyblocks.tiny_redstone_block": "Tiny Redstone Block",
+  "item.tinyblocks.tiny_redstone_dust": "Tiny Redstone Dust",
+  "item.tinyblocks.tiny_piston": "Tiny Piston"
 }

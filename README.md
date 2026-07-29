@@ -17,6 +17,7 @@ Right-clicking a solid block face with a placement item places a piece inside a 
 - Per-piece hardness, tool requirements, and drops
 - Crack animation and break particles scoped to the targeted piece only
 - Right-click interaction (GUI, state changes — defined by the piece)
+- Neighbor propagation between adjacent pieces in the same subgrid
 
 SubgridBlocks come in four grid sizes:
 
@@ -73,6 +74,12 @@ TinyBlocks has no creative tab. All items are debug-only, obtainable via `/give`
 /give @s tinyblocks:tiny_stone_block_4
 /give @s tinyblocks:tiny_stone_block
 /give @s tinyblocks:tiny_stone_block_16
+
+/give @s tinyblocks:piece_remover_stick   # right-click a piece to remove it without vanilla mining (no flicker)
+
+/give @s tinyblocks:tiny_redstone_block   # always-powered source, for testing neighbor propagation
+/give @s tinyblocks:tiny_redstone_dust    # conducts power like redstone wire, connects visually
+/give @s tinyblocks:tiny_piston           # extends a piston head when powered, retracts when not
 ```
 
 Commands:
