@@ -13,6 +13,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -92,13 +93,19 @@ public class SubgridEventHandler {
         Player player = event.getEntity();
 
         ItemStack stack = event.getItemStack();
-        if (!(stack.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof SubgridBlock) return;
+        if (stack.isEmpty()) return;
+        // Only a real BlockItem can ever PLACE a new piece; other items (hoe, axe, shovel, ...)
+        // can still MODIFY an existing piece via their own useOn — see runItemInteraction below.
+        BlockItem blockItem = stack.getItem() instanceof BlockItem bi && !(bi.getBlock() instanceof SubgridBlock)
+                ? bi : null;
 
         BlockPos pos = event.getPos();
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
         MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
-        if (!clickedIsSubgrid && minimizer == null) return;
+        // Any item might interact with or modify a piece on an existing subgrid; only the
+        // Minimizer auto-creating a brand new one requires a real BlockItem in hand.
+        if (!clickedIsSubgrid && !(minimizer != null && blockItem != null)) return;
 
         BlockHitResult hit = event.getHitVec();
         Direction face = hit.getDirection();
@@ -137,7 +144,17 @@ public class SubgridEventHandler {
             if (existingPiece != null && !player.isShiftKeyDown()) {
                 InteractionResult result = existingPiece.definition.onUse(existingPiece, serverLevel, pos, existing, player, hit);
                 if (result != InteractionResult.PASS) return;
+
+                // onUse didn't do anything (e.g. dirt has no useWithoutItem) — try the held
+                // item's own useOn against the exact clicked cell (hoe tilling, axe stripping,
+                // shovel path, etc.) before falling through to BlockItem placement.
+                if (runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
+                        clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
+                    return;
+                }
             }
+
+            if (blockItem == null) return;
 
             int max = existing.gridSize - 1;
             int cx = clickedCell.getX() + face.getStepX();
@@ -198,6 +215,35 @@ public class SubgridEventHandler {
             serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
             serverLevel.getBlockTicks().schedule(new ScheduledTick<>(serverLevel.getBlockState(subgridPos).getBlock(), subgridPos, serverLevel.getGameTime() + 2, 0L));
         }
+    }
+
+    /**
+     * Runs the held item's own useOn (hoe tilling dirt into farmland, axe stripping logs,
+     * shovel making a path, etc.) against an existing piece's cell — the same generic mechanism
+     * BlockItem placement already goes through, extended to any item. Writes the result back
+     * into the piece if its state actually changed. Returns true if the click was consumed
+     * (stop further fallthrough to placement), regardless of whether state changed.
+     */
+    private static boolean runItemInteraction(SubgridBlockEntity be, ServerLevel serverLevel, Player player,
+                                               InteractionHand hand, ItemStack stack, Direction face,
+                                               BlockHitResult realHit, int x, int y, int z) {
+        BlockPos fakeAnchor = new BlockPos(x, y, z);
+        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
+        BlockState before = fakeLevel.cells().getBlockState(fakeAnchor);
+
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
+        InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
+
+        BlockState after = fakeLevel.cells().getBlockState(fakeAnchor);
+        if (!after.equals(before)) {
+            PlacedPiece piece = be.getPieceAt(x, y, z);
+            if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+                piece.runtimeState = after;
+                be.notifyNeighbors(piece);
+                be.notifyUpdate();
+            }
+        }
+        return result != InteractionResult.PASS;
     }
 
     private static int wrap(int v, int max) {
