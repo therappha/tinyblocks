@@ -29,6 +29,7 @@ import java.util.Set;
 
 public class SubgridBlockEntity extends BlockEntity {
 
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static final short EMPTY = -1;
     private static final int RANDOM_TICK_SPEED = 3;
 
@@ -82,7 +83,11 @@ public class SubgridBlockEntity extends BlockEntity {
         // The piece also needs to react to the neighbors it was just placed next to —
         // notifyNeighbors() only informs the pieces around it, not itself.
         if (level instanceof ServerLevel serverLevel) {
-            piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+            try {
+                piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+            } catch (Exception e) {
+                logTickFailure("onNeighborChanged (self)", piece, e);
+            }
         }
         return true;
     }
@@ -108,15 +113,35 @@ public class SubgridBlockEntity extends BlockEntity {
     public void serverTick(ServerLevel level) {
         boolean dirty = false;
         for (PlacedPiece piece : pieces) {
-            if (piece.definition.requiresTick() && piece.definition.tick(piece, level, worldPosition, this)) {
-                dirty = true;
-                notifyNeighbors(piece);
+            if (!piece.definition.requiresTick()) continue;
+            try {
+                if (piece.definition.tick(piece, level, worldPosition, this)) {
+                    dirty = true;
+                    notifyNeighbors(piece);
+                }
+            } catch (Exception e) {
+                logTickFailure("tick", piece, e);
             }
         }
         if (dirty) notifyUpdate();
 
         drainScheduledTicks(level);
         sampleRandomTicks(level);
+    }
+
+    /**
+     * A piece's real vanilla logic running against a fake position space (see VanillaBlockPiece)
+     * is fundamentally exploratory — some code paths (tree/structure feature placement, per-
+     * BlockEntity tickers) touch a large surface of ServerLevel-only state our reflection-
+     * allocated FakeServerLevel doesn't fully replicate, and the only way to find every gap is to
+     * actually hit it. Letting one piece's exception crash the whole server tick (and take every
+     * OTHER subgrid down with it) is a far worse failure mode than that one piece silently
+     * failing to act this tick — so every dispatch point here is guarded. Logged, not swallowed
+     * silently, so a real bug is still visible in the log rather than just mysteriously not
+     * working.
+     */
+    private static void logTickFailure(String phase, PlacedPiece piece, Exception e) {
+        LOGGER.error("v2 piece {} at {} threw during {}", piece.definition.id(), piece.anchor, phase, e);
     }
 
     /** Fires piece.definition.scheduledTick(...) for every request whose target tick has arrived. */
@@ -131,7 +156,12 @@ public class SubgridBlockEntity extends BlockEntity {
         });
         for (ScheduledPieceTick st : due) {
             PlacedPiece piece = getPieceAt(st.x(), st.y(), st.z());
-            if (piece != null) piece.definition.scheduledTick(piece, level, worldPosition, this);
+            if (piece == null) continue;
+            try {
+                piece.definition.scheduledTick(piece, level, worldPosition, this);
+            } catch (Exception e) {
+                logTickFailure("scheduledTick", piece, e);
+            }
         }
     }
 
@@ -153,7 +183,11 @@ public class SubgridBlockEntity extends BlockEntity {
             int cell = random.nextInt(volume);
             if (cell >= pieces.size()) continue;
             PlacedPiece piece = pieces.get(cell);
-            piece.definition.randomTick(piece, level, worldPosition, this);
+            try {
+                piece.definition.randomTick(piece, level, worldPosition, this);
+            } catch (Exception e) {
+                logTickFailure("randomTick", piece, e);
+            }
         }
     }
 
@@ -176,8 +210,12 @@ public class SubgridBlockEntity extends BlockEntity {
         if (!(level instanceof ServerLevel)) return;
         for (Neighbor neighbor : neighborsOf(changed)) {
             if (neighbor.be().level instanceof ServerLevel neighborLevel) {
-                neighbor.piece().definition.onNeighborChanged(
-                        neighbor.piece(), neighborLevel, neighbor.be().getBlockPos(), neighbor.be(), changed);
+                try {
+                    neighbor.piece().definition.onNeighborChanged(
+                            neighbor.piece(), neighborLevel, neighbor.be().getBlockPos(), neighbor.be(), changed);
+                } catch (Exception e) {
+                    logTickFailure("onNeighborChanged", neighbor.piece(), e);
+                }
             }
         }
     }
