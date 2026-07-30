@@ -157,6 +157,27 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
         return delegate.getEntities();
     }
 
+    @Override
+    public boolean addFreshEntity(Entity entity) {
+        // Real ServerLevel.addFreshEntity hands the entity to this.entityManager (a
+        // PersistentEntitySectionManager), a ServerLevel-only field the create() field-transplant
+        // never touches (it only copies Level-declared fields) — guaranteed null here, so the real
+        // implementation would NPE the instant anything spawns an entity from inside a Tier 3 tick
+        // call. FallingBlock.tick (sand, gravel, concrete powder, anvil, scaffolding — all share
+        // this one base class, so this is generic, not block-specific) is the vanilla call path
+        // that reaches this today. No entities live in the fake cell space (same documented
+        // simplification as getEntities() above) — dropping this is honest and crash-free, but
+        // NOT the same as "sand falls": FallingBlockEntity.fall() already cleared the origin cell
+        // to air via its own setBlock() call before this method even runs, so
+        // VanillaBlockPiece.applyChanges' diff sees that as the piece self-destructing and drops
+        // it as an item — better than a server crash, but the piece doesn't actually relocate
+        // downward. Teaching applyChanges to recognize "moved to another cell" vs. "destroyed" is
+        // real work (it's shared by every interaction path — onUse, neighborChanged, scheduledTick,
+        // randomTick — so it needs care, not a blind late-night patch) and is its own item in
+        // .claude/commands/goal.md's falling-blocks checklist entry.
+        return false;
+    }
+
     // --- The rest of this section exists because ServerLevel re-overrides essentially every
     // method FakeLevel already handles, with its OWN field-dependent implementations —
     // inheriting from ServerLevel means those FakeLevel fixes are invisible here; each one
