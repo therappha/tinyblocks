@@ -19,6 +19,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -28,6 +29,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -87,6 +89,21 @@ public class SubgridBlock extends BaseEntityBlock {
     public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
         return be.getCachedShape();
+    }
+
+    @Override
+    protected boolean canBeReplaced(BlockState state, Fluid fluid) {
+        // getShape/getCollisionShape are sparse — only occupied cells have geometry, so a subgrid
+        // with just a few small pieces reads as "mostly empty" to vanilla's own collision-based
+        // logic. Without this override, that's exactly what BucketItem.emptyContents and
+        // FlowingFluid.spreadTo see: "empty enough to replace" — overwriting (or destroying) the
+        // whole SubgridBlock with a plain water block instead of respecting its internal cells.
+        return false;
+    }
+
+    @Override
+    protected boolean canBeReplaced(BlockState state, BlockPlaceContext context) {
+        return false;
     }
 
     @Override
