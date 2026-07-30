@@ -87,7 +87,15 @@ public class SubgridBlock extends BaseEntityBlock {
 
     @Override
     public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
+        // Vanilla computes blocksMotion()/isCollisionShapeFullBlock ONCE per state, at
+        // registration time, using EmptyBlockGetter (no real BlockEntity) — and caches the
+        // result forever. With no-BE falling back to empty here, that cached property permanently
+        // says "doesn't block motion", regardless of what pieces actually exist at runtime.
+        // FlowingFluid.canHoldFluid reads exactly that cached flag (not canBeReplaced) to decide
+        // whether to spread into — and therefore destroy — this block. Real gameplay always has
+        // a genuine SubgridBlockEntity, so this fallback only ever affects that one artificial
+        // registration-time computation, never actual collision during play.
+        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.block();
         return be.getCachedShape();
     }
 

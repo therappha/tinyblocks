@@ -30,6 +30,7 @@ import java.util.Set;
 public class SubgridBlockEntity extends BlockEntity {
 
     private static final short EMPTY = -1;
+    private static final int RANDOM_TICK_SPEED = 3;
 
     public final int gridSize;
     private final short[] cellOwner;
@@ -123,13 +124,24 @@ public class SubgridBlockEntity extends BlockEntity {
         }
     }
 
-    /** Mirrors vanilla's per-chunk-section random tick speed (3), scaled down to a handful of pieces. */
+    /**
+     * Mirrors vanilla's random tick speed (default 3): each of the RANDOM_TICK_SPEED "rolls" per
+     * tick independently picks ONE random position across the whole chunk section (4096 blocks)
+     * and only fires if something's actually there — meaning any single block has roughly a
+     * 3-in-4096 chance of a random tick on a given game tick, not a near-certainty. The previous
+     * version guaranteed up to 3 firings every tick regardless of how many pieces existed, so a
+     * subgrid with only 1-2 pieces got its farmland (say) randomTick'd nearly every tick instead
+     * of roughly once every ~20 minutes — e.g. tilling dirt and having it dry back out instantly.
+     * Reusing gridSize^3 as the "chunk section volume" analog keeps the same per-cell odds.
+     */
     private void sampleRandomTicks(ServerLevel level) {
         if (pieces.isEmpty()) return;
         RandomSource random = level.getRandom();
-        int sampleCount = Math.min(pieces.size(), 3);
-        for (int i = 0; i < sampleCount; i++) {
-            PlacedPiece piece = pieces.get(random.nextInt(pieces.size()));
+        int volume = gridSize * gridSize * gridSize;
+        for (int i = 0; i < RANDOM_TICK_SPEED; i++) {
+            int cell = random.nextInt(volume);
+            if (cell >= pieces.size()) continue;
+            PlacedPiece piece = pieces.get(cell);
             piece.definition.randomTick(piece, level, worldPosition, this);
         }
     }
