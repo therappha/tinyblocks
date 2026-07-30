@@ -92,6 +92,52 @@ public class SubgridBlockEntity extends BlockEntity {
         return true;
     }
 
+    /**
+     * Like placePiece, but if local falls outside this grid's bounds on exactly one axis,
+     * finds (or creates) a same-gridSize SubgridBlockEntity in that real-world direction and
+     * places it there instead — wrapping the overflowed coordinate into the adjacent grid's
+     * local space. The same mechanism SubgridEventHandler's own click-to-place flow already
+     * uses when a player targets a cell past a grid's edge, generalized here so anything
+     * spreading/falling/growing across a subgrid's boundary (fluids, falling blocks, tree
+     * growth) continues into a new subgrid instead of the write being silently dropped. Diagonal
+     * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns false.
+     */
+    public boolean placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
+                                            Object runtimeState, ServerLevel realLevel) {
+        if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
+            PlacedPiece piece = new PlacedPiece(definition, local, facing);
+            piece.runtimeState = runtimeState;
+            return placePiece(piece);
+        }
+
+        Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
+        if (dir == null) return false;
+
+        BlockPos targetPos = worldPosition.relative(dir);
+        BlockState targetState = realLevel.getBlockState(targetPos);
+        if (targetState.isAir()) {
+            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
+        }
+        if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
+            return false;
+        }
+
+        int max = gridSize - 1;
+        BlockPos wrapped = new BlockPos(wrap(local.getX(), max), wrap(local.getY(), max), wrap(local.getZ(), max));
+        PlacedPiece piece = new PlacedPiece(definition, wrapped, facing);
+        piece.runtimeState = runtimeState;
+        return adjacent.placePiece(piece);
+    }
+
+    private static SubgridBlock subgridBlockFor(int gridSize) {
+        return switch (gridSize) {
+            case 2 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_2.get();
+            case 4 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_4.get();
+            case 16 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_16.get();
+            default -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK.get();
+        };
+    }
+
     @Nullable
     public PlacedPiece getPieceAt(int x, int y, int z) {
         short idx = cellOwner[indexOf(x, y, z)];

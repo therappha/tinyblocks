@@ -410,29 +410,36 @@ public final class VanillaBlockPiece extends PieceDefinition {
             }
         }
         // A cell that WASN'T an existing piece before this call but now holds real state — e.g.
-        // water spreading into a previously-empty neighbor via FlowingFluid.tick's own setBlock
-        // calls. The diff loop above only ever looks at existing pieces' anchors, so a genuinely
-        // new position like this is otherwise silently lost — the write happens in the fake cell
-        // map and then the whole map is discarded when this call ends. Turn it into a real piece
-        // instead, matching vanilla's actual "setBlock somewhere new = a block now exists there"
-        // semantics, generic to whatever spread/moved it there (not specific to fluids).
+        // water spreading into a previously-empty neighbor, or a falling block relocating, via
+        // that logic's own setBlock calls. The diff loop above only ever looks at existing
+        // pieces' anchors, so a genuinely new position like this is otherwise silently lost — the
+        // write happens in the fake cell map and then the whole map is discarded when this call
+        // ends. Turn it into a real piece instead, matching vanilla's actual "setBlock somewhere
+        // new = a block now exists there" semantics, generic to whatever spread/moved it there.
+        int max = be.getGridSize() - 1;
         for (Map.Entry<BlockPos, BlockState> touched : cells.touchedCells().entrySet()) {
             BlockPos pos = touched.getKey();
-            if (touched.getValue().isAir() || before.containsKey(pos) || be.getPieceAt(pos.getX(), pos.getY(), pos.getZ()) != null) {
+            BlockState touchedState = touched.getValue();
+            if (touchedState.isAir() || before.containsKey(pos) || be.getPieceAt(pos.getX(), pos.getY(), pos.getZ()) != null) {
                 continue;
             }
-            PlacedPiece created = new PlacedPiece(INSTANCE, pos, Direction.UP);
-            created.runtimeState = touched.getValue();
-            // placePiece silently no-ops (canFit fails) if pos is out of this grid's bounds —
-            // e.g. water trying to spread past the subgrid's edge. Crossing into the real world
-            // there is a separate, bigger feature (see .claude/commands/goal.md); for now it's
-            // just not created, same as it not existing today.
-            if (be.placePiece(created)) {
+            boolean withinBounds = pos.getX() >= 0 && pos.getX() <= max
+                    && pos.getY() >= 0 && pos.getY() <= max && pos.getZ() >= 0 && pos.getZ() <= max;
+            // placePieceCrossBoundary finds/creates an adjacent same-size SubgridBlockEntity when
+            // pos overflows past exactly one edge (e.g. water/a falling block/a growing tree
+            // crossing this subgrid's boundary), instead of the write just being silently dropped.
+            if (be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel)) {
                 // placePiece already calls notifyNeighbors + the new piece's own onNeighborChanged
                 // — but NOT onPlace, same gap BlockAccess was added for at the top-level placement
-                // flow. A freshly-spread water cell needs its own onPlace to schedule ITS next
-                // spread step, or the flow stops after one cell.
-                BlockAccess.onPlace(touched.getValue(), (Level) fakeSpace, pos, Blocks.AIR.defaultBlockState(), false);
+                // flow. A freshly-spread cell needs its own onPlace to schedule ITS next step, or
+                // the spread/fall stops after one cell. Only valid to fire against fakeSpace when
+                // the piece landed IN THIS grid — a cross-boundary placement lands in a different
+                // SubgridBlockEntity, whose position semantics fakeSpace knows nothing about; that
+                // piece will still react normally to its own future onNeighborChanged calls, just
+                // not this exact tick.
+                if (withinBounds) {
+                    BlockAccess.onPlace(touchedState, (Level) fakeSpace, pos, Blocks.AIR.defaultBlockState(), false);
+                }
                 anyChanged = true;
             }
         }
