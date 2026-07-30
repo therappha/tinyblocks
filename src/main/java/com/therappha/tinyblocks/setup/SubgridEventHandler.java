@@ -8,6 +8,7 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
+import com.therappha.tinyblocks.v2.FakeServerLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -233,7 +234,9 @@ public class SubgridEventHandler {
                                                InteractionHand hand, ItemStack stack, Direction face,
                                                BlockHitResult realHit, int x, int y, int z) {
         BlockPos fakeAnchor = new BlockPos(x, y, z);
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
+        // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
+        // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
+        FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
         BlockState before = fakeLevel.cells().getBlockState(fakeAnchor);
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());

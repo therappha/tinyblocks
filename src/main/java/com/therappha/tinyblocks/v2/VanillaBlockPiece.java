@@ -202,8 +202,13 @@ public final class VanillaBlockPiece extends PieceDefinition {
         return new FakeLevel(serverLevel, cellsFor(be), be.getBlockPos());
     }
 
-    /** Same fake cell space as buildFakeSpace, but as a genuine ServerLevel for Block.tick/randomTick. */
-    private static FakeServerLevel buildFakeServerSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
+    /**
+     * Same fake cell space as buildFakeSpace, but as a genuine ServerLevel — needed for
+     * Block.tick/randomTick, and also for any item's useOn() that itself needs a real
+     * ServerLevel internally (e.g. BonemealableBlock.performBonemeal), not just interact/
+     * neighborChanged which only ever needed a plain Level.
+     */
+    public static FakeServerLevel buildFakeServerSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
         return FakeServerLevel.create(serverLevel, cellsFor(be), be.getBlockPos());
     }
 
@@ -290,6 +295,23 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
     /** Which face of piece the already-placed changedNeighbor touches, or null if it can't be found. */
     private static Direction directionTo(SubgridBlockEntity be, PlacedPiece piece, PlacedPiece changedNeighbor) {
+        // changedNeighbor may already be detached from the grid (removed) by the time this runs
+        // — its OWN piece.definition.onNeighborChanged already fired synchronously, updating its
+        // state or removing it, before its notifyNeighbors() cascade reaches here — so a live
+        // neighborFacing lookup would always find nothing for the removed case and this would
+        // always return null, silently skipping updateShape (the hook that decides "can I still
+        // survive without what's now missing") for every single "neighbor removed" notification.
+        // The removed piece's own anchor is still valid data even after detachment, so compute
+        // the direction geometrically first — works regardless of whether it's still placed.
+        BlockPos delta = changedNeighbor.anchor.subtract(piece.anchor);
+        for (Direction dir : Direction.values()) {
+            if (dir.getStepX() == delta.getX() && dir.getStepY() == delta.getY() && dir.getStepZ() == delta.getZ()) {
+                return dir;
+            }
+        }
+        // Anchors only compare directly within the same SubgridBlockEntity's coordinate space —
+        // for a cross-grid neighbor the geometric delta is meaningless, so fall back to the live
+        // lookup (only resolvable if changedNeighbor is still actually placed there).
         for (Direction dir : Direction.values()) {
             SubgridBlockEntity.Neighbor n = be.neighborFacing(piece, dir);
             if (n != null && n.piece() == changedNeighbor) return dir;

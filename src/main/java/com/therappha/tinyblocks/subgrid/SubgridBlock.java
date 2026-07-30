@@ -87,15 +87,14 @@ public class SubgridBlock extends BaseEntityBlock {
 
     @Override
     public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        // Vanilla computes blocksMotion()/isCollisionShapeFullBlock ONCE per state, at
-        // registration time, using EmptyBlockGetter (no real BlockEntity) — and caches the
-        // result forever. With no-BE falling back to empty here, that cached property permanently
-        // says "doesn't block motion", regardless of what pieces actually exist at runtime.
-        // FlowingFluid.canHoldFluid reads exactly that cached flag (not canBeReplaced) to decide
-        // whether to spread into — and therefore destroy — this block. Real gameplay always has
-        // a genuine SubgridBlockEntity, so this fallback only ever affects that one artificial
-        // registration-time computation, never actual collision during play.
-        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.block();
+        // NOTE: previously fell back to Shapes.block() here to fix blocksMotion()/
+        // isCollisionShapeFullBlock (cached once at registration time via EmptyBlockGetter,
+        // which has no real BlockEntity — see git history), so FlowingFluid.canHoldFluid would
+        // stop treating an empty-looking subgrid as safe to spread into and destroy. Reverted:
+        // caused real player collision to intermittently treat the WHOLE block as solid — worse
+        // than the bug it fixed. Needs a real fix that doesn't touch this shared shape query
+        // (tracked separately), not a guess reapplied blind.
+        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
         return be.getCachedShape();
     }
 
