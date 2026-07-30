@@ -235,6 +235,23 @@ public class SubgridEventHandler {
                         serverLevel.getGameTime() + entry.delay());
             }
             state.getBlock().setPlacedBy(fakeLevel, fakeAnchor, state, player, stack);
+            // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
+            // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
+            // "untracked write" pattern VanillaBlockPiece.applyChanges already generalizes for
+            // fluids/falling blocks, but this placement flow doesn't go through applyChanges at
+            // all. Reuse the same scan here so any such second (or third, etc.) write becomes a
+            // real piece too — this is what actually makes a placed door end up as two pieces
+            // (lower+upper) instead of just the one this function explicitly constructed above.
+            for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
+                BlockPos touchedPos = touched.getKey();
+                if (touchedPos.equals(fakeAnchor) || touched.getValue().isAir()
+                        || be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()) != null) {
+                    continue;
+                }
+                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel)) {
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
+                }
+            }
             if (!player.isCreative()) stack.shrink(1);
             // Same NeoForge post-cancel resync race onBlockBreak/onLeftClickBlock already work
             // around: an immediate sendBlockUpdated wasn't enough on a freshly-created
