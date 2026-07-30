@@ -30,6 +30,18 @@ public class FakeCellGetter implements BlockGetter {
         cells.put(pos, state);
     }
 
+    /**
+     * Every position explicitly written this call (via set, i.e. real vanilla code calling
+     * setBlock), NOT including positions only ever read via fallback(). Lets a caller notice a
+     * write to a position that isn't an already-tracked piece — e.g. water spreading into a
+     * previously-empty neighbor cell, or a falling block relocating — which the normal
+     * before/after diff over existing pieces alone can't see, since there was no piece there to
+     * diff in the first place.
+     */
+    public Map<BlockPos, BlockState> touchedCells() {
+        return java.util.Collections.unmodifiableMap(cells);
+    }
+
     @Nullable
     @Override
     public BlockEntity getBlockEntity(BlockPos pos) {

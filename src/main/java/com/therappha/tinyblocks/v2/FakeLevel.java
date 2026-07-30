@@ -84,6 +84,24 @@ public class FakeLevel extends Level implements FakeSpace {
         scheduled.add(new ScheduledEntry(pos, delay));
     }
 
+    /**
+     * Same capture, for the SEPARATE fluid-tick overloads — LiquidBlock.onPlace/neighborChanged
+     * (already reached via BlockAccess.onPlace and the real handleNeighborChanged call in
+     * VanillaBlockPiece) call THESE, not the Block ones above, to schedule the next spread step.
+     * Without this override they fall through to LevelAccessor's default, which calls
+     * getFluidTicks().schedule(...) — and getFluidTicks() below is a real BlackholeTickAccess, so
+     * every fluid tick request was being silently discarded: water/lava pieces never spread.
+     */
+    @Override
+    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
+    @Override
+    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
     // --- Redirected to the fake cell space ---
 
     @Override

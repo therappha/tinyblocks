@@ -203,6 +203,14 @@ public final class VanillaBlockPiece extends PieceDefinition {
         Map<BlockPos, BlockState> before = snapshot(be);
 
         fakeLevel.cells().getBlockState(piece.anchor).tick(fakeLevel, piece.anchor, level.getRandom());
+        // LiquidBlock doesn't override the regular block tick above at all — water/lava spread
+        // exclusively through the SEPARATE fluid-tick schedule (LiquidBlock.onPlace/
+        // neighborChanged, both already reached, call level.scheduleTick(pos, fluid, delay), now
+        // captured by FakeLevel's fluid-tick overloads). drainScheduledTicks doesn't distinguish
+        // which kind of tick was requested, so always attempt both here — FluidState.tick is a
+        // real no-op for Fluids.EMPTY (every non-fluid BlockState), so this is inert for the vast
+        // majority of pieces and only does something for genuine water/lava.
+        fakeLevel.cells().getBlockState(piece.anchor).getFluidState().tick(fakeLevel, piece.anchor);
 
         applyChanges(be, fakeLevel, before, level);
     }
@@ -399,6 +407,33 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 for (ItemStack drop : removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY)) {
                     realLevel.addFreshEntity(new ItemEntity(realLevel, dropPos.x, dropPos.y, dropPos.z, drop));
                 }
+            }
+        }
+        // A cell that WASN'T an existing piece before this call but now holds real state — e.g.
+        // water spreading into a previously-empty neighbor via FlowingFluid.tick's own setBlock
+        // calls. The diff loop above only ever looks at existing pieces' anchors, so a genuinely
+        // new position like this is otherwise silently lost — the write happens in the fake cell
+        // map and then the whole map is discarded when this call ends. Turn it into a real piece
+        // instead, matching vanilla's actual "setBlock somewhere new = a block now exists there"
+        // semantics, generic to whatever spread/moved it there (not specific to fluids).
+        for (Map.Entry<BlockPos, BlockState> touched : cells.touchedCells().entrySet()) {
+            BlockPos pos = touched.getKey();
+            if (touched.getValue().isAir() || before.containsKey(pos) || be.getPieceAt(pos.getX(), pos.getY(), pos.getZ()) != null) {
+                continue;
+            }
+            PlacedPiece created = new PlacedPiece(INSTANCE, pos, Direction.UP);
+            created.runtimeState = touched.getValue();
+            // placePiece silently no-ops (canFit fails) if pos is out of this grid's bounds —
+            // e.g. water trying to spread past the subgrid's edge. Crossing into the real world
+            // there is a separate, bigger feature (see .claude/commands/goal.md); for now it's
+            // just not created, same as it not existing today.
+            if (be.placePiece(created)) {
+                // placePiece already calls notifyNeighbors + the new piece's own onNeighborChanged
+                // — but NOT onPlace, same gap BlockAccess was added for at the top-level placement
+                // flow. A freshly-spread water cell needs its own onPlace to schedule ITS next
+                // spread step, or the flow stops after one cell.
+                BlockAccess.onPlace(touched.getValue(), (Level) fakeSpace, pos, Blocks.AIR.defaultBlockState(), false);
+                anyChanged = true;
             }
         }
         for (FakeSpace.ScheduledEntry entry : fakeSpace.scheduledTicks()) {

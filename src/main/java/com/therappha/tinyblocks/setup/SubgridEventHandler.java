@@ -159,6 +159,15 @@ public class SubgridEventHandler {
                         clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
                     return;
                 }
+            } else if (existingPiece == null && blockItem == null) {
+                // Clicked an EMPTY cell with a non-BlockItem — e.g. a water/lava bucket. Buckets
+                // don't go through BlockItem placement at all (BucketItem isn't a BlockItem), so
+                // without this they silently did nothing on an empty subgrid cell. Same generic
+                // mechanism as above, but may CREATE a new piece instead of just updating one.
+                if (runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
+                        clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
+                    return;
+                }
             }
 
             if (blockItem == null) return;
@@ -237,11 +246,14 @@ public class SubgridEventHandler {
     }
 
     /**
-     * Runs the held item's own useOn (hoe tilling dirt into farmland, axe stripping logs,
-     * shovel making a path, etc.) against an existing piece's cell — the same generic mechanism
-     * BlockItem placement already goes through, extended to any item. Writes the result back
-     * into the piece if its state actually changed. Returns true if the click was consumed
-     * (stop further fallthrough to placement), regardless of whether state changed.
+     * Runs the held item's own useOn (hoe tilling dirt into farmland, axe stripping logs, shovel
+     * making a path, a bucket placing water/lava, etc.) against a cell — the same generic
+     * mechanism BlockItem placement already goes through, extended to any item. If a piece
+     * already occupied the cell, writes the result back into it. If the cell was EMPTY and the
+     * item's useOn() put something there (a bucket on an empty cell), creates a brand new piece —
+     * buckets aren't BlockItems, so they never go through the BlockItem placement path below.
+     * Returns true if the click was consumed (stop further fallthrough to placement), regardless
+     * of whether state changed.
      */
     private static boolean runItemInteraction(SubgridBlockEntity be, ServerLevel serverLevel, Player player,
                                                InteractionHand hand, ItemStack stack, Direction face,
@@ -262,7 +274,21 @@ public class SubgridEventHandler {
                 piece.runtimeState = after;
                 be.notifyNeighbors(piece);
                 be.notifyUpdate();
+            } else if (piece == null && before.isAir() && !after.isAir()) {
+                PlacedPiece created = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
+                created.runtimeState = after;
+                if (be.placePiece(created)) {
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(after, fakeLevel, fakeAnchor, before, false);
+                }
             }
+        }
+        // Whatever ran above (existing-piece update, new-piece placement, or neither) may have
+        // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
+        // the onPlace call just above. Same drain FakeSpace callers always do after touching a
+        // fake space; skipped here previously since this function never called applyChanges.
+        for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
+            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
+                    serverLevel.getGameTime() + entry.delay());
         }
         return result != InteractionResult.PASS;
     }

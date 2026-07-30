@@ -165,16 +165,20 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
         // implementation would NPE the instant anything spawns an entity from inside a Tier 3 tick
         // call. FallingBlock.tick (sand, gravel, concrete powder, anvil, scaffolding — all share
         // this one base class, so this is generic, not block-specific) is the vanilla call path
-        // that reaches this today. No entities live in the fake cell space (same documented
-        // simplification as getEntities() above) — dropping this is honest and crash-free, but
-        // NOT the same as "sand falls": FallingBlockEntity.fall() already cleared the origin cell
-        // to air via its own setBlock() call before this method even runs, so
-        // VanillaBlockPiece.applyChanges' diff sees that as the piece self-destructing and drops
-        // it as an item — better than a server crash, but the piece doesn't actually relocate
-        // downward. Teaching applyChanges to recognize "moved to another cell" vs. "destroyed" is
-        // real work (it's shared by every interaction path — onUse, neighborChanged, scheduledTick,
-        // randomTick — so it needs care, not a blind late-night patch) and is its own item in
-        // .claude/commands/goal.md's falling-blocks checklist entry.
+        // that reaches this today. No GENUINE entity lives in the fake cell space (same documented
+        // simplification as getEntities() above) — but FallingBlockEntity.fall() already cleared
+        // the origin cell to air via its own setBlock() call right before this runs, so simulate
+        // the actual point of that entity (the block relocating one cell down) directly instead of
+        // just dropping it: write the state into the cell below. VanillaBlockPiece.applyChanges'
+        // "a touched cell that wasn't an existing piece" scan (added once fluid spreading needed
+        // the exact same capability) turns that write into a real placed piece, and fires its
+        // onPlace so FallingBlock schedules its next fall check — the fall then continues cell by
+        // cell over successive real scheduled ticks, never needing a genuine tracked entity.
+        if (entity instanceof net.minecraft.world.entity.item.FallingBlockEntity falling) {
+            BlockPos below = BlockPos.containing(entity.getX(), entity.getY() - 1, entity.getZ());
+            cells().set(below, falling.getBlockState());
+            return true;
+        }
         return false;
     }
 
@@ -287,6 +291,20 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
+    // ServerLevel does NOT re-override these two (verified via javap) — they'd otherwise fall
+    // through to LevelAccessor's default, which calls getFluidTicks().schedule(...), and
+    // getFluidTicks() below is a real BlackholeTickAccess. Same fix as FakeLevel's fluid-tick
+    // overloads, needed here too since FakeServerLevel is a sibling, not a subclass, of FakeLevel.
+    @Override
+    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
+    @Override
+    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
         scheduled.add(new ScheduledEntry(pos, delay));
     }
 }
