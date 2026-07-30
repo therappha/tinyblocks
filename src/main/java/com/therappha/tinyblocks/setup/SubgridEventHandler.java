@@ -105,9 +105,11 @@ public class SubgridEventHandler {
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
         MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
-        // Any item might interact with or modify a piece on an existing subgrid; only the
-        // Minimizer auto-creating a brand new one requires a real BlockItem in hand.
-        if (!clickedIsSubgrid && !(minimizer != null && blockItem != null)) return;
+        // Any item might interact with or modify a piece on an existing subgrid, or (with the
+        // Minimizer in the offhand) start a brand new one — not just BlockItems; a bucket of
+        // water should be able to create a fresh subgrid and place water into it the same way a
+        // block does, not just modify a subgrid that already exists.
+        if (!clickedIsSubgrid && minimizer == null) return;
 
         BlockHitResult hit = event.getHitVec();
         Direction face = hit.getDirection();
@@ -210,6 +212,16 @@ public class SubgridEventHandler {
 
         if (be.getPieceAt(nx, ny, nz) != null) return;
 
+        if (blockItem == null) {
+            // Not a BlockItem (bucket, hoe, ...) — no getStateForPlacement/canSurvive path to run,
+            // that's BlockItem-specific. Same generic useOn() mechanism as modifying an existing
+            // subgrid, just against a freshly created (possibly still empty) one — lets e.g. a
+            // water bucket create a brand new subgrid and place water into it in one click,
+            // instead of needing an existing piece there first.
+            runItemInteraction(be, serverLevel, player, event.getHand(), stack, face, hit, nx, ny, nz);
+            return;
+        }
+
         BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, hit.isInside());
@@ -265,10 +277,18 @@ public class SubgridEventHandler {
     /**
      * Runs the held item's own useOn (hoe tilling dirt into farmland, axe stripping logs, shovel
      * making a path, a bucket placing water/lava, etc.) against a cell — the same generic
-     * mechanism BlockItem placement already goes through, extended to any item. If a piece
-     * already occupied the cell, writes the result back into it. If the cell was EMPTY and the
-     * item's useOn() put something there (a bucket on an empty cell), creates a brand new piece —
-     * buckets aren't BlockItems, so they never go through the BlockItem placement path below.
+     * mechanism BlockItem placement already goes through, extended to any item.
+     *
+     * IMPORTANT: the write doesn't necessarily land on (x,y,z), the cell that was actually
+     * clicked. BucketItem.useOn (like BlockItem placement) computes its own internal offset —
+     * it places at the clicked position ONLY if that cell is replaceable; otherwise it places one
+     * cell over in the direction of the clicked face (the natural way to "place water next to
+     * this block"). Checking only (x,y,z)'s before/after silently ate clicks that landed on an
+     * occupied cell — the actual write went to the neighbor cell and was never noticed. Scans
+     * every position the fake space actually saw written instead, same touchedCells()-based
+     * mechanism VanillaBlockPiece.applyChanges and the placement flow above already use, so this
+     * composes correctly whether the write lands on the clicked cell or an offset one, and
+     * crosses into an adjacent subgrid via placePieceCrossBoundary if it overflows this one.
      * Returns true if the click was consumed (stop further fallthrough to placement), regardless
      * of whether state changed.
      */
@@ -279,23 +299,25 @@ public class SubgridEventHandler {
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
-        BlockState before = fakeLevel.cells().getBlockState(fakeAnchor);
+        java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
-        BlockState after = fakeLevel.cells().getBlockState(fakeAnchor);
-        if (!after.equals(before)) {
-            PlacedPiece piece = be.getPieceAt(x, y, z);
+        for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
+            BlockPos touchedPos = touched.getKey();
+            BlockState touchedState = touched.getValue();
+            BlockState wasState = before.get(touchedPos);
+            if (touchedState.equals(wasState)) continue;
+
+            PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
             if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
-                piece.runtimeState = after;
+                piece.runtimeState = touchedState;
                 be.notifyNeighbors(piece);
                 be.notifyUpdate();
-            } else if (piece == null && before.isAir() && !after.isAir()) {
-                PlacedPiece created = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
-                created.runtimeState = after;
-                if (be.placePiece(created)) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(after, fakeLevel, fakeAnchor, before, false);
+            } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
+                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel)) {
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }
         }

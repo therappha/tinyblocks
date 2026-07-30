@@ -225,6 +225,16 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     @Override
     public void levelEvent(@Nullable net.minecraft.world.entity.player.Player player, int type, BlockPos pos, int data) {}
 
+    // Found live (run/logs/latest.log): ServerLevel.blockEvent reads this.blockEvents (a
+    // ServerLevel-only queue for batched block events — chest lid open/close signals, note block
+    // notes, etc.), which is null here (not a Level field, so create()'s transplant never touches
+    // it) — NPE'd every time ChestBlockEntity.stopOpen ran on menu close, via
+    // ContainerOpenersCounter -> signalOpenCount -> blockEvent. Same no-op pattern as
+    // sendBlockUpdated/levelEvent above: these are all real-world side effects (sounds, particles,
+    // block-model-triggered animations) a fake position space has no meaningful way to perform.
+    @Override
+    public void blockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {}
+
     @Override
     public net.minecraft.server.ServerScoreboard getScoreboard() {
         return (net.minecraft.server.ServerScoreboard) delegate.getScoreboard();
