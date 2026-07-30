@@ -1,0 +1,131 @@
+---
+description: Resume/drive the v2 "agnostic blocks" engine toward completion, unattended-safe
+---
+
+# v2 agnostic blocks — the goal
+
+Branch: `v2/agnostic-blocks`. This command is the standing spec for finishing v2. It is
+written to be run **unattended, overnight, with no player available to test in-game**.
+Read it fully before doing anything, then read `gh issue list --state all` and
+`git log --oneline -20` to see what's already done — don't redo work.
+
+## The core philosophy (do not violate this)
+
+Real vanilla `BlockState`s must run their actual, unmodified logic when placed inside a
+subgrid, fooled into thinking they're in a normal world. **A block placed in a subgrid
+does not know it's in a subgrid** — it makes the same `Level`/`ServerLevel` API calls it
+always would and gets real answers back. This must work for **any vanilla block and any
+modded block**, with **zero block-specific hardcoding** (`instanceof SomeBlock`,
+`== Blocks.X`, etc. in the v2 engine are all bugs). Fix mechanisms (how `ServerLevel`
+methods route, how collision/replaceability is computed, how ticks are scheduled), never
+individual blocks. Before every commit, `grep` the v2 package for block-specific checks —
+there should be none.
+
+## Operating mode: unattended
+
+**Nobody is watching a screen tonight.** The verification gate is:
+1. `./gradlew compileJava -Pmod_version=0.0.0` succeeds.
+2. Careful static/logical reasoning about correctness — re-derive what the real vanilla
+   code does (decompile with `javap`/read the merged jar under
+   `build/moddev/artifacts/neoforge-*-merged.jar` the way earlier checkpoints did) rather
+   than guessing, and reason through the call path by hand.
+
+Do **not** stop and wait for someone to test in a dev client, and do not phrase progress
+as "needs live verification" as a blocker — note it in the commit/issue for whoever tests
+next, then move on to the next item. If you truly cannot proceed without a human decision
+(a genuine design tradeoff with no clearly-better answer, or something destructive/
+hard-to-reverse), stop, leave a clear written note (issue comment or commit message), and
+end the session rather than guessing — but this should be rare. Most of this list has a
+clear "what would vanilla do" answer if you dig for it.
+
+## Workflow per item
+
+1. Pick the next unaddressed item below (or open issue — check `gh issue list` first,
+   several are already filed for known gaps).
+2. Implement the mechanism-level fix.
+3. `./gradlew compileJava -Pmod_version=0.0.0`. Fix errors, don't work around them.
+4. Commit locally (checkpoint-style message, explain the *mechanism* fixed and *why*,
+   matching the existing commit history's tone — read `git log -3 -p` for the pattern).
+   **Do not `git push`** and do not open a PR until every item below is done (see
+   "Shipping" at the bottom).
+5. If the item has a GitHub issue, update/close it (`gh issue comment` /
+   `gh issue close`) explaining what changed and what's still unverified live.
+6. Move to the next item.
+
+## Requirements checklist
+
+Roughly ordered by dependency (later items build on earlier ones), not strict priority —
+use judgment if something's blocked, skip and come back.
+
+- [x] **Fluids actually flow** — done (commit 61a7e34): the Fluid-tick `scheduleTick`
+      overloads were being silently blackholed (separate from the Block-tick ones already
+      captured), and `VanillaBlockPiece.applyChanges` had no way to notice a spread into a
+      previously-empty neighbor cell. Both fixed. Real water flowing in *from outside* a
+      subgrid and destroying it is a SEPARATE, still-open problem (unchanged from before —
+      see the `blocksMotion()`/collision note still in `SubgridBlock.getCollisionShape`).
+      Not live-verified: does it actually stop cleanly at the subgrid's edge, does a
+      multi-cell spread look right without flicker.
+- [ ] **Neighbor propagation** is mostly proven (lever → wire → lamp) but re-verify it
+      holds for longer chains and across subgrid-to-subgrid boundaries (`realBlockStateAt`
+      / cross-grid neighbor mirroring). Not re-checked this session — still open.
+- [x] **Chest menus open** — done (`VanillaBlockPiece.blockEntityFor`, checkpoint 6), and a
+      real close-crash found via `run/logs/latest.log` is fixed (`ab6c4de`). Not
+      live-verified end-to-end. Other `BlockEntity`-backed containers (furnace, brewing
+      stand, dispenser) should already ride the same generic path — not individually
+      checked.
+- [ ] **Hoppers interacting with chests** — investigated, NOT implemented. Hit a real
+      architecture fork: the chest fix's phantom `BlockEntity` is deliberately built at the
+      SubgridBlockEntity's REAL world position (for `stillValid`), but a hopper's own
+      ticker scans neighbors via `blockEntity.getBlockPos()`, which would need to be the
+      piece's LOCAL fake anchor instead to find a chest piece sitting next to it in the
+      same subgrid. Whether `PlacedPiece.runtimeBlockEntity` should always be local, always
+      real, or split into two cached positions per piece needs a deliberate decision — see
+      issue #23 for the full writeup. Do NOT just pick one blind; the wrong choice silently
+      breaks either chests or hoppers depending on which way it's guessed.
+- [ ] **BER animations** for stateful blocks (chest lid opening/closing, etc.) — issue #18.
+      Not attempted — visual, no way to verify without eyes on the client. The phantom
+      BlockEntity now exists and could plausibly drive it once someone can actually look at
+      the result.
+- [ ] **Piston head not showing** — known visual bug (the debug `TINY_PISTON_HEAD` piece in
+      `PieceDefinitions.java`, v1 code, not the v2 engine). Not attempted — same reason as
+      BER animations: this category of bug needs pixels on a screen to diagnose, guessing
+      at render-layer code blind is more likely to waste effort than fix it.
+- [ ] **Multiblocks** (pistons pushing, doors, beds) — not attempted, still the biggest
+      structural change on the list. Design before implementing.
+- [~] **Falling blocks** — falling blocks now actually relocate cell-by-cell within a
+      subgrid (commit 61a7e34, via the same touchedCells() mechanism fluids needed) instead
+      of vanishing and dropping an item. Crossing the subgrid boundary into the real world
+      and becoming a new subgrid there is still NOT implemented — `placePiece` just
+      silently no-ops when the target cell is out of bounds, so a block falling off the
+      bottom edge currently just stops existing with no drop. Not live-verified.
+- [x] **Mekanism compatibility assessment** — done, issue #22. Conclusion: single-block
+      machines might partially work, true multiblocks almost certainly won't (real-BlockPos
+      -keyed structure caches, background network scanning that never goes through
+      `FakeLevel` at all) — written up in detail there.
+- [ ] **Structure growth (saplings → trees)** — investigated, NOT implemented. The type-
+      level plumbing already works today for free (`ServerLevel implements WorldGenLevel`,
+      `FakeServerLevel extends ServerLevel`, and the new touchedCells() mechanism would
+      already turn every block a tree feature places into real pieces) — but tree/structure
+      feature placement is one of the largest, most branching call surfaces in vanilla
+      worldgen, and every previous `FakeServerLevel` code path enabled this session hit at
+      least one crash from an uninitialized `ServerLevel`-only field. Attempting this
+      without a live client to catch the resulting NPE (which would happen mid-play, on a
+      random tick after someone plants a sapling, not at compile time) is a real crash
+      risk, not just a "doesn't work yet" risk. See issue #24 — plausibly a short crash-fix
+      loop for whoever has a live client, not a redesign.
+
+## Before shipping
+
+Once (and only once) everything above is either done or has a clearly-documented reason
+it's out of scope:
+
+1. Run `/code-review` (the project's code-review skill) against the full branch diff
+   against `master`. Address anything it flags that's a real correctness issue; use
+   judgment on style nits.
+2. Re-run `grep` for block-specific hardcoding one final time across all of `v2/`.
+3. Only then: push the branch and open a PR (`gh pr create`) against `master`, following
+   the repo's normal PR-creation conventions (see the system's PR instructions — summary +
+   test plan, mention what was verified by compile/reasoning vs. what still needs a human
+   to test live in-game).
+
+Until step 3, everything stays local commits only — no `git push`, no PR.
