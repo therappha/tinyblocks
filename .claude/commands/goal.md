@@ -9,6 +9,37 @@ written to be run **unattended, overnight, with no player available to test in-g
 Read it fully before doing anything, then read `gh issue list --state all` and
 `git log --oneline -20` to see what's already done — don't redo work.
 
+## Status as of 2026-07-30, end of the overnight session
+
+Everything reachable through compiling + reasoning alone is done (see the checklist
+below — 10 checkpoint commits plus a crash-safety net and a cross-subgrid-boundary
+mechanism). Three items are left, and **all three hit a genuine hard wall, not a
+"didn't try hard enough" one**:
+
+1. **BER animations** (chest lid, etc.) and **the piston head render bug** — both
+   require actually seeing rendered pixels to diagnose or verify. Traced the piston head
+   renderer (`SubgridRenderer.render`) end to end looking for a logic bug (wrong state
+   property, wrong dispatch call) and found none — it uses the same
+   `blockRenderer.renderSingleBlock` path every other piece does. A real BER-animation
+   fix would additionally need `Level.blockEvent` propagated through the fake space to
+   the real client, then the real per-block `BlockEntityRenderer` dispatched — three
+   interacting layers (server state, network sync, client render) with no way to check
+   any of it without watching it run.
+2. **Piston push mechanics** — not attempted; the most complex vanilla mechanism on the
+   list (moving multiple pieces, entity-interpolated slide animation), also
+   fundamentally a rendering concern.
+3. **`/code-review` before shipping** — attempted directly via the Skill tool; it
+   returned `disable-model-invocation`. This step requires explicit user triggering (and
+   is billed) — not something this session can do regardless of effort.
+
+Because of #3 specifically, **step 3 in "Before shipping" below (push + open a PR)
+cannot happen without the user**, even once #1 and #2 are resolved. If you're a future
+session picking this up autonomously: don't keep re-attempting #1/#2 blind hoping for a
+different result, and don't try to route around #3 (no `--no-verify`-style shortcuts,
+no opening the PR without the review). Pick up wherever new information is available
+(e.g. a completed live playtest, or the user explicitly running `/code-review`
+themselves) instead.
+
 ## The core philosophy (do not violate this)
 
 Real vanilla `BlockState`s must run their actual, unmodified logic when placed inside a
