@@ -68,9 +68,19 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
 
-    /** Captured instead of touching a real (blackholed) tick list — see getBlockTicks() below. */
+    /**
+     * Captured instead of touching a real (blackholed) tick list — see getBlockTicks() below.
+     * Both overloads need overriding: the 3-arg one (what most vanilla blocks actually call,
+     * e.g. RedstoneLampBlock's delayed turn-off) does NOT delegate to the 4-arg one — its
+     * LevelAccessor default calls getBlockTicks().schedule(...) directly, bypassing it entirely.
+     */
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
+    @Override
+    public void scheduleTick(BlockPos pos, Block block, int delay) {
         scheduled.add(new ScheduledEntry(pos, delay));
     }
 

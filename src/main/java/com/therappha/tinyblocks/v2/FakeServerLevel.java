@@ -148,10 +148,15 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
         return delegate.getEntities();
     }
 
-    // --- Captured instead of touching a real tick list ---
+    // --- Captured instead of touching a real tick list — both overloads, see FakeLevel ---
 
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
+
+    @Override
+    public void scheduleTick(BlockPos pos, Block block, int delay) {
         scheduled.add(new ScheduledEntry(pos, delay));
     }
 }
