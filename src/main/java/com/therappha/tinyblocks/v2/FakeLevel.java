@@ -18,8 +18,12 @@ import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.TickRateManager;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.ticks.TickPriority;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * v2 prototype checkpoint 2: a real Level subclass that redirects block-position access to a
@@ -27,10 +31,11 @@ import javax.annotation.Nullable;
  * to the real wrapped Level. Lets us call neighborChanged()/useWithoutItem() — which require a
  * genuine Level, not just BlockGetter — against fake positions with zero reimplementation.
  */
-public class FakeLevel extends Level {
+public class FakeLevel extends Level implements FakeSpace {
 
     private final Level real;
     private final FakeCellGetter cells;
+    private final List<ScheduledEntry> scheduled = new ArrayList<>();
     /**
      * The real-world position of the SubgridBlockEntity this fake space represents. A whole
      * subgrid lives inside one real block, so it shares that one block's light/biome/weather —
@@ -57,7 +62,17 @@ public class FakeLevel extends Level {
         this.realPos = realPos;
     }
 
+    @Override
     public FakeCellGetter cells() { return cells; }
+
+    @Override
+    public List<ScheduledEntry> scheduledTicks() { return scheduled; }
+
+    /** Captured instead of touching a real (blackholed) tick list — see getBlockTicks() below. */
+    @Override
+    public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) {
+        scheduled.add(new ScheduledEntry(pos, delay));
+    }
 
     // --- Redirected to the fake cell space ---
 

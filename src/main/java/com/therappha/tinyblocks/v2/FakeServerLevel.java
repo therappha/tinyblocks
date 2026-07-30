@@ -45,18 +45,15 @@ import java.util.concurrent.Executor;
  * against the specific block ticks we actually exercise (redstone lamp delay, crop growth), not
  * by exhaustively reimplementing ServerLevel.
  */
-public class FakeServerLevel extends ServerLevel {
+public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     private FakeLevel delegate;
-
-    /** A scheduleTick request captured during this call, relative to when it was made. */
-    public record ScheduledEntry(BlockPos pos, int delay) {}
 
     // Not initialized inline — field initializers are compiled into the constructor, which never
     // runs for a reflection-allocated instance. Set explicitly in create() instead.
     private List<ScheduledEntry> scheduled;
 
-    /** scheduleTick calls captured this call — the caller merges these into its own persistent queue. */
+    @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
 
     // Never actually invoked — see create(). Exists only so FakeServerLevel type-checks as a
@@ -99,6 +96,15 @@ public class FakeServerLevel extends ServerLevel {
             neighborUpdaterField.setAccessible(true);
             neighborUpdaterField.set(instance, new CollectingNeighborUpdater(instance, 1000000));
 
+            // ServerLevel-declared fields (server, entityManager, ...) aren't covered by the
+            // Level-field transplant above — there's no sibling ServerLevel to borrow them from.
+            // `server` is the one real MinecraftServer, safe to reference directly.
+            // entityManager is handled separately via the getEntities() override below, since no
+            // fake entity manager exists (or is needed — no entities live in fake cell space).
+            Field serverField = ServerLevel.class.getDeclaredField("server");
+            serverField.setAccessible(true);
+            serverField.set(instance, ((ServerLevel) real).getServer());
+
             return instance;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to allocate FakeServerLevel", e);
@@ -133,6 +139,14 @@ public class FakeServerLevel extends ServerLevel {
 
     @Override
     public String gatherChunkSourceStats() { return "FakeServerLevel"; }
+
+    @Override
+    public net.minecraft.world.level.entity.LevelEntityGetter<Entity> getEntities() {
+        // ServerLevel's own getEntities() reads this.entityManager, which is ServerLevel-declared
+        // (not covered by the Level-field transplant in create()) and null here — no fake entity
+        // manager exists or is needed, since no entities live in the fake cell space.
+        return delegate.getEntities();
+    }
 
     // --- Captured instead of touching a real tick list ---
 
