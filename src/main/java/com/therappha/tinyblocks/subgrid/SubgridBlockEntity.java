@@ -41,8 +41,19 @@ public class SubgridBlockEntity extends BlockEntity {
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}
     private final List<ScheduledPieceTick> scheduledTicks = new ArrayList<>();
 
-    /** Queues piece.definition.scheduledTick(...) to fire once level.getGameTime() reaches targetGameTime. */
+    /**
+     * Queues piece.definition.scheduledTick(...) to fire once level.getGameTime() reaches
+     * targetGameTime. Silently drops requests outside this grid's bounds: vanilla code doesn't
+     * only ever call Level.scheduleTick(pos, ...) with pos == its own local position — e.g. a
+     * chest's ContainerOpenersCounter schedules a recheck at the chest's own BlockPos, which for
+     * a phantom per-piece BlockEntity (see VanillaBlockPiece.blockEntityFor) is deliberately the
+     * SubgridBlockEntity's REAL world position, not a local fake-grid coordinate, so it can't
+     * possibly index cellOwner. Without this guard that real-world position (large integers) flows
+     * straight through FakeLevel.scheduleTick's capture into drainScheduledTicks' getPieceAt call
+     * and throws ArrayIndexOutOfBoundsException the next server tick.
+     */
     public void scheduleTick(int x, int y, int z, long targetGameTime) {
+        if (outOfBounds(x, y, z)) return;
         scheduledTicks.add(new ScheduledPieceTick(x, y, z, targetGameTime));
     }
 
