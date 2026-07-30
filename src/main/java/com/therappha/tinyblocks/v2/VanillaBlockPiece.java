@@ -381,9 +381,22 @@ public final class VanillaBlockPiece extends PieceDefinition {
         @Override
         public BlockEntity getBlockEntity(BlockPos pos) {
             BlockPos resolved = resolve(pos);
-            PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
-            if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
-            return blockEntityFor(piece, be, attachedLevel);
+            if (be.inBounds(resolved.getX(), resolved.getY(), resolved.getZ())) {
+                PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
+                if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
+                return blockEntityFor(piece, be, attachedLevel);
+            }
+            // Out-of-bounds: resolved is a real-world position (same reasoning as fallback()'s
+            // realBlockStateAt use below) — a piece scanning past the subgrid's edge (a funnel's
+            // extraction target, a hopper's suck-from-above) needs to see whatever REAL
+            // BlockEntity genuinely sits there, e.g. a real chest placed next to the subgrid
+            // block, not the permanent null this used to return for every out-of-bounds query
+            // regardless of what was actually there. getPieceAt used to be called here with these
+            // same huge real-world coordinates and threw AIOOBE (indexOf has no range check),
+            // silently caught by the piece-tick safety net — the funnel/hopper ticker looked like
+            // it ran but never found anything, every tick, forever.
+            Level real = be.getLevel();
+            return real != null ? real.getBlockEntity(resolved) : null;
         }
     }
 

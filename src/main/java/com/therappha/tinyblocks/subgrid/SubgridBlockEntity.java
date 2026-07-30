@@ -140,6 +140,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     @Nullable
     public PlacedPiece getPieceAt(int x, int y, int z) {
+        if (outOfBounds(x, y, z)) return null;
         short idx = cellOwner[indexOf(x, y, z)];
         if (idx == EMPTY) return null;
         return pieces.get(idx);
@@ -147,6 +148,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     @Nullable
     public PlacedPiece removePieceAt(int x, int y, int z) {
+        if (outOfBounds(x, y, z)) return null;
         short idx = cellOwner[indexOf(x, y, z)];
         if (idx == EMPTY) return null;
         PlacedPiece removed = pieces.get(idx);
