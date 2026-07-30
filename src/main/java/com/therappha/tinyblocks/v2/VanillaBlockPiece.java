@@ -132,11 +132,26 @@ public final class VanillaBlockPiece extends PieceDefinition {
             return InteractionResult.SUCCESS;
         }
 
-        FakeLevel fakeLevel = buildFakeSpace(be, serverLevel);
+        // stillValid (the check every open container menu runs each tick) validates two things
+        // against ONE captured position: the block is still the right type, AND the player is
+        // still close enough. The fake local anchor already satisfies the first (getBlockState
+        // resolves correctly), but is a tiny integer nowhere near the player's real coordinates
+        // — so any menu-opening piece (chest, anvil, enchanting table) auto-closes the instant it
+        // opens. Using the piece's REAL world position as the hit position instead fixes the
+        // distance check; aliasing that real position to piece.anchor in the fake cell space
+        // keeps getBlockState/setBlock landing on the same cell either way, so basic state
+        // read/write (lever flipping etc.) is unaffected. The one accepted cost: any OTHER
+        // position-offset logic inside this same call (e.g. the enchanting table's bookshelf
+        // scan) now reads real-world neighbors instead of fake subgrid siblings — degrades that
+        // one feature gracefully rather than breaking correctness.
+        BlockPos realPos = be.getBlockPos();
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, realPos, piece.anchor);
+        populateCells(cells, be);
+        FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, realPos);
         Map<BlockPos, BlockState> before = snapshot(be);
 
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(piece.anchor), hit.getDirection(), piece.anchor, hit.isInside());
-        InteractionResult result = fakeLevel.cells().getBlockState(piece.anchor).useWithoutItem(fakeLevel, player, fakeHit);
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(realPos), hit.getDirection(), realPos, hit.isInside());
+        InteractionResult result = cells.getBlockState(realPos).useWithoutItem(fakeLevel, player, fakeHit);
 
         applyChanges(be, fakeLevel, before, serverLevel);
         return result;
@@ -223,20 +238,51 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     private static FakeCellGetter cellsFor(SubgridBlockEntity be) {
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be);
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, null, null);
+        populateCells(cells, be);
+        return cells;
+    }
+
+    private static void populateCells(FakeCellGetter cells, SubgridBlockEntity be) {
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
                 if (s != null) cells.set(p.anchor, s);
             }
         }
-        return cells;
     }
 
-    /** Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla view. */
+    /**
+     * Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla
+     * view. Optionally aliases one position to another before every read/write — used by onUse
+     * to let vanilla code address a piece by its REAL world BlockPos (needed for stillValid's
+     * distance check, see onUse) while still landing on the same fake cell as piece.anchor.
+     */
     private static final class SubgridFakeCellGetter extends FakeCellGetter {
         private final SubgridBlockEntity be;
-        SubgridFakeCellGetter(SubgridBlockEntity be) { this.be = be; }
+        @javax.annotation.Nullable private final BlockPos aliasFrom;
+        @javax.annotation.Nullable private final BlockPos aliasTo;
+
+        SubgridFakeCellGetter(SubgridBlockEntity be, @javax.annotation.Nullable BlockPos aliasFrom,
+                               @javax.annotation.Nullable BlockPos aliasTo) {
+            this.be = be;
+            this.aliasFrom = aliasFrom;
+            this.aliasTo = aliasTo;
+        }
+
+        private BlockPos resolve(BlockPos pos) {
+            return pos.equals(aliasFrom) ? aliasTo : pos;
+        }
+
+        @Override
+        public void set(BlockPos pos, BlockState state) {
+            super.set(resolve(pos), state);
+        }
+
+        @Override
+        public BlockState getBlockState(BlockPos pos) {
+            return super.getBlockState(resolve(pos));
+        }
 
         @Override
         protected BlockState fallback(BlockPos pos) {
@@ -286,12 +332,14 @@ public final class VanillaBlockPiece extends PieceDefinition {
             }
         }
         for (PlacedPiece p : selfDestructed) {
+            // realPositionOf, not be.getBlockPos()+0.5 — that would collapse every piece's drop
+            // to the whole SubgridBlock's shared center regardless of where inside it the piece
+            // actually was.
+            Vec3 dropPos = be.realPositionOf(p.anchor);
             PlacedPiece removed = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
             if (removed != null) {
-                BlockPos subgridPos = be.getBlockPos();
-                double cx = subgridPos.getX() + 0.5, cy = subgridPos.getY() + 0.5, cz = subgridPos.getZ() + 0.5;
-                for (ItemStack drop : removed.definition.drops(removed, realLevel, subgridPos, be, ItemStack.EMPTY)) {
-                    realLevel.addFreshEntity(new ItemEntity(realLevel, cx, cy, cz, drop));
+                for (ItemStack drop : removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY)) {
+                    realLevel.addFreshEntity(new ItemEntity(realLevel, dropPos.x, dropPos.y, dropPos.z, drop));
                 }
             }
         }

@@ -64,9 +64,9 @@ public class SubgridEventHandler {
                 || player.hasCorrectToolForDrops(renderState);
         if (correctTool && !player.isCreative()) {
             List<ItemStack> drops = removed.definition.drops(removed, level, pos, subgrid, player.getMainHandItem());
-            double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+            Vec3 dropPos = subgrid.realPositionOf(new BlockPos(cell));
             for (ItemStack stack : drops) {
-                level.addFreshEntity(new ItemEntity(level, cx, cy, cz, stack));
+                level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, stack));
             }
         }
 
@@ -296,9 +296,9 @@ public class SubgridEventHandler {
         event.setCanceled(true);
         if (!player.isCreative()) {
             List<ItemStack> drops = removed.definition.drops(removed, level, pos, be, player.getMainHandItem());
-            double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+            Vec3 dropPos = be.realPositionOf(new BlockPos(cell));
             for (ItemStack drop : drops) {
-                level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+                level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, drop));
             }
         }
         if (be.getPieces().isEmpty()) {

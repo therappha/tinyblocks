@@ -329,6 +329,23 @@ public class SubgridBlockEntity extends BlockEntity {
         return y * gridSize * gridSize + z * gridSize + x;
     }
 
+    /**
+     * Real-world position of the CENTER of a local grid cell (fractional, e.g. block (5,10,3)
+     * gridSize 8 anchor (2,0,0) -> (5.3125, 10.0625, 3.0625)). The inverse of GridRay.cellAt.
+     * Use this anywhere a piece needs to act as if it were a real block at its own precise spot
+     * in the world — particle/sound origin, dropped-item spawn point, distance checks against
+     * the player — instead of collapsing every piece in the subgrid down to one shared point
+     * (the whole SubgridBlock's own BlockPos, which is what be.getBlockPos() alone gives you).
+     */
+    public net.minecraft.world.phys.Vec3 realPositionOf(BlockPos local) {
+        double cell = 1.0 / gridSize;
+        return new net.minecraft.world.phys.Vec3(
+                worldPosition.getX() + (local.getX() + 0.5) * cell,
+                worldPosition.getY() + (local.getY() + 0.5) * cell,
+                worldPosition.getZ() + (local.getZ() + 0.5) * cell
+        );
+    }
+
     private boolean outOfBounds(int x, int y, int z) {
         return x < 0 || x >= gridSize || y < 0 || y >= gridSize || z < 0 || z >= gridSize;
     }

@@ -168,9 +168,9 @@ public class SubgridBlock extends BaseEntityBlock {
 
         if (!player.isCreative()) {
             List<ItemStack> drops = removed.definition.drops(removed);
-            double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+            Vec3 dropPos = be.realPositionOf(new BlockPos(cell));
             for (ItemStack drop : drops) {
-                level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+                level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, drop));
             }
         }
 
