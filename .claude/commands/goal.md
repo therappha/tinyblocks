@@ -73,15 +73,14 @@ use judgment if something's blocked, skip and come back.
       live-verified end-to-end. Other `BlockEntity`-backed containers (furnace, brewing
       stand, dispenser) should already ride the same generic path — not individually
       checked.
-- [ ] **Hoppers interacting with chests** — investigated, NOT implemented. Hit a real
-      architecture fork: the chest fix's phantom `BlockEntity` is deliberately built at the
-      SubgridBlockEntity's REAL world position (for `stillValid`), but a hopper's own
-      ticker scans neighbors via `blockEntity.getBlockPos()`, which would need to be the
-      piece's LOCAL fake anchor instead to find a chest piece sitting next to it in the
-      same subgrid. Whether `PlacedPiece.runtimeBlockEntity` should always be local, always
-      real, or split into two cached positions per piece needs a deliberate decision — see
-      issue #23 for the full writeup. Do NOT just pick one blind; the wrong choice silently
-      breaks either chests or hoppers depending on which way it's guessed.
+- [~] **Hoppers interacting with chests** — partial (commit 69d63ac): any `EntityBlock`
+      with a `BlockEntityTicker` now actually gets it invoked (previously nothing did, at
+      all — hoppers/furnaces just sat there). Uses the SAME real-position convention as
+      chest's `stillValid` fix, so a hopper's neighbor scan sees the real world above/below
+      the whole SubgridBlock, not sibling pieces in the same subgrid yet — that specific
+      case (hopper piece next to a chest piece) needs a second, local-anchor-based
+      construction, deliberately deferred (issue #23) rather than guessed. Protected by the
+      new catch-and-log guard (`1872ad8`) either way.
 - [ ] **BER animations** for stateful blocks (chest lid opening/closing, etc.) — issue #18.
       Not attempted — visual, no way to verify without eyes on the client. The phantom
       BlockEntity now exists and could plausibly drive it once someone can actually look at
@@ -90,29 +89,31 @@ use judgment if something's blocked, skip and come back.
       `PieceDefinitions.java`, v1 code, not the v2 engine). Not attempted — same reason as
       BER animations: this category of bug needs pixels on a screen to diagnose, guessing
       at render-layer code blind is more likely to waste effort than fix it.
-- [ ] **Multiblocks** (pistons pushing, doors, beds) — not attempted, still the biggest
-      structural change on the list. Design before implementing.
-- [~] **Falling blocks** — falling blocks now actually relocate cell-by-cell within a
-      subgrid (commit 61a7e34, via the same touchedCells() mechanism fluids needed) instead
-      of vanishing and dropping an item. Crossing the subgrid boundary into the real world
-      and becoming a new subgrid there is still NOT implemented — `placePiece` just
-      silently no-ops when the target cell is out of bounds, so a block falling off the
-      bottom edge currently just stops existing with no drop. Not live-verified.
+- [~] **Multiblocks**: doors (and any other block whose `setPlacedBy`/`onPlace` writes a
+      SECOND position, e.g. beds) now work via the same generalized mechanism as fluids/
+      falling blocks (commit `ea6f0a3`) — any extra write during placement becomes a real
+      piece too, crossing into an adjacent subgrid if needed. Breaking one half should
+      already remove the other for free via the existing self-destruct path. NOT attempted:
+      actual piston PUSH mechanics (moving multiple existing pieces, sticky-pulling,
+      `PistonMovingBlockEntity`-style slide animation) — this is real-time entity
+      interpolation tightly coupled to rendering, the single riskiest/most visual-feedback-
+      dependent item on this whole list; still needs a live client to develop against, not
+      just a design pass.
+- [x] **Falling blocks** — relocate cell-by-cell within a subgrid AND now cross the
+      boundary into an adjacent (auto-created) subgrid instead of vanishing (`61a7e34` +
+      `c441b94`). Not live-verified.
 - [x] **Mekanism compatibility assessment** — done, issue #22. Conclusion: single-block
       machines might partially work, true multiblocks almost certainly won't (real-BlockPos
       -keyed structure caches, background network scanning that never goes through
       `FakeLevel` at all) — written up in detail there.
-- [ ] **Structure growth (saplings → trees)** — investigated, NOT implemented. The type-
-      level plumbing already works today for free (`ServerLevel implements WorldGenLevel`,
-      `FakeServerLevel extends ServerLevel`, and the new touchedCells() mechanism would
-      already turn every block a tree feature places into real pieces) — but tree/structure
-      feature placement is one of the largest, most branching call surfaces in vanilla
-      worldgen, and every previous `FakeServerLevel` code path enabled this session hit at
-      least one crash from an uninitialized `ServerLevel`-only field. Attempting this
-      without a live client to catch the resulting NPE (which would happen mid-play, on a
-      random tick after someone plants a sapling, not at compile time) is a real crash
-      risk, not just a "doesn't work yet" risk. See issue #24 — plausibly a short crash-fix
-      loop for whoever has a live client, not a redesign.
+- [~] **Structure growth (saplings → trees)** — no new code needed; `VanillaBlockPiece.
+      randomTick` already runs any BlockState's `randomTick` generically, sapling included.
+      The two real risks this used to carry are both mitigated now: the catch-and-log guard
+      (`1872ad8`) means an uninitialized `ServerLevel`-only field logs and no-ops instead of
+      crashing the server, and cross-boundary placement (`c441b94`) means a tree bigger than
+      one subgrid spreads into adjacent ones instead of most of it silently vanishing. Not
+      triggered/watched live yet (issue #24) — plant a sapling on farmland inside a subgrid
+      and check `run/logs/latest.log` for anything the guard caught.
 
 ## Before shipping
 
