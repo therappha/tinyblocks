@@ -108,6 +108,64 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     @Override
+    public boolean requiresTick() {
+        // Checked per-piece inside tick() below (most blocks aren't EntityBlocks with a ticker,
+        // e.g. hoppers/furnaces/brewing stands are, plain stone/dirt/etc. aren't) — this flag
+        // itself can't vary per-instance since PieceDefinitions are shared singletons, so it's
+        // unconditionally true and tick() does the real, cheap "does this one need it" check.
+        return true;
+    }
+
+    @Override
+    public boolean tick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {
+        BlockState state = stateOf(piece);
+        if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return false;
+
+        // Same real-position convention as blockEntityFor/onUse (checkpoint 6) — a ticker like
+        // HopperBlockEntity's push/suck logic reads blockEntity.getBlockPos()/getLevel()
+        // internally (not the pos parameter below) to scan its neighbors, so those neighbor
+        // lookups land on whatever's really above/below the whole SubgridBlock in the real world,
+        // not sibling pieces within the same subgrid. Same accepted degradation already
+        // documented for onUse's bookshelf/double-chest-merge scanning — not a crash, just not
+        // full intra-subgrid neighbor awareness for this one category of lookup. Getting hopper-
+        // to-chest-within-one-subgrid working needs a second, local-anchor-based construction;
+        // see issue #23 for why that's a deliberate follow-up, not done here.
+        BlockPos realPos = be.getBlockPos();
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, realPos, piece.anchor);
+        populateCells(cells, be);
+        FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, realPos);
+        cells.attachLevel(fakeLevel);
+
+        BlockEntity phantom = blockEntityFor(piece, be, fakeLevel);
+        if (phantom == null) return false;
+
+        Map<BlockPos, BlockState> before = snapshot(be);
+        if (!tickTyped(entityBlock, fakeLevel, state, realPos, phantom)) return false;
+        applyChanges(be, fakeLevel, before, level);
+        // applyChanges already handles its own notifyUpdate/notifyNeighbors for whatever actually
+        // changed — returning true here would make SubgridBlockEntity.serverTick redundantly
+        // notifyNeighbors(piece) again for just this one piece regardless of whether anything
+        // about IT specifically changed.
+        return false;
+    }
+
+    /**
+     * EntityBlock.getTicker's type parameter has to match the BlockEntityType exactly (it's
+     * generic, not wildcard-friendly) — phantom is only known as a plain BlockEntity at the call
+     * site above, so bridge through a method with its own type variable the way vanilla's own
+     * BaseEntityBlock.createTickerHelper does. Safe: phantom.getType() IS phantom's real type,
+     * the unchecked cast just tells the compiler what's already true at runtime.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends BlockEntity> boolean tickTyped(EntityBlock entityBlock, FakeServerLevel fakeLevel,
+                                                              BlockState state, BlockPos pos, T phantom) {
+        var ticker = entityBlock.getTicker(fakeLevel, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType());
+        if (ticker == null) return false;
+        ticker.tick(fakeLevel, pos, state, phantom);
+        return true;
+    }
+
+    @Override
     public List<ItemStack> drops(PlacedPiece piece) {
         // Fallback for callers that don't have a real ServerLevel/tool context — see the
         // (piece, level, subgridPos, be, tool) overload below for the real loot-table path.
