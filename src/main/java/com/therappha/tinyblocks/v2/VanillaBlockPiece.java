@@ -104,12 +104,22 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
     @Override
     public List<ItemStack> drops(PlacedPiece piece) {
-        // Real loot-table drops need ServerLevel/LootParams (same wall as scheduled ticks) —
-        // deferred. This 1:1 block-to-item fallback covers the vast majority of simple blocks.
+        // Fallback for callers that don't have a real ServerLevel/tool context — see the
+        // (piece, level, subgridPos, be, tool) overload below for the real loot-table path.
         BlockState state = stateOf(piece);
         if (state == null) return List.of();
         Item item = state.getBlock().asItem();
         return item != Items.AIR ? List.of(new ItemStack(item)) : List.of();
+    }
+
+    @Override
+    public List<ItemStack> drops(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, ItemStack tool) {
+        BlockState state = stateOf(piece);
+        if (state == null) return List.of();
+        // Block.getDrops takes the BlockState explicitly (not read from the real position), so
+        // this can query the real loot table directly against the real level — no fake position
+        // space needed, loot tables are global registry data, not tied to where the piece sits.
+        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(), null, null, tool);
     }
 
     @Override
@@ -280,7 +290,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
             if (removed != null) {
                 BlockPos subgridPos = be.getBlockPos();
                 double cx = subgridPos.getX() + 0.5, cy = subgridPos.getY() + 0.5, cz = subgridPos.getZ() + 0.5;
-                for (ItemStack drop : removed.definition.drops(removed)) {
+                for (ItemStack drop : removed.definition.drops(removed, realLevel, subgridPos, be, ItemStack.EMPTY)) {
                     realLevel.addFreshEntity(new ItemEntity(realLevel, cx, cy, cz, drop));
                 }
             }

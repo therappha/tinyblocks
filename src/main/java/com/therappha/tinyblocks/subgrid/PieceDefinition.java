@@ -60,6 +60,15 @@ public abstract class PieceDefinition {
     /** Items dropped when this piece is broken with the correct tool. */
     public List<ItemStack> drops(PlacedPiece piece) { return List.of(); }
 
+    /**
+     * Per-instance variant with real break context (server level, position, the tool used).
+     * Defaults to drops(piece); override this instead when drops depend on the real loot table
+     * (item count rolls, Fortune, etc.) rather than a fixed 1:1 fallback.
+     */
+    public List<ItemStack> drops(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, ItemStack tool) {
+        return drops(piece);
+    }
+
     /** Called after a piece is loaded from NBT. Initialize runtimeState here from extraData. */
     public void onLoaded(PlacedPiece piece, HolderLookup.Provider registries) {}
 

@@ -63,7 +63,7 @@ public class SubgridEventHandler {
         boolean correctTool = !removed.definition.requiresCorrectTool()
                 || player.hasCorrectToolForDrops(renderState);
         if (correctTool && !player.isCreative()) {
-            List<ItemStack> drops = removed.definition.drops(removed);
+            List<ItemStack> drops = removed.definition.drops(removed, level, pos, subgrid, player.getMainHandItem());
             double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
             for (ItemStack stack : drops) {
                 level.addFreshEntity(new ItemEntity(level, cx, cy, cz, stack));
@@ -295,7 +295,7 @@ public class SubgridEventHandler {
 
         event.setCanceled(true);
         if (!player.isCreative()) {
-            List<ItemStack> drops = removed.definition.drops(removed);
+            List<ItemStack> drops = removed.definition.drops(removed, level, pos, be, player.getMainHandItem());
             double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
             for (ItemStack drop : drops) {
                 level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
