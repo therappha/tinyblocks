@@ -96,9 +96,17 @@ use judgment if something's blocked, skip and come back.
       see the `blocksMotion()`/collision note still in `SubgridBlock.getCollisionShape`).
       Not live-verified: does it actually stop cleanly at the subgrid's edge, does a
       multi-cell spread look right without flicker.
-- [ ] **Neighbor propagation** is mostly proven (lever → wire → lamp) but re-verify it
-      holds for longer chains and across subgrid-to-subgrid boundaries (`realBlockStateAt`
-      / cross-grid neighbor mirroring). Not re-checked this session — still open.
+- [x] **Neighbor propagation** re-verified by tracing the code (not re-run live):
+      `crossGridNeighborAt` only ever resolves ONE hop across a real-world boundary, but a
+      chain longer than that self-propagates correctly regardless — each
+      `SubgridBlockEntity.notifyNeighbors` call independently reaches into whichever real
+      neighbor is adjacent to IT, so a piece changing in grid B that also changes correctly
+      re-triggers grid B's own `notifyNeighbors`, cascading into grid C, D, etc. without
+      needing any multi-hop-aware code. Confirmed this composes correctly with the new
+      `placePieceCrossBoundary` mechanism too: it only ever creates same-gridSize adjacent
+      grids (matches `crossGridNeighborAt`'s existing same-size-only constraint), and the
+      newly created piece's own `placePiece` call notifies bidirectionally back across the
+      boundary it just crossed. No bug found; not re-verified with an actual running chain.
 - [x] **Chest menus open** — done (`VanillaBlockPiece.blockEntityFor`, checkpoint 6), and a
       real close-crash found via `run/logs/latest.log` is fixed (`ab6c4de`). Not
       live-verified end-to-end. Other `BlockEntity`-backed containers (furnace, brewing
