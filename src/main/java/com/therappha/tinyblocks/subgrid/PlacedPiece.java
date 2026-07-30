@@ -17,6 +17,12 @@ public class PlacedPiece {
     public CompoundTag extraData = new CompoundTag();
     /** Transient runtime state owned by the PieceDefinition (not saved directly). */
     public Object runtimeState;
+    /**
+     * Transient phantom BlockEntity (e.g. a chest's real ChestBlockEntity) owned by the
+     * PieceDefinition, same lifecycle as runtimeState — created lazily on first need, not saved
+     * directly (the PieceDefinition round-trips whatever data it holds through extraData).
+     */
+    public Object runtimeBlockEntity;
 
     public PlacedPiece(PieceDefinition definition, BlockPos anchor, Direction facing) {
         this.definition = definition;

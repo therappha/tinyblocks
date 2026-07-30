@@ -20,6 +20,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -74,6 +76,9 @@ public final class VanillaBlockPiece extends PieceDefinition {
         BlockState state = stateOf(piece);
         if (state != null) {
             piece.extraData.put("state", NbtUtils.writeBlockState(state));
+        }
+        if (piece.runtimeBlockEntity instanceof BlockEntity be) {
+            piece.extraData.put("be", be.saveCustomOnly(registries));
         }
     }
 
@@ -148,6 +153,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, realPos, piece.anchor);
         populateCells(cells, be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, realPos);
+        cells.attachLevel(fakeLevel);
         Map<BlockPos, BlockState> before = snapshot(be);
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(realPos), hit.getDirection(), realPos, hit.isInside());
@@ -224,7 +230,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * that are statically typed to require one.
      */
     public static FakeLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
-        return new FakeLevel(serverLevel, cellsFor(be), be.getBlockPos());
+        SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
+        FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, be.getBlockPos());
+        cells.attachLevel(fakeLevel);
+        return fakeLevel;
     }
 
     /**
@@ -234,7 +243,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * neighborChanged which only ever needed a plain Level.
      */
     public static FakeServerLevel buildFakeServerSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
-        return FakeServerLevel.create(serverLevel, cellsFor(be), be.getBlockPos());
+        SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
+        FakeServerLevel fakeLevel = FakeServerLevel.create(serverLevel, cells, be.getBlockPos());
+        cells.attachLevel(fakeLevel);
+        return fakeLevel;
     }
 
     private static FakeCellGetter cellsFor(SubgridBlockEntity be) {
@@ -262,12 +274,23 @@ public final class VanillaBlockPiece extends PieceDefinition {
         private final SubgridBlockEntity be;
         @javax.annotation.Nullable private final BlockPos aliasFrom;
         @javax.annotation.Nullable private final BlockPos aliasTo;
+        /**
+         * Set right after the FakeLevel/FakeServerLevel wrapping this cell space is constructed —
+         * can't be known at this object's own construction time, since it's built first and
+         * handed to the FakeLevel constructor. Only needed for getBlockEntity's phantom
+         * BlockEntity.setLevel call below.
+         */
+        private Level attachedLevel;
 
         SubgridFakeCellGetter(SubgridBlockEntity be, @javax.annotation.Nullable BlockPos aliasFrom,
                                @javax.annotation.Nullable BlockPos aliasTo) {
             this.be = be;
             this.aliasFrom = aliasFrom;
             this.aliasTo = aliasTo;
+        }
+
+        void attachLevel(Level level) {
+            this.attachedLevel = level;
         }
 
         private BlockPos resolve(BlockPos pos) {
@@ -288,6 +311,41 @@ public final class VanillaBlockPiece extends PieceDefinition {
         protected BlockState fallback(BlockPos pos) {
             return be.realBlockStateAt(pos.getX(), pos.getY(), pos.getZ());
         }
+
+        @Override
+        public BlockEntity getBlockEntity(BlockPos pos) {
+            BlockPos resolved = resolve(pos);
+            PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
+            if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
+            return blockEntityFor(piece, be, attachedLevel);
+        }
+    }
+
+    /**
+     * Lazily creates (once) and caches on the piece a real phantom BlockEntity (e.g. a genuine
+     * ChestBlockEntity) for any EntityBlock — needed so vanilla code like
+     * ChestBlock.useWithoutItem's `level.getBlockEntity(pos) instanceof ChestBlockEntity` check,
+     * and the menu it opens, see something real instead of the permanent null a fake position
+     * space would otherwise return. Constructed at the SubgridBlockEntity's own real BlockPos
+     * (not the piece's tiny fake anchor) so stillValid's distance check — which reads the
+     * BlockEntity's OWN stored position, set once at construction — works no matter which fake
+     * space instance later calls setLevel on it.
+     */
+    private static BlockEntity blockEntityFor(PlacedPiece piece, SubgridBlockEntity be, Level level) {
+        if (piece.runtimeBlockEntity instanceof BlockEntity cached) {
+            cached.setLevel(level);
+            return cached;
+        }
+        BlockState state = stateOf(piece);
+        if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return null;
+        BlockEntity created = entityBlock.newBlockEntity(be.getBlockPos(), state);
+        if (created == null) return null;
+        created.setLevel(level);
+        if (piece.extraData.contains("be")) {
+            created.loadCustomOnly(piece.extraData.getCompound("be"), level.registryAccess());
+        }
+        piece.runtimeBlockEntity = created;
+        return created;
     }
 
     private static Map<BlockPos, BlockState> snapshot(SubgridBlockEntity be) {
