@@ -13,6 +13,7 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -246,13 +248,36 @@ public final class VanillaBlockPiece extends PieceDefinition {
                                       Map<BlockPos, BlockState> before, ServerLevel realLevel) {
         FakeCellGetter cells = fakeSpace.cells();
         boolean anyChanged = false;
+        // Collected rather than removed inline — removePieceAt mutates be.getPieces() itself,
+        // which we're still iterating.
+        List<PlacedPiece> selfDestructed = new ArrayList<>();
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition != INSTANCE) continue;
             BlockState now = cells.getBlockState(p.anchor);
             if (!now.equals(before.get(p.anchor))) {
-                p.runtimeState = now;
-                be.notifyNeighbors(p);
+                if (now.isAir()) {
+                    // A piece's own updateShape/handleNeighborChanged (e.g. a crop losing its
+                    // farmland support) decided it can no longer exist here — matches vanilla's
+                    // own "setBlock to air = this block was destroyed" semantics. Just storing
+                    // air as this piece's new state would leave a ghost piece still occupying
+                    // the cell (invisible, but still "there") — same real vanilla drop path any
+                    // other removal uses instead.
+                    selfDestructed.add(p);
+                } else {
+                    p.runtimeState = now;
+                    be.notifyNeighbors(p);
+                }
                 anyChanged = true;
+            }
+        }
+        for (PlacedPiece p : selfDestructed) {
+            PlacedPiece removed = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
+            if (removed != null) {
+                BlockPos subgridPos = be.getBlockPos();
+                double cx = subgridPos.getX() + 0.5, cy = subgridPos.getY() + 0.5, cz = subgridPos.getZ() + 0.5;
+                for (ItemStack drop : removed.definition.drops(removed)) {
+                    realLevel.addFreshEntity(new ItemEntity(realLevel, cx, cy, cz, drop));
+                }
             }
         }
         for (FakeSpace.ScheduledEntry entry : fakeSpace.scheduledTicks()) {
