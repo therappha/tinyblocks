@@ -105,6 +105,14 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
             serverField.setAccessible(true);
             serverField.set(instance, ((ServerLevel) real).getServer());
 
+            // dragonParts backs ServerLevel.getPartEntities(), which Level.getEntities(AABB,...)
+            // calls internally (e.g. Block.pushEntitiesUp, hit when FarmBlock dries out and
+            // reverts to dirt via a random tick) — an empty map is correct here: no dragon parts
+            // live in the fake cell space.
+            Field dragonPartsField = ServerLevel.class.getDeclaredField("dragonParts");
+            dragonPartsField.setAccessible(true);
+            dragonPartsField.set(instance, new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>());
+
             return instance;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to allocate FakeServerLevel", e);
