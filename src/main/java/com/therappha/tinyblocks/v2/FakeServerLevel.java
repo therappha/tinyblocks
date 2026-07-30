@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.v2;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -154,6 +155,106 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
         // (not covered by the Level-field transplant in create()) and null here — no fake entity
         // manager exists or is needed, since no entities live in the fake cell space.
         return delegate.getEntities();
+    }
+
+    // --- The rest of this section exists because ServerLevel re-overrides essentially every
+    // method FakeLevel already handles, with its OWN field-dependent implementations —
+    // inheriting from ServerLevel means those FakeLevel fixes are invisible here; each one
+    // needs restating so it actually delegates to `delegate` instead of touching a null
+    // ServerLevel-only field. Discovered by the same crash-then-fix cycle as dragonParts/server
+    // above, generalized here instead of continuing one field at a time. ---
+
+    @Nullable
+    @Override
+    public Entity getEntity(java.util.UUID uuid) { return null; }
+
+    @Override
+    public net.minecraft.world.TickRateManager tickRateManager() { return delegate.tickRateManager(); }
+
+    @Nullable
+    @Override
+    public net.minecraft.world.level.saveddata.maps.MapItemSavedData getMapData(net.minecraft.world.level.saveddata.maps.MapId id) { return null; }
+
+    @Override
+    public void setMapData(net.minecraft.world.level.saveddata.maps.MapId id, net.minecraft.world.level.saveddata.maps.MapItemSavedData data) {}
+
+    @Override
+    public net.minecraft.world.level.saveddata.maps.MapId getFreeMapId() { return delegate.getFreeMapId(); }
+
+    @Override
+    public void destroyBlockProgress(int breakerId, BlockPos pos, int progress) {}
+
+    @Override
+    public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, double x, double y, double z,
+                                 net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
+                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {}
+
+    @Override
+    public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, Entity entity,
+                                 net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
+                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {}
+
+    @Override
+    public void globalLevelEvent(int type, BlockPos pos, int data) {}
+
+    @Override
+    public void levelEvent(@Nullable net.minecraft.world.entity.player.Player player, int type, BlockPos pos, int data) {}
+
+    @Override
+    public net.minecraft.server.ServerScoreboard getScoreboard() {
+        return (net.minecraft.server.ServerScoreboard) delegate.getScoreboard();
+    }
+
+    @Override
+    public net.minecraft.world.item.crafting.RecipeManager getRecipeManager() { return delegate.getRecipeManager(); }
+
+    @Override
+    public net.minecraft.world.item.alchemy.PotionBrewing potionBrewing() { return delegate.potionBrewing(); }
+
+    @Override
+    public void setDayTimeFraction(float fraction) {}
+
+    @Override
+    public float getDayTimeFraction() { return 0f; }
+
+    @Override
+    public float getDayTimePerTick() { return 0f; }
+
+    @Override
+    public void setDayTimePerTick(float dayTimePerTick) {}
+
+    @Override
+    public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event,
+                           net.minecraft.world.phys.Vec3 pos,
+                           net.minecraft.world.level.gameevent.GameEvent.Context context) {}
+
+    @Override
+    public net.minecraft.server.level.ServerChunkCache getChunkSource() {
+        return (net.minecraft.server.level.ServerChunkCache) delegate.getChunkSource();
+    }
+
+    @Override
+    public net.minecraft.world.ticks.LevelTicks<Block> getBlockTicks() {
+        return new net.minecraft.world.ticks.LevelTicks<>(l -> false, () -> net.minecraft.util.profiling.InactiveProfiler.INSTANCE);
+    }
+
+    @Override
+    public net.minecraft.world.ticks.LevelTicks<net.minecraft.world.level.material.Fluid> getFluidTicks() {
+        return new net.minecraft.world.ticks.LevelTicks<>(l -> false, () -> net.minecraft.util.profiling.InactiveProfiler.INSTANCE);
+    }
+
+    @Override
+    public List<net.minecraft.server.level.ServerPlayer> players() { return List.of(); }
+
+    @Override
+    public float getShade(Direction direction, boolean shade) { return delegate.getShade(direction, shade); }
+
+    @Override
+    public net.minecraft.world.flag.FeatureFlagSet enabledFeatures() { return delegate.enabledFeatures(); }
+
+    @Override
+    public net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> getUncachedNoiseBiome(int x, int y, int z) {
+        return delegate.getUncachedNoiseBiome(x, y, z);
     }
 
     // --- Captured instead of touching a real tick list — both overloads, see FakeLevel ---
