@@ -147,8 +147,13 @@ public class SubgridEventHandler {
 
                 // onUse didn't do anything (e.g. dirt has no useWithoutItem) — try the held
                 // item's own useOn against the exact clicked cell (hoe tilling, axe stripping,
-                // shovel path, etc.) before falling through to BlockItem placement.
-                if (runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
+                // shovel path, etc.), but ONLY for non-BlockItems. A real BlockItem's useOn
+                // computes its own internal offset position (e.g. "place next to what I
+                // clicked"), which this fallback's diff never checks (it only looks at the
+                // clicked cell) — that silently ate the click (and the item) without actually
+                // placing anything, since BlockItem placement already has its own correct
+                // offset/overflow-aware path just below.
+                if (blockItem == null && runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
                         clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
                     return;
                 }
