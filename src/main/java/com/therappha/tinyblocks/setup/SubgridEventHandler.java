@@ -24,6 +24,7 @@ import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -212,6 +213,18 @@ public class SubgridEventHandler {
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
         if (be.placePiece(piece)) {
+            // Real placement goes through Level.setBlock, which (inside LevelChunk.setBlockState)
+            // unconditionally fires newState.onPlace(...) — that's what e.g. FallingBlock relies
+            // on to schedule its very first fall check. be.placePiece writes the piece directly,
+            // bypassing setBlock entirely, so nothing ever told a freshly placed piece "you were
+            // just placed." Rebuild the fake space (now including this piece) and fire onPlace
+            // explicitly so any block relying on it behaves the same as it would in the real world.
+            FakeLevel placedFakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
+            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, fakeAnchor, Blocks.AIR.defaultBlockState(), false);
+            for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : placedFakeLevel.scheduledTicks()) {
+                be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
+                        serverLevel.getGameTime() + entry.delay());
+            }
             state.getBlock().setPlacedBy(fakeLevel, fakeAnchor, state, player, stack);
             if (!player.isCreative()) stack.shrink(1);
             // Same NeoForge post-cancel resync race onBlockBreak/onLeftClickBlock already work
