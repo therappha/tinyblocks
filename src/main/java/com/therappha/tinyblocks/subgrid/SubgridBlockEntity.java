@@ -78,7 +78,12 @@ public class SubgridBlockEntity extends BlockEntity {
     public boolean placePiece(PlacedPiece piece) {
         if (!canFit(piece)) return false;
         addToGrid(piece);
-        notifyUpdate();
+        setChanged();
+        if (level instanceof ServerLevel serverLevel) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new net.minecraft.world.level.ChunkPos(worldPosition),
+                    new com.therappha.tinyblocks.network.SubgridPieceAddedPayload(worldPosition, piece.save()));
+        }
         notifyNeighbors(piece);
         // The piece also needs to react to the neighbors it was just placed next to —
         // notifyNeighbors() only informs the pieces around it, not itself.
@@ -90,6 +95,14 @@ public class SubgridBlockEntity extends BlockEntity {
             }
         }
         return true;
+    }
+
+    /**
+     * Client-side only: applies a piece addition received via SubgridPieceAddedPayload. Mirrors
+     * exactly the local-state half of placePiece (grid + shape) without re-sending a packet.
+     */
+    public void applyRemoteAdd(PlacedPiece piece) {
+        addToGrid(piece);
     }
 
     /**
@@ -405,21 +418,24 @@ public class SubgridBlockEntity extends BlockEntity {
         rebuildShape();
     }
 
+    /**
+     * Builds the merged shape directly from cellOwner's occupancy in a single pass, instead of
+     * unioning one VoxelShape per piece via Shapes.or — that scaled with piece count (and grew
+     * more expensive per union as the accumulated shape got more complex), so dense subgrids
+     * paid an increasingly large cost on every single place/break. This is bounded by
+     * gridSize^3 regardless of piece count (see issue #27).
+     */
     private void rebuildShape() {
-        double cell = 16.0 / gridSize;
-        VoxelShape result = Shapes.empty();
-        for (PlacedPiece p : pieces) {
-            double x1 = p.anchor.getX() * cell;
-            double y1 = p.anchor.getY() * cell;
-            double z1 = p.anchor.getZ() * cell;
-            result = Shapes.or(result, Block.box(
-                x1, y1, z1,
-                x1 + p.footprint.getX() * cell,
-                y1 + p.footprint.getY() * cell,
-                z1 + p.footprint.getZ() * cell
-            ));
-        }
-        cachedShape = result;
+        var discrete = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
+        boolean any = false;
+        for (int y = 0; y < gridSize; y++)
+            for (int z = 0; z < gridSize; z++)
+                for (int x = 0; x < gridSize; x++)
+                    if (cellOwner[indexOf(x, y, z)] != EMPTY) {
+                        discrete.fill(x, y, z);
+                        any = true;
+                    }
+        cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
     }
 
     public int indexOf(int x, int y, int z) {
