@@ -3,9 +3,9 @@
 [![CI](https://github.com/therappha/tinyblocks/actions/workflows/ci.yml/badge.svg)](https://github.com/therappha/tinyblocks/actions/workflows/ci.yml)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
-A **subgrid engine** for NeoForge 1.21.1. Adds an invisible grid inside any single block space, letting mods place and interact with scaled-down blocks at 1/2, 1/4, 1/8, 1/16 — or any even subdivision.
+A mod for NeoForge 1.21.1. Craft a Minimizer with a stick and an iron nugget, hold it in your off-hand, then place any block to shrink it down — 1/2, 1/4, 1/8, or 1/16 the size of a normal block, all inside a single block space.
 
-TinyBlocks ships no playable content of its own. It is a foundation other mods build on.
+Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drops, and behave like real blocks — redstone, pistons, and other interactions propagate between neighboring pieces just like in the full-size world.
 
 ---
 
@@ -62,7 +62,7 @@ The constructor auto-registers the definition — no registry call needed. For i
 
 ## Debug commands & items
 
-TinyBlocks has no creative tab. All items are debug-only, obtainable via `/give`:
+The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — craftable from a stick and an iron nugget. Everything else below is debug-only, obtainable via `/give`:
 
 ```
 /give @s tinyblocks:subgrid_block_2

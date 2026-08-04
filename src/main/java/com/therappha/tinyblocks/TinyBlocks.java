@@ -2,6 +2,7 @@ package com.therappha.tinyblocks;
 
 import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.setup.TinyBlocksTabs;
 import com.therappha.tinyblocks.subgrid.PieceDefinitions;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.neoforged.bus.api.IEventBus;
@@ -18,6 +19,7 @@ public class TinyBlocks {
         PieceDefinitions.init();
         VanillaBlockPiece.init();
         Registration.register(modEventBus);
+        TinyBlocksTabs.register(modEventBus);
         LOGGER.info("TinyBlocks loading...");
     }
 }

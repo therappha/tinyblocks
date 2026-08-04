@@ -14,5 +14,7 @@
   "item.tinyblocks.minimizer_2": "Minimizer (1/2)",
   "item.tinyblocks.minimizer_4": "Minimizer (1/4)",
   "item.tinyblocks.minimizer": "Minimizer (1/8)",
-  "item.tinyblocks.minimizer_16": "Minimizer (1/16)"
+  "item.tinyblocks.minimizer_16": "Minimizer (1/16)",
+  "item.tinyblocks.minimizer.tooltip": "Hold in your off-hand, then place any block to shrink it into a subgrid",
+  "itemGroup.tinyblocks.main": "TinyBlocks"
 }
