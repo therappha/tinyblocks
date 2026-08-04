@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPistonItem;
 import com.therappha.tinyblocks.items.TinyRedstoneBlockItem;
 import com.therappha.tinyblocks.items.TinyRedstoneDustItem;
@@ -85,6 +86,32 @@ public class Registration {
     // Test tool for the PieceRemoverTool capability — only obtainable via /give
     public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
             ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
+
+    // v2 debug tool: held in the offhand, lets any BlockItem in the main hand create/place into
+    // a subgrid instead of placing normally — only obtainable via /give. Same four grid sizes as
+    // the subgrid blocks themselves; "minimizer" (1/8) is the default.
+    private static Item.Properties minimizerProperties() {
+        return new Item.Properties()
+                .component(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+    }
+
+    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_2 =
+            ITEMS.register("minimizer_2", () -> new MinimizerItem(minimizerProperties()) {
+                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_2.get(); }
+            });
+
+    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_4 =
+            ITEMS.register("minimizer_4", () -> new MinimizerItem(minimizerProperties()) {
+                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_4.get(); }
+            });
+
+    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER =
+            ITEMS.register("minimizer", () -> new MinimizerItem(minimizerProperties()));
+
+    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_16 =
+            ITEMS.register("minimizer_16", () -> new MinimizerItem(minimizerProperties()) {
+                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_16.get(); }
+            });
 
     // Debug pieces for testing neighbor propagation — 1/8 grid, only obtainable via /give
     public static final DeferredHolder<Item, TinyRedstoneBlockItem> TINY_REDSTONE_BLOCK =

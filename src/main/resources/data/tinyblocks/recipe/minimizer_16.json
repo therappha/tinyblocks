@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "N": {
+      "item": "minecraft:iron_nugget"
+    },
+    "#": {
+      "item": "minecraft:stick"
+    }
+  },
+  "pattern": [
+    " N ",
+    "N#N",
+    " N "
+  ],
+  "result": {
+    "count": 1,
+    "id": "tinyblocks:minimizer_16"
+  }
+}

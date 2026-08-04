@@ -51,11 +51,23 @@ public abstract class PieceDefinition {
     /** Mining hardness. Negative = unbreakable. Defaults to stone (1.5f). */
     public float destroyTime() { return 1.5f; }
 
+    /** Per-instance variant. Override when hardness depends on piece.extraData/runtimeState. */
+    public float destroyTime(PlacedPiece piece) { return destroyTime(); }
+
     /** If true, wrong tool gives no drops and mines 3x slower. */
     public boolean requiresCorrectTool() { return false; }
 
     /** Items dropped when this piece is broken with the correct tool. */
     public List<ItemStack> drops(PlacedPiece piece) { return List.of(); }
+
+    /**
+     * Per-instance variant with real break context (server level, position, the tool used).
+     * Defaults to drops(piece); override this instead when drops depend on the real loot table
+     * (item count rolls, Fortune, etc.) rather than a fixed 1:1 fallback.
+     */
+    public List<ItemStack> drops(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, ItemStack tool) {
+        return drops(piece);
+    }
 
     /** Called after a piece is loaded from NBT. Initialize runtimeState here from extraData. */
     public void onLoaded(PlacedPiece piece, HolderLookup.Provider registries) {}
@@ -96,9 +108,23 @@ public abstract class PieceDefinition {
      * On client side: return SUCCESS to consume without side effects.
      * On server side: open menus, change state, etc.
      */
-    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos, Player player, BlockHitResult hit) {
+    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be, Player player, BlockHitResult hit) {
         return InteractionResult.PASS;
     }
+
+    /**
+     * Called when a scheduled tick this piece requested (v2: via a real vanilla scheduleTick
+     * call, e.g. a redstone lamp asking to turn off in 4 ticks) comes due. See
+     * SubgridBlockEntity.scheduleTick.
+     */
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {}
+
+    /**
+     * Called on a small random sample of pieces each server tick, mirroring vanilla's random
+     * tick (crop growth, leaf decay, fire spread). Most pieces should no-op; v2 pieces check
+     * their own BlockState.isRandomlyTicking() before doing anything.
+     */
+    public void randomTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {}
 
     public static PieceDefinition get(ResourceLocation id) {
         return REGISTRY.get(id);

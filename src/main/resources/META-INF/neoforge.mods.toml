@@ -8,7 +8,9 @@ license = "CC-BY-NC-SA-4.0"
     displayName = "TinyBlocks"
     authors = "therappha"
     description = '''
-Subgrid engine for NeoForge 1.21.1 — place and interact with blocks at 1/8 or 1/16 scale inside a single block space.
+TinyBlocks is a mod for NeoForge 1.21.1. Craft a Minimizer with a stick and an iron nugget, hold it in your off-hand, then place any block to shrink it down — 1/2, 1/4, 1/8, or 1/16 the size of a normal block, all inside a single block space.
+
+Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drops, and behave like real blocks — redstone, pistons, and other interactions propagate between neighboring pieces just like in the full-size world.
 '''
 
 [[dependencies.tinyblocks]]

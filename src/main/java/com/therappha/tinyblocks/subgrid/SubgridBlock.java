@@ -19,6 +19,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -28,6 +29,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -85,8 +87,30 @@ public class SubgridBlock extends BaseEntityBlock {
 
     @Override
     public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        // NOTE: previously fell back to Shapes.block() here to fix blocksMotion()/
+        // isCollisionShapeFullBlock (cached once at registration time via EmptyBlockGetter,
+        // which has no real BlockEntity — see git history), so FlowingFluid.canHoldFluid would
+        // stop treating an empty-looking subgrid as safe to spread into and destroy. Reverted:
+        // caused real player collision to intermittently treat the WHOLE block as solid — worse
+        // than the bug it fixed. Needs a real fix that doesn't touch this shared shape query
+        // (tracked separately), not a guess reapplied blind.
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
         return be.getCachedShape();
+    }
+
+    @Override
+    protected boolean canBeReplaced(BlockState state, Fluid fluid) {
+        // getShape/getCollisionShape are sparse — only occupied cells have geometry, so a subgrid
+        // with just a few small pieces reads as "mostly empty" to vanilla's own collision-based
+        // logic. Without this override, that's exactly what BucketItem.emptyContents and
+        // FlowingFluid.spreadTo see: "empty enough to replace" — overwriting (or destroying) the
+        // whole SubgridBlock with a plain water block instead of respecting its internal cells.
+        return false;
+    }
+
+    @Override
+    protected boolean canBeReplaced(BlockState state, BlockPlaceContext context) {
+        return false;
     }
 
     @Override
@@ -100,7 +124,7 @@ public class SubgridBlock extends BaseEntityBlock {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return 0f;
 
-        float hardness = piece.definition.destroyTime();
+        float hardness = piece.definition.destroyTime(piece);
         if (hardness < 0) return 0f;
 
         BlockState renderState = piece.definition.renderState(piece);
@@ -126,7 +150,7 @@ public class SubgridBlock extends BaseEntityBlock {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null) return InteractionResult.PASS;
 
-        return piece.definition.onUse(piece, level, pos, player, hit);
+        return piece.definition.onUse(piece, level, pos, be, player, hit);
     }
 
     @Override
@@ -144,9 +168,9 @@ public class SubgridBlock extends BaseEntityBlock {
 
         if (!player.isCreative()) {
             List<ItemStack> drops = removed.definition.drops(removed);
-            double cx = pos.getX() + 0.5, cy = pos.getY() + 0.5, cz = pos.getZ() + 0.5;
+            Vec3 dropPos = be.realPositionOf(new BlockPos(cell));
             for (ItemStack drop : drops) {
-                level.addFreshEntity(new ItemEntity(level, cx, cy, cz, drop));
+                level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, drop));
             }
         }
 
