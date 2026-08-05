@@ -166,7 +166,12 @@ public class SubgridBlockEntity extends BlockEntity {
         if (idx == EMPTY) return null;
         PlacedPiece removed = pieces.get(idx);
         rebuildAfterRemove(idx);
-        notifyUpdate();
+        setChanged();
+        if (level instanceof ServerLevel serverLevel) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new net.minecraft.world.level.ChunkPos(worldPosition),
+                    new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+        }
         notifyNeighbors(removed);
         return removed;
     }
