@@ -409,6 +409,13 @@ public class SubgridEventHandler {
                 }
             }
         }
+        // #TODO remove before release — water-placement investigation. Mirrors onBlockBreak/
+        // handleMinePiece's own cleanup: removeAndDrop above (BucketPickup emptying the last
+        // piece in this subgrid) leaves an empty-but-still-present SubgridBlock behind otherwise
+        // — every other removal path already deletes it once nothing's left.
+        if (be.getPieces().isEmpty()) {
+            serverLevel.removeBlock(be.getBlockPos(), false);
+        }
         // Whatever ran above (existing-piece update, new-piece placement, or neither) may have
         // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
         // the onPlace call just above. Same drain FakeSpace callers always do after touching a
