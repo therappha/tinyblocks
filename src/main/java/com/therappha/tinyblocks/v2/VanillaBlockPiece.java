@@ -63,6 +63,13 @@ public final class VanillaBlockPiece extends PieceDefinition {
         return (BlockState) piece.runtimeState;
     }
 
+    /** Diagnostic-logging helper only — matches PISTON, STICKY_PISTON, MOVING_PISTON, PISTON_HEAD. */
+    private static boolean isPistonRelated(@javax.annotation.Nullable BlockState state) {
+        return state != null && (state.getBlock() instanceof net.minecraft.world.level.block.piston.PistonBaseBlock
+                || state.getBlock() instanceof net.minecraft.world.level.block.piston.MovingPistonBlock
+                || state.getBlock() instanceof net.minecraft.world.level.block.piston.PistonHeadBlock);
+    }
+
     @Override
     public BlockState renderState(Direction facing) {
         return Blocks.AIR.defaultBlockState();
@@ -597,6 +604,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
                     // other removal uses instead.
                     selfDestructed.add(p);
                 } else {
+                    if (isPistonRelated(before.get(p.anchor)) || isPistonRelated(now)) {
+                        LOGGER.info("[piston-anim] state transition at {} (cell {}): {} -> {}",
+                                be.getBlockPos(), p.anchor, before.get(p.anchor), now);
+                    }
                     p.runtimeState = now;
                     syncBlockEntity(be, p, p.anchor, cells, (Level) fakeSpace, realLevel);
                     be.notifyNeighbors(p);
@@ -622,6 +633,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
                     movedElsewhere = true;
                     break;
                 }
+            }
+            if (isPistonRelated(previousState)) {
+                LOGGER.info("[piston-anim] {} at {} (cell {}) went to air — {}",
+                        previousState, be.getBlockPos(), p.anchor, movedElsewhere ? "moved elsewhere, no drop" : "treated as destroyed, dropping");
             }
             // realPositionOf, not be.getBlockPos()+0.5 — that would collapse every piece's drop
             // to the whole SubgridBlock's shared center regardless of where inside it the piece
@@ -655,6 +670,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // crossing this subgrid's boundary), instead of the write just being silently dropped.
             PlacedPiece placed = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
             if (placed != null) {
+                if (isPistonRelated(touchedState)) {
+                    LOGGER.info("[piston-anim] new piece at {} (cell {}, withinBounds={}): {}",
+                            be.getBlockPos(), pos, withinBounds, touchedState);
+                }
                 if (withinBounds) {
                     syncBlockEntity(be, placed, pos, cells, (Level) fakeSpace, realLevel);
                 } else {
