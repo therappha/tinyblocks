@@ -577,7 +577,14 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // Collected rather than removed inline — removePieceAt mutates be.getPieces() itself,
         // which we're still iterating.
         List<PlacedPiece> selfDestructed = new ArrayList<>();
-        for (PlacedPiece p : be.getPieces()) {
+        // A snapshot, not the live list: be.notifyNeighbors(p) below can synchronously cascade
+        // into another piece's own onNeighborChanged, which can run its OWN applyChanges call and
+        // add/remove pieces via placePieceCrossBoundary/removePieceAt — mutating be.getPieces()
+        // while THIS loop's iterator is still walking it (a piston's moving-block BE finalizing is
+        // exactly this: found live via a ConcurrentModificationException from onUse -> applyChanges
+        // once the finalize path started actually completing instead of crashing before reaching
+        // notifyNeighbors at all). Same fix as SubgridBlockEntity.serverTick's own loop.
+        for (PlacedPiece p : new ArrayList<>(be.getPieces())) {
             if (p.definition != INSTANCE) continue;
             BlockState now = cells.getBlockState(p.anchor);
             if (!now.equals(before.get(p.anchor))) {
