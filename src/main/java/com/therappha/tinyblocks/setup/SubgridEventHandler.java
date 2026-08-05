@@ -57,8 +57,48 @@ public class SubgridEventHandler {
         if (!(be instanceof SubgridBlockEntity subgrid)) return;
 
         Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), subgrid.gridSize);
-        PlacedPiece removed = subgrid.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
+        PlacedPiece removed = removeAndDrop(subgrid, level, pos, cell, player);
         if (removed == null) return;
+
+        if (subgrid.getPieces().isEmpty()) {
+            level.removeBlock(pos, false);
+        } else {
+            // NeoForge sends a block resync packet after cancel which causes the client
+            // to recreate the BE as empty. Schedule a tick 2 ticks out so notifyUpdate()
+            // fires AFTER the client has already processed that resync.
+            level.getBlockTicks().schedule(new ScheduledTick<>(event.getState().getBlock(), pos, level.getGameTime() + 2, 0L));
+        }
+    }
+
+    /**
+     * Server-authoritative completion of a mine started by SubgridMiningInterceptor — the client
+     * decided (mirroring SubgridBlock.pieceDestroyProgress itself) that this piece just finished
+     * mining, and suppressed vanilla's own client-local destroy() call to avoid it. No BreakEvent
+     * involved here at all, so none of onBlockBreak's post-cancel-resync workaround applies —
+     * removeAndDrop -> SubgridBlockEntity#removePieceAt's own delta packet is enough on its own.
+     */
+    public static void handleMinePiece(com.therappha.tinyblocks.network.SubgridMinePiecePayload payload,
+                                        Player player, ServerLevel level) {
+        BlockPos pos = payload.pos();
+        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity subgrid)) return;
+
+        HitResult hit = player.pick(5.0, 0f, false);
+        if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
+
+        BlockPos cellPos = payload.cell();
+        Vec3i cell = new Vec3i(cellPos.getX(), cellPos.getY(), cellPos.getZ());
+        if (subgrid.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) == null) return;
+
+        PlacedPiece removed = removeAndDrop(subgrid, level, pos, cell, player);
+        if (removed != null && subgrid.getPieces().isEmpty()) {
+            level.removeBlock(pos, false);
+        }
+    }
+
+    /** Removes the piece at cell and spawns its drops (if the tool qualifies and player isn't creative). */
+    private static PlacedPiece removeAndDrop(SubgridBlockEntity subgrid, ServerLevel level, BlockPos pos, Vec3i cell, Player player) {
+        PlacedPiece removed = subgrid.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
+        if (removed == null) return null;
 
         BlockState renderState = removed.definition.renderState(removed);
         boolean correctTool = !removed.definition.requiresCorrectTool()
@@ -70,15 +110,7 @@ public class SubgridEventHandler {
                 level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, stack));
             }
         }
-
-        if (subgrid.getPieces().isEmpty()) {
-            level.removeBlock(pos, false);
-        } else {
-            // NeoForge sends a block resync packet after cancel which causes the client
-            // to recreate the BE as empty. Schedule a tick 2 ticks out so notifyUpdate()
-            // fires AFTER the client has already processed that resync.
-            level.getBlockTicks().schedule(new ScheduledTick<>(event.getState().getBlock(), pos, level.getGameTime() + 2, 0L));
-        }
+        return removed;
     }
 
     /**

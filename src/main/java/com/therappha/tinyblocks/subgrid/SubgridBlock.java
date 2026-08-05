@@ -121,14 +121,25 @@ public class SubgridBlock extends BaseEntityBlock {
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return 0f;
 
         Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
-        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+        return pieceDestroyProgress(be, cell.getX(), cell.getY(), cell.getZ(), player);
+    }
+
+    /**
+     * Same per-tick progress formula getDestroyProgress uses, exposed so the client-side mining
+     * interceptor (SubgridMiningInterceptor) can track completion itself without duplicating the
+     * math — see that class for why: it needs to know a tick's exact contribution to decide
+     * whether THIS tick would complete mining, ahead of vanilla's own (unreachable) internal
+     * accumulator.
+     */
+    public static float pieceDestroyProgress(SubgridBlockEntity be, int x, int y, int z, Player player) {
+        PlacedPiece piece = be.getPieceAt(x, y, z);
         if (piece == null) return 0f;
 
         float hardness = piece.definition.destroyTime(piece);
         if (hardness < 0) return 0f;
 
         BlockState renderState = piece.definition.renderState(piece);
-        float digSpeed = player.getDigSpeed(renderState, pos);
+        float digSpeed = player.getDigSpeed(renderState, be.getBlockPos());
         boolean correct = !piece.definition.requiresCorrectTool() || player.hasCorrectToolForDrops(renderState);
         return digSpeed / hardness / (correct ? 30f : 100f);
     }
