@@ -76,6 +76,25 @@ final class SubgridFluidView implements BlockAndTintGetter {
         return real.getLightEngine();
     }
 
+    /**
+     * #TODO remove before release — water-rendering investigation. LiquidBlockRenderer's own
+     * lighting (LevelRenderer#getLightColor) reads brightness through these two BlockAndTintGetter
+     * default methods, NOT getLightEngine() directly — overriding them to substitute the
+     * subgrid's one real-world position (same pattern FakeLevel already uses for its own
+     * getBrightness/getRawBrightness) avoids querying the real light engine at a fake, tiny local
+     * coordinate, which would return whatever real light level happens to exist near world origin
+     * rather than anything related to the subgrid's actual surroundings.
+     */
+    @Override
+    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) {
+        return real.getBrightness(layer, be.getBlockPos());
+    }
+
+    @Override
+    public int getRawBrightness(BlockPos pos, int amount) {
+        return real.getRawBrightness(be.getBlockPos(), amount);
+    }
+
     @Override
     public int getBlockTint(BlockPos pos, ColorResolver resolver) {
         return real.getBlockTint(be.getBlockPos(), resolver);
