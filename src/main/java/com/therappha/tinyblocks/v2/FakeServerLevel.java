@@ -231,6 +231,23 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
                                  net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
                                  net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {}
 
+    // Found live (run/logs/latest.log): BlockEntity.setRemoved() -> IBlockEntityExtension
+    // .invalidateCapabilities -> ServerLevel.invalidateCapabilities reads this.capListenerHolder,
+    // a ServerLevel-only field create()'s transplant never touches (same category as blockEvent's
+    // this.blockEvents above) — NPE'd every single tick a phantom BlockEntity ticked here called
+    // setRemoved() (e.g. PistonMovingBlockEntity.tick finalizing), silently caught by
+    // SubgridBlockEntity.serverTick's per-piece try/catch — which meant the exception aborted
+    // tick() BEFORE its applyChanges() call ever ran, so the real finalize (removeBlockEntity +
+    // setBlock to the real end state) never actually happened. Retried and failed identically
+    // every following tick forever, leaving the piece permanently stuck as an invisible
+    // MOVING_PISTON piece — the exact "extends fine, then disappears once it should settle"
+    // symptom, predating the animation work in this same class entirely.
+    @Override
+    public void invalidateCapabilities(BlockPos pos) {}
+
+    @Override
+    public void invalidateCapabilities(net.minecraft.world.level.ChunkPos pos) {}
+
     @Override
     public void globalLevelEvent(int type, BlockPos pos, int data) {}
 
