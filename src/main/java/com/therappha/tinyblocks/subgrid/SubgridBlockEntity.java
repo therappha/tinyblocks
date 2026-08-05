@@ -182,7 +182,13 @@ public class SubgridBlockEntity extends BlockEntity {
 
     public void serverTick(ServerLevel level) {
         boolean dirty = false;
-        for (PlacedPiece piece : pieces) {
+        // A snapshot, not the live list: piece.definition.tick() can itself add/remove pieces (e.g.
+        // a piston's moving-block BE finalizing calls neighborChanged, which can cascade into
+        // another piece being placed or removed via applyChanges) — mutating `pieces` while this
+        // loop's own iterator is still walking it throws ConcurrentModificationException. Found
+        // live once the piston finalize path actually started completing (see FakeServerLevel's
+        // invalidateCapabilities fix) instead of crashing before ever reaching this cascade.
+        for (PlacedPiece piece : new ArrayList<>(pieces)) {
             if (!piece.definition.requiresTick()) continue;
             try {
                 if (piece.definition.tick(piece, level, worldPosition, this)) {
