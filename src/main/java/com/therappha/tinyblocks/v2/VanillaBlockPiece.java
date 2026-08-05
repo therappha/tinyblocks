@@ -150,7 +150,22 @@ public final class VanillaBlockPiece extends PieceDefinition {
         if (phantom == null) return false;
 
         Map<BlockPos, BlockState> before = snapshot(be);
-        if (!tickTyped(entityBlock, fakeLevel, state, realPos, phantom)) return false;
+        // phantom.getBlockPos(), NOT realPos — matches whatever position THIS SPECIFIC BE instance
+        // actually holds internally. For the generic "blank" BEs blockEntityFor lazily builds
+        // (hopper, chest, ...), that's be.getBlockPos() (realPos) already, so this changes nothing
+        // for them. But a captured BE like a piston's PistonMovingBlockEntity (see syncBlockEntity)
+        // was constructed by vanilla's OWN code with the piece's fake-local anchor as its position
+        // (that's what PistonBaseBlock.moveBlocks passed to newMovingBlockEntity in the first
+        // place) — ticking it against realPos instead is a real mismatch: realPos only gets
+        // resolve()d to piece.anchor for an EXACT match, so the piece's own read/write still landed
+        // correctly, but any NEIGHBOR lookup (realPos.relative(dir)) fell through to a real,
+        // unrelated world position instead of the sibling piece actually sitting there in fake-local
+        // space. That's exactly why a piston head's natural finalize (Block.updateFromNeighbourShapes
+        // checking "is my base still here") found nothing, concluded it had no support, and
+        // destroyed itself instead of becoming a real PISTON_HEAD — found live via the new
+        // [piston-anim] diagnostic logging ("went to air — treated as destroyed").
+        BlockPos tickPos = phantom.getBlockPos();
+        if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
         applyChanges(be, fakeLevel, before, level);
         // applyChanges already handles its own notifyUpdate/notifyNeighbors for whatever actually
         // changed — returning true here would make SubgridBlockEntity.serverTick redundantly
