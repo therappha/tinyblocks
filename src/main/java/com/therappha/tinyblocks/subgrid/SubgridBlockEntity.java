@@ -118,9 +118,7 @@ public class SubgridBlockEntity extends BlockEntity {
     public boolean placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
                                             Object runtimeState, ServerLevel realLevel) {
         if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
-            PlacedPiece piece = new PlacedPiece(definition, local, facing);
-            piece.runtimeState = runtimeState;
-            return placePiece(piece);
+            return placeOrUpdatePiece(definition, local, facing, runtimeState);
         }
 
         Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
@@ -137,9 +135,31 @@ public class SubgridBlockEntity extends BlockEntity {
 
         int max = gridSize - 1;
         BlockPos wrapped = new BlockPos(wrap(local.getX(), max), wrap(local.getY(), max), wrap(local.getZ(), max));
-        PlacedPiece piece = new PlacedPiece(definition, wrapped, facing);
+        return adjacent.placeOrUpdatePiece(definition, wrapped, facing, runtimeState);
+    }
+
+    /**
+     * Places a new piece at local, or — if that cell is already held by a same-definition piece
+     * (e.g. flowing water re-asserting its level against water that already spread there on a
+     * previous tick) — updates that piece's runtimeState in place instead of canFit refusing the
+     * write outright. A cell held by a DIFFERENT definition genuinely blocks the write, same as
+     * placePiece. Only used by placePieceCrossBoundary's vanilla-tick-driven spread/flow callers —
+     * player-initiated placement must keep going through plain placePiece, which never silently
+     * overwrites an existing piece.
+     */
+    private boolean placeOrUpdatePiece(PieceDefinition definition, BlockPos local, Direction facing, Object runtimeState) {
+        PlacedPiece existing = getPieceAt(local.getX(), local.getY(), local.getZ());
+        if (existing != null) {
+            if (existing.definition != definition) return false;
+            if (runtimeState.equals(existing.runtimeState)) return true;
+            existing.runtimeState = runtimeState;
+            notifyNeighbors(existing);
+            notifyUpdate();
+            return true;
+        }
+        PlacedPiece piece = new PlacedPiece(definition, local, facing);
         piece.runtimeState = runtimeState;
-        return adjacent.placePiece(piece);
+        return placePiece(piece);
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
