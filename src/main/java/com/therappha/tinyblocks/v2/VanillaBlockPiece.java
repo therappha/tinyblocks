@@ -605,12 +605,30 @@ public final class VanillaBlockPiece extends PieceDefinition {
             }
         }
         for (PlacedPiece p : selfDestructed) {
+            // A piston pushing/pulling a block vacates its ORIGINAL cell the exact same way as a
+            // genuine destruction: a plain setBlock to air, via moveBlocks' own final "clear the
+            // old positions" loop (PistonBaseBlock.moveBlocks) — vanilla itself only calls
+            // dropResources for blocks it couldn't push (getToDestroy()), never for ones it
+            // successfully moved (getToPush()). The diff loop above can't otherwise tell "destroyed"
+            // from "moved elsewhere this same call" apart, since both look identical from here: an
+            // existing piece's anchor going from some state to air. If that SAME state shows up at
+            // a DIFFERENT position in this call's touchedCells (the moved block's destination,
+            // about to become a new piece below), treat it as relocated — drop nothing, since the
+            // block still exists, just at a new cell.
+            BlockState previousState = before.get(p.anchor);
+            boolean movedElsewhere = false;
+            for (Map.Entry<BlockPos, BlockState> touched : cells.touchedCells().entrySet()) {
+                if (!touched.getKey().equals(p.anchor) && previousState.equals(touched.getValue())) {
+                    movedElsewhere = true;
+                    break;
+                }
+            }
             // realPositionOf, not be.getBlockPos()+0.5 — that would collapse every piece's drop
             // to the whole SubgridBlock's shared center regardless of where inside it the piece
             // actually was.
             Vec3 dropPos = be.realPositionOf(p.anchor);
             PlacedPiece removed = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
-            if (removed != null) {
+            if (removed != null && !movedElsewhere) {
                 for (ItemStack drop : removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY)) {
                     realLevel.addFreshEntity(new ItemEntity(realLevel, dropPos.x, dropPos.y, dropPos.z, drop));
                 }
