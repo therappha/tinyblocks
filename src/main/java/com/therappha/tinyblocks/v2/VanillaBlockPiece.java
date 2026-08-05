@@ -236,9 +236,23 @@ public final class VanillaBlockPiece extends PieceDefinition {
      */
     public static void applyClientAnimation(SubgridBlockEntity be, BlockPos cell, CompoundTag beNbt, Level level) {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
-        if (piece == null || piece.definition != INSTANCE) return;
-        BlockState state = stateOf(piece);
-        if (state == null) return;
+        if (piece == null || piece.definition != INSTANCE) {
+            // Can legitimately happen: this payload is sent right after placePieceCrossBoundary for
+            // a BRAND NEW cell (piston head extending into empty space) — if the corresponding
+            // SubgridPieceAddedPayload hasn't been processed on this client yet, the piece just
+            // doesn't exist here yet. Logged rather than silently dropped so a still-missing
+            // extend-animation is distinguishable from this specific race vs some other cause.
+            LOGGER.info("[piston-anim] client got animation payload for {} (cell {}) but no matching piece exists yet — dropped",
+                    be.getBlockPos(), cell);
+            return;
+        }
+        // The outer MOVING_PISTON state embedded by syncBlockEntity — NOT stateOf(piece), which
+        // reads whatever the piece's state happens to be RIGHT NOW on the client. That can already
+        // differ from the MOVING_PISTON state true when this BE was captured server-side (a same-
+        // tick full resync racing ahead of this payload), and PistonMovingBlockEntity's constructor
+        // requires an exact match — see syncBlockEntity's comment for the crash this used to cause.
+        BlockState state = NbtUtils.readBlockState(level.holderLookup(Registries.BLOCK), beNbt.getCompound("outerState"));
+        if (state.isAir()) return;
         var moving = new net.minecraft.world.level.block.piston.PistonMovingBlockEntity(be.getBlockPos(), state);
         moving.loadCustomOnly(beNbt, level.registryAccess());
         moving.setLevel(level);
@@ -687,6 +701,17 @@ public final class VanillaBlockPiece extends PieceDefinition {
             LOGGER.info("[piston-anim] captured MOVING_PISTON BE at {} (cell {}) extending={} source={} — sending animation payload",
                     be.getBlockPos(), pos, moving.isExtending(), moving.isSourcePiston());
             CompoundTag beNbt = moving.saveCustomOnly(realLevel.registryAccess());
+            // PistonMovingBlockEntity's constructor requires its OWN outer BlockState (MOVING_PISTON,
+            // matching BlockEntityType.PISTON) — saveCustomOnly above doesn't include it (that's the
+            // BE's own NBT, not the block state it sits on). Embed piece.runtimeState explicitly
+            // (known correct right here, synchronously, on the server) rather than having the client
+            // re-derive it from the live piece when the payload is processed — that piece may already
+            // have moved on to a DIFFERENT state by then (e.g. a same-tick full resync racing ahead
+            // of this payload), which is exactly what threw "Invalid block entity" client-side before
+            // this fix: the client tried to build a PistonMovingBlockEntity out of whatever state the
+            // piece already held at that later moment, not the MOVING_PISTON state that was true when
+            // this BE was actually captured.
+            beNbt.put("outerState", NbtUtils.writeBlockState(stateOf(piece)));
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(realLevel,
                     new net.minecraft.world.level.ChunkPos(be.getBlockPos()),
                     new com.therappha.tinyblocks.network.PistonAnimationPayload(be.getBlockPos(), pos, beNbt));
