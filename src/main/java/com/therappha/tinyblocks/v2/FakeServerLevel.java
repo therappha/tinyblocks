@@ -136,6 +136,18 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     @Override
     public BlockEntity getBlockEntity(BlockPos pos) { return delegate.getBlockEntity(pos); }
 
+    // ServerLevel doesn't re-override setBlockEntity/removeBlockEntity from Level, but this class
+    // isn't a real Level either (reflection-allocated, see the class doc) — without these,
+    // Level's own versions would resolve a real chunk via this class's own getChunkSource()
+    // override below and register/remove there instead of landing in the fake cell space. Same
+    // capture FakeLevel needs and has, restated here since FakeServerLevel is a sibling, not a
+    // subclass, of FakeLevel.
+    @Override
+    public void setBlockEntity(BlockEntity blockEntity) { delegate.setBlockEntity(blockEntity); }
+
+    @Override
+    public void removeBlockEntity(BlockPos pos) { delegate.removeBlockEntity(pos); }
+
     @Override
     public FluidState getFluidState(BlockPos pos) { return delegate.getFluidState(pos); }
 

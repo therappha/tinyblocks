@@ -121,6 +121,21 @@ public class FakeLevel extends Level implements FakeSpace {
         return cells.getBlockEntity(pos);
     }
 
+    /**
+     * Captured into the fake cell space instead of falling through to vanilla Level.setBlockEntity
+     * — see FakeCellGetter.setBlockEntity for why that would silently discard real BE data (e.g. a
+     * piston's moving-block animation state) into a real, never-read chunk.
+     */
+    @Override
+    public void setBlockEntity(BlockEntity blockEntity) {
+        cells.setBlockEntity(blockEntity.getBlockPos(), blockEntity);
+    }
+
+    @Override
+    public void removeBlockEntity(BlockPos pos) {
+        cells.removeBlockEntityAt(pos);
+    }
+
     @Override
     public FluidState getFluidState(BlockPos pos) {
         return cells.getFluidState(pos);

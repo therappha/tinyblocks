@@ -113,18 +113,22 @@ public class SubgridBlockEntity extends BlockEntity {
      * uses when a player targets a cell past a grid's edge, generalized here so anything
      * spreading/falling/growing across a subgrid's boundary (fluids, falling blocks, tree
      * growth) continues into a new subgrid instead of the write being silently dropped. Diagonal
-     * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns false.
+     * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns null.
+     * Returns the placed piece (rather than a boolean) so a caller that also captured a real
+     * BlockEntity for this same write (e.g. a piston's moving-block animation state) has something
+     * to attach it to — see VanillaBlockPiece.applyChanges' syncBlockEntity.
      */
-    public boolean placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
-                                            Object runtimeState, ServerLevel realLevel) {
+    @Nullable
+    public PlacedPiece placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
+                                                Object runtimeState, ServerLevel realLevel) {
         if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
             PlacedPiece piece = new PlacedPiece(definition, local, facing);
             piece.runtimeState = runtimeState;
-            return placePiece(piece);
+            return placePiece(piece) ? piece : null;
         }
 
         Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
-        if (dir == null) return false;
+        if (dir == null) return null;
 
         BlockPos targetPos = worldPosition.relative(dir);
         BlockState targetState = realLevel.getBlockState(targetPos);
@@ -132,14 +136,14 @@ public class SubgridBlockEntity extends BlockEntity {
             realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
         }
         if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
-            return false;
+            return null;
         }
 
         int max = gridSize - 1;
         BlockPos wrapped = new BlockPos(wrap(local.getX(), max), wrap(local.getY(), max), wrap(local.getZ(), max));
         PlacedPiece piece = new PlacedPiece(definition, wrapped, facing);
         piece.runtimeState = runtimeState;
-        return adjacent.placePiece(piece);
+        return adjacent.placePiece(piece) ? piece : null;
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
@@ -260,7 +264,11 @@ public class SubgridBlockEntity extends BlockEntity {
     public void clientTick(Level level) {
         for (PlacedPiece piece : pieces) {
             if (piece.definition.requiresClientTick()) {
-                piece.definition.clientTick(piece, level, worldPosition, this);
+                try {
+                    piece.definition.clientTick(piece, level, worldPosition, this);
+                } catch (Exception e) {
+                    logTickFailure("clientTick", piece, e);
+                }
             }
         }
     }

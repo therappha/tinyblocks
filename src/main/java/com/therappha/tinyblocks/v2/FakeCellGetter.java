@@ -11,7 +11,9 @@ import net.minecraft.world.level.material.Fluids;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * v2 prototype (see issue tracker): proves that vanilla's own BlockGetter-level block API
@@ -24,6 +26,8 @@ import java.util.Map;
 public class FakeCellGetter implements BlockGetter {
 
     private final Map<BlockPos, BlockState> cells = new HashMap<>();
+    private final Map<BlockPos, BlockEntity> blockEntities = new HashMap<>();
+    private final Set<BlockPos> removedBlockEntities = new HashSet<>();
     private final LevelHeightAccessor heightAccessor = LevelHeightAccessor.create(0, 16);
 
     public void set(BlockPos pos, BlockState state) {
@@ -42,10 +46,39 @@ public class FakeCellGetter implements BlockGetter {
         return java.util.Collections.unmodifiableMap(cells);
     }
 
+    /**
+     * Captures a real setBlockEntity(...) call instead of letting it fall through to vanilla
+     * Level.setBlockEntity, which would register into a real chunk at these small-integer fake
+     * coordinates — a location nothing ever reads. Needed for any BlockState whose actual data
+     * lives on a fully-parameterized BlockEntity handed over this way rather than built lazily
+     * (e.g. PistonBaseBlock constructing a PistonMovingBlockEntity with real progress/moved-state
+     * data; MovingPistonBlock.newBlockEntity, the lazy path, deliberately returns null).
+     */
+    public void setBlockEntity(BlockPos pos, BlockEntity blockEntity) {
+        blockEntities.put(pos, blockEntity);
+        removedBlockEntities.remove(pos);
+    }
+
+    /** Mirrors removeBlockEntity — see setBlockEntity above for why this needs capturing too. */
+    public void removeBlockEntityAt(BlockPos pos) {
+        blockEntities.remove(pos);
+        removedBlockEntities.add(pos);
+    }
+
+    /** Every position explicitly given a real BlockEntity via setBlockEntity this call. */
+    public Map<BlockPos, BlockEntity> touchedBlockEntities() {
+        return java.util.Collections.unmodifiableMap(blockEntities);
+    }
+
+    /** Every position explicitly cleared via removeBlockEntityAt this call. */
+    public Set<BlockPos> removedBlockEntityPositions() {
+        return java.util.Collections.unmodifiableSet(removedBlockEntities);
+    }
+
     @Nullable
     @Override
     public BlockEntity getBlockEntity(BlockPos pos) {
-        return null;
+        return blockEntities.get(pos);
     }
 
     @Override

@@ -292,7 +292,7 @@ public class SubgridEventHandler {
                         || be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()) != null) {
                     continue;
                 }
-                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel)) {
+                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel) != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }
@@ -348,7 +348,8 @@ public class SubgridEventHandler {
                 be.notifyNeighbors(piece);
                 be.notifyUpdate();
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
-                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel)) {
+                PlacedPiece placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
+                if (placed != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }

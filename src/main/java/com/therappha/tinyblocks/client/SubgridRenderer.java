@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> {
@@ -40,6 +41,20 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             poseStack.scale(cell, cell, cell);
 
             blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+
+            // Some vanilla blocks (a piston's moving-block animation, a chest lid) carry ALL of
+            // their real visual on a BlockEntityRenderer rather than a static baked model —
+            // renderSingleBlock above already no-ops for these (RenderShape.INVISIBLE). Dispatch
+            // the piece's own cached BlockEntity (see VanillaBlockPiece.blockEntityFor/
+            // syncBlockEntity) through the same BER vanilla would use, inside the SAME per-piece
+            // transform renderSingleBlock just used, so it lands in the right cell.
+            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity) {
+                BlockEntityRenderer<BlockEntity> ber =
+                        Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
+                if (ber != null) {
+                    ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                }
+            }
 
             if (piece == crackedPiece) {
                 ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
