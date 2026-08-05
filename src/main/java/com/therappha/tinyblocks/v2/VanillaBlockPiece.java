@@ -41,6 +41,9 @@ import java.util.Map;
  */
 public final class VanillaBlockPiece extends PieceDefinition {
 
+    // #TODO remove before release — temporary tracing for the water-disappears investigation.
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
     public static final VanillaBlockPiece INSTANCE = new VanillaBlockPiece();
 
     private VanillaBlockPiece() {
@@ -260,6 +263,13 @@ public final class VanillaBlockPiece extends PieceDefinition {
         FakeServerLevel fakeLevel = buildFakeServerSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
 
+        // #TODO remove before release
+        boolean isFluidPiece = !state.getFluidState().isEmpty();
+        if (isFluidPiece) {
+            LOGGER.info("[WATERDBG] scheduledTick START anchor={} state={} fluidState={}",
+                    piece.anchor, state, state.getFluidState());
+        }
+
         fakeLevel.cells().getBlockState(piece.anchor).tick(fakeLevel, piece.anchor, level.getRandom());
         // LiquidBlock doesn't override the regular block tick above at all — water/lava spread
         // exclusively through the SEPARATE fluid-tick schedule (LiquidBlock.onPlace/
@@ -269,6 +279,12 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // real no-op for Fluids.EMPTY (every non-fluid BlockState), so this is inert for the vast
         // majority of pieces and only does something for genuine water/lava.
         fakeLevel.cells().getBlockState(piece.anchor).getFluidState().tick(fakeLevel, piece.anchor);
+
+        // #TODO remove before release
+        if (isFluidPiece) {
+            LOGGER.info("[WATERDBG] scheduledTick END anchor={} stateNow={} touchedCells={}",
+                    piece.anchor, fakeLevel.cells().getBlockState(piece.anchor), fakeLevel.cells().touchedCells());
+        }
 
         applyChanges(be, fakeLevel, before, level);
     }

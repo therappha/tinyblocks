@@ -161,6 +161,17 @@ public class SubgridEventHandler {
         }
 
         event.setCanceled(true);
+        // Vanilla's own client/server dispatch tries useOn first, and — if that PASSes — falls
+        // back to a SEPARATE Item.use() call (Minecraft#startUseItem / ServerPlayerGameMode
+        // #useItemOn both do this) UNLESS this event's own result already "consumesAction()".
+        // Leaving the default (PASS) cancellation result meant a cancelled RightClickBlock still
+        // let that fallback run uncontrolled against the REAL world — this is how a water bucket
+        // ended up placing a real, full-size water block next to/on top of the SubgridBlock (which
+        // then behaved like ordinary unsupported vanilla water and drained away): our own useOn-only
+        // handling below never even ran, since the actual placement already happened via a path we
+        // weren't listening to at all. #TODO remove before release if it turns out unnecessary once
+        // the DispensibleContainerItem/BucketPickup fallback below is verified sufficient on its own.
+        event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
 
         // --- Everything below is server-authoritative; recompute against live state. ---
@@ -336,6 +347,41 @@ public class SubgridEventHandler {
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
+        // #TODO remove before release (or fold into a permanent comment) once verified live —
+        // water-placement investigation.
+        //
+        // Vanilla dispatches useOn first, then falls back to a SEPARATE Item#use(Level, Player,
+        // InteractionHand) call if useOn PASSes (Minecraft#startUseItem / ServerPlayerGameMode
+        // #useItemOn). BucketItem — like any DispensibleContainerItem/BucketPickup — only
+        // overrides use(), never useOn(), so the stack.useOn(...) call above is always a no-op
+        // PASS for it. use() itself would be no help either: it computes its OWN internal
+        // player-eye-position raycast (BucketItem#getPlayerPOVHitResult), which can't resolve
+        // against this fake, small-integer local-grid coordinate space — the player's real eye
+        // position has nothing to do with cell coordinates 0..gridSize. DispensibleContainerItem
+        // (emptying) and BucketPickup (filling) are the same POSITION-based hooks vanilla's own
+        // dispenser code uses instead of a raycast — call them directly with the fakeAnchor/fakeHit
+        // already computed above, generic to any item implementing them, not bucket-specific.
+        if (result == InteractionResult.PASS) {
+            if (stack.getItem() instanceof net.minecraft.world.item.DispensibleContainerItem dispensible
+                    && dispensible.emptyContents(player, fakeLevel, fakeAnchor, fakeHit)) {
+                dispensible.checkExtraContent(player, fakeLevel, stack, fakeAnchor);
+                ItemStack emptied = net.minecraft.world.item.ItemUtils.createFilledResult(
+                        stack, player, net.minecraft.world.item.BucketItem.getEmptySuccessItem(stack, player));
+                player.setItemInHand(hand, emptied);
+                result = InteractionResult.SUCCESS;
+            } else {
+                BlockState currentState = fakeLevel.getBlockState(fakeAnchor);
+                if (currentState.getBlock() instanceof net.minecraft.world.level.block.BucketPickup bucketPickup) {
+                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, fakeAnchor, currentState);
+                    if (!picked.isEmpty()) {
+                        ItemStack filled = net.minecraft.world.item.ItemUtils.createFilledResult(stack, player, picked);
+                        player.setItemInHand(hand, filled);
+                        result = InteractionResult.SUCCESS;
+                    }
+                }
+            }
+        }
+
         for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
             BlockPos touchedPos = touched.getKey();
             BlockState touchedState = touched.getValue();
@@ -344,9 +390,19 @@ public class SubgridEventHandler {
 
             PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
             if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
-                piece.runtimeState = touchedState;
-                be.notifyNeighbors(piece);
-                be.notifyUpdate();
+                if (touchedState.isAir()) {
+                    // #TODO remove before release — water-placement investigation. A piece that
+                    // became air here (e.g. BucketPickup emptying a water piece back into a
+                    // bucket) needs the same real removal applyChanges already does for tick-
+                    // driven self-destruction — just overwriting runtimeState with air would leave
+                    // a ghost piece still occupying (and blocking) the cell.
+                    removeAndDrop(be, serverLevel, be.getBlockPos(),
+                            new Vec3i(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()), player);
+                } else {
+                    piece.runtimeState = touchedState;
+                    be.notifyNeighbors(piece);
+                    be.notifyUpdate();
+                }
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
                 if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel)) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
