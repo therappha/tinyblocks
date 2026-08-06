@@ -539,6 +539,11 @@ public final class VanillaBlockPiece extends PieceDefinition {
         }
 
         @Override
+        public BlockPos resolveLocal(BlockPos pos) {
+            return resolve(pos);
+        }
+
+        @Override
         public void set(BlockPos pos, BlockState state) {
             super.set(resolve(pos), state);
         }

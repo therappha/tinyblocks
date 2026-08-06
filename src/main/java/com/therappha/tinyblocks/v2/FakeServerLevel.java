@@ -260,15 +260,20 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     @Override
     public void levelEvent(@Nullable net.minecraft.world.entity.player.Player player, int type, BlockPos pos, int data) {}
 
-    // Found live (run/logs/latest.log): ServerLevel.blockEvent reads this.blockEvents (a
-    // ServerLevel-only queue for batched block events — chest lid open/close signals, note block
-    // notes, etc.), which is null here (not a Level field, so create()'s transplant never touches
-    // it) — NPE'd every time ChestBlockEntity.stopOpen ran on menu close, via
-    // ContainerOpenersCounter -> signalOpenCount -> blockEvent. Same no-op pattern as
-    // sendBlockUpdated/levelEvent above: these are all real-world side effects (sounds, particles,
-    // block-model-triggered animations) a fake position space has no meaningful way to perform.
+    // Originally a no-op — ServerLevel.blockEvent reads this.blockEvents (a ServerLevel-only queue
+    // for batched block events — chest lid open/close signals, note block notes, etc.), which is
+    // null here (not a Level field, so create()'s transplant never touches it), NPE'ing every time
+    // e.g. ChestBlockEntity.stopOpen ran on menu close via ContainerOpenersCounter ->
+    // signalOpenCount -> blockEvent. Delegating to FakeLevel's own blockEvent (see its doc comment)
+    // fixes both problems at once: it runs the local trigger against the SAME shared cell space
+    // (delegate wraps the identical `cells` this instance was created with) without touching the
+    // null blockEvents field at all, and broadcasts PieceBlockEventPayload to nearby clients —
+    // which never happened here even before the NPE, since blockEvent's real broadcast step is
+    // itself the real-world side effect a fake position space otherwise has no way to perform.
     @Override
-    public void blockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {}
+    public void blockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {
+        delegate.blockEvent(pos, block, eventId, eventParam);
+    }
 
     @Override
     public net.minecraft.server.ServerScoreboard getScoreboard() {

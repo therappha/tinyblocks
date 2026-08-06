@@ -35,6 +35,17 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
+     * Translates pos the same way this cell space's own reads/writes are translated — a no-op
+     * here (this base class has no aliasing), overridden by SubgridFakeCellGetter to expose its
+     * private resolve() to callers outside VanillaBlockPiece (FakeLevel#blockEvent needs the
+     * fake-local cell a real-world-position-based vanilla call actually landed on, to know which
+     * piece to notify the client about).
+     */
+    public BlockPos resolveLocal(BlockPos pos) {
+        return pos;
+    }
+
+    /**
      * Every position explicitly written this call (via set, i.e. real vanilla code calling
      * setBlock), NOT including positions only ever read via fallback(). Lets a caller notice a
      * write to a position that isn't an already-tracked piece — e.g. water spreading into a
