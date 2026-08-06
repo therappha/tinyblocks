@@ -3,6 +3,7 @@ package com.therappha.tinyblocks.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -11,6 +12,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 
@@ -64,6 +66,28 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             poseStack.scale(cell, cell, cell);
 
             blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+
+            // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
+            // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
+            // static baked model — renderSingleBlock above already no-ops for these
+            // (RenderShape.INVISIBLE, or just has nothing interesting to show statically). A piston
+            // gets its runtimeBlockEntity from the dedicated animation payload (see syncBlockEntity/
+            // applyClientAnimation) for smooth per-tick progress; for everything else, lazily build
+            // the SAME phantom BlockEntity blockEntityFor already builds server-side, straight from
+            // this piece's synced extraData "be" NBT — no piston-specific plumbing needed, exactly
+            // how vanilla's own BlockEntityRenderDispatcher works generically off whatever
+            // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
+            // itself caches onto piece.runtimeBlockEntity).
+            if (piece.runtimeBlockEntity == null && piece.definition == VanillaBlockPiece.INSTANCE) {
+                VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
+            }
+            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity) {
+                BlockEntityRenderer<BlockEntity> ber =
+                        Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
+                if (ber != null) {
+                    ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                }
+            }
 
             if (piece == crackedPiece) {
                 ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(

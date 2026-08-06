@@ -113,16 +113,20 @@ public class SubgridBlockEntity extends BlockEntity {
      * uses when a player targets a cell past a grid's edge, generalized here so anything
      * spreading/falling/growing across a subgrid's boundary (fluids, falling blocks, tree
      * growth) continues into a new subgrid instead of the write being silently dropped. Diagonal
-     * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns false.
+     * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns null.
+     * Returns the placed piece (rather than a boolean) so a caller that also captured a real
+     * BlockEntity for this same write (e.g. a piston's moving-block animation state) has something
+     * to attach it to — see VanillaBlockPiece.applyChanges' syncBlockEntity.
      */
-    public boolean placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
-                                            Object runtimeState, ServerLevel realLevel) {
+    @Nullable
+    public PlacedPiece placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
+                                                Object runtimeState, ServerLevel realLevel) {
         if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
             return placeOrUpdatePiece(definition, local, facing, runtimeState);
         }
 
         Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
-        if (dir == null) return false;
+        if (dir == null) return null;
 
         BlockPos targetPos = worldPosition.relative(dir);
         BlockState targetState = realLevel.getBlockState(targetPos);
@@ -130,7 +134,7 @@ public class SubgridBlockEntity extends BlockEntity {
             realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
         }
         if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
-            return false;
+            return null;
         }
 
         int max = gridSize - 1;
@@ -145,21 +149,24 @@ public class SubgridBlockEntity extends BlockEntity {
      * write outright. A cell held by a DIFFERENT definition genuinely blocks the write, same as
      * placePiece. Only used by placePieceCrossBoundary's vanilla-tick-driven spread/flow callers —
      * player-initiated placement must keep going through plain placePiece, which never silently
-     * overwrites an existing piece.
+     * overwrites an existing piece. Returns the placed/updated piece (rather than a boolean) so a
+     * caller that also captured a real BlockEntity for this same write (e.g. a piston's moving-
+     * block animation state) has something to attach it to.
      */
-    private boolean placeOrUpdatePiece(PieceDefinition definition, BlockPos local, Direction facing, Object runtimeState) {
+    @Nullable
+    private PlacedPiece placeOrUpdatePiece(PieceDefinition definition, BlockPos local, Direction facing, Object runtimeState) {
         PlacedPiece existing = getPieceAt(local.getX(), local.getY(), local.getZ());
         if (existing != null) {
-            if (existing.definition != definition) return false;
-            if (runtimeState.equals(existing.runtimeState)) return true;
+            if (existing.definition != definition) return null;
+            if (runtimeState.equals(existing.runtimeState)) return existing;
             existing.runtimeState = runtimeState;
             notifyNeighbors(existing);
             notifyUpdate();
-            return true;
+            return existing;
         }
         PlacedPiece piece = new PlacedPiece(definition, local, facing);
         piece.runtimeState = runtimeState;
-        return placePiece(piece);
+        return placePiece(piece) ? piece : null;
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
@@ -198,7 +205,13 @@ public class SubgridBlockEntity extends BlockEntity {
 
     public void serverTick(ServerLevel level) {
         boolean dirty = false;
-        for (PlacedPiece piece : pieces) {
+        // A snapshot, not the live list: piece.definition.tick() can itself add/remove pieces (e.g.
+        // a piston's moving-block BE finalizing calls neighborChanged, which can cascade into
+        // another piece being placed or removed via applyChanges) — mutating `pieces` while this
+        // loop's own iterator is still walking it throws ConcurrentModificationException. Found
+        // live once the piston finalize path actually started completing (see FakeServerLevel's
+        // invalidateCapabilities fix) instead of crashing before ever reaching this cascade.
+        for (PlacedPiece piece : new ArrayList<>(pieces)) {
             if (!piece.definition.requiresTick()) continue;
             try {
                 if (piece.definition.tick(piece, level, worldPosition, this)) {
@@ -280,7 +293,11 @@ public class SubgridBlockEntity extends BlockEntity {
     public void clientTick(Level level) {
         for (PlacedPiece piece : pieces) {
             if (piece.definition.requiresClientTick()) {
-                piece.definition.clientTick(piece, level, worldPosition, this);
+                try {
+                    piece.definition.clientTick(piece, level, worldPosition, this);
+                } catch (Exception e) {
+                    logTickFailure("clientTick", piece, e);
+                }
             }
         }
     }

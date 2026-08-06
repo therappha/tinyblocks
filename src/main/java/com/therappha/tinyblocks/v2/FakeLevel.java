@@ -121,6 +121,21 @@ public class FakeLevel extends Level implements FakeSpace {
         return cells.getBlockEntity(pos);
     }
 
+    /**
+     * Captured into the fake cell space instead of falling through to vanilla Level.setBlockEntity
+     * — see FakeCellGetter.setBlockEntity for why that would silently discard real BE data (e.g. a
+     * piston's moving-block animation state) into a real, never-read chunk.
+     */
+    @Override
+    public void setBlockEntity(BlockEntity blockEntity) {
+        cells.setBlockEntity(blockEntity.getBlockPos(), blockEntity);
+    }
+
+    @Override
+    public void removeBlockEntity(BlockPos pos) {
+        cells.removeBlockEntityAt(pos);
+    }
+
     @Override
     public FluidState getFluidState(BlockPos pos) {
         return cells.getFluidState(pos);
@@ -131,13 +146,47 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
 
+    // Substitutes the real position for whatever fake position a piece's own code played a sound
+    // at — same reasoning as the light/sky queries below: a subgrid's pieces don't have their own
+    // real-world position to play a sound FROM, but the one real block they all live inside does.
+    // Was a no-op before (piece code calling level.playSound(...) — e.g. PistonBaseBlock's own
+    // extend/retract sounds — silently produced nothing); this is genuinely inaudible-until-fixed,
+    // not a cosmetic-only gap.
     @Override
     public void playSeededSound(@Nullable Player player, double x, double y, double z,
-                                 Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {}
+                                 Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {
+        real.playSeededSound(player, realPos.getX() + 0.5, realPos.getY() + 0.5, realPos.getZ() + 0.5,
+                sound, source, volume, pitch, seed);
+    }
 
     @Override
     public void playSeededSound(@Nullable Player player, Entity entity, Holder<SoundEvent> sound,
-                                 SoundSource source, float volume, float pitch, long seed) {}
+                                 SoundSource source, float volume, float pitch, long seed) {
+        real.playSeededSound(player, realPos.getX() + 0.5, realPos.getY() + 0.5, realPos.getZ() + 0.5,
+                sound, source, volume, pitch, seed);
+    }
+
+    /**
+     * Not overridden before — vanilla's own base Level#blockEvent already runs the LOCAL trigger
+     * (super.blockEvent below), which is what makes e.g. a piston's own extend/retract actually
+     * happen server-side. What it never did is reach the CLIENT: real Level subclasses eventually
+     * broadcast a ClientboundBlockEventPacket to nearby players (ServerLevel's own blockEvent
+     * override queues it); ours never had an equivalent, so anything relying on this signal to
+     * animate client-side (a chest's opener count, a bell's ring) silently never reached the
+     * client at all. PieceBlockEventPayload rebuilds that broadcast generically — see its own doc
+     * comment for why replaying it against the piece's own cached BlockEntity is equivalent to
+     * what BlockState#triggerEvent's default implementation would have done with it.
+     */
+    @Override
+    public void blockEvent(BlockPos pos, Block block, int id, int param) {
+        super.blockEvent(pos, block, id, param);
+        if (real instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            BlockPos cell = cells.resolveLocal(pos);
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new net.minecraft.world.level.ChunkPos(realPos),
+                    new com.therappha.tinyblocks.network.PieceBlockEventPayload(realPos, cell, id, param));
+        }
+    }
 
     @Override
     public String gatherChunkSourceStats() { return "FakeLevel"; }

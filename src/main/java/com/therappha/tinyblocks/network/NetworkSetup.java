@@ -21,6 +21,8 @@ public class NetworkSetup {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToClient(SubgridPieceAddedPayload.TYPE, SubgridPieceAddedPayload.STREAM_CODEC, NetworkSetup::handlePieceAdded);
         registrar.playToClient(SubgridPieceRemovedPayload.TYPE, SubgridPieceRemovedPayload.STREAM_CODEC, NetworkSetup::handlePieceRemoved);
+        registrar.playToClient(PistonAnimationPayload.TYPE, PistonAnimationPayload.STREAM_CODEC, NetworkSetup::handlePistonAnimation);
+        registrar.playToClient(PieceBlockEventPayload.TYPE, PieceBlockEventPayload.STREAM_CODEC, NetworkSetup::handlePieceBlockEvent);
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
     }
 
@@ -43,6 +45,28 @@ public class NetworkSetup {
             // This payload only ever reaches a client (playToClient) — safe to release the mining
             // interceptor's in-flight guard here (see SubgridMiningInterceptor for why it exists).
             com.therappha.tinyblocks.client.SubgridMiningInterceptor.onMineConfirmed();
+        });
+    }
+
+    private static void handlePistonAnimation(PistonAnimationPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Level level = ctx.player().level();
+            if (level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid) {
+                com.therappha.tinyblocks.v2.VanillaBlockPiece.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
+            }
+        });
+    }
+
+    private static void handlePieceBlockEvent(PieceBlockEventPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Level level = ctx.player().level();
+            if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
+            PlacedPiece piece = subgrid.getPieceAt(payload.cell().getX(), payload.cell().getY(), payload.cell().getZ());
+            if (piece == null) return;
+            var blockEntity = com.therappha.tinyblocks.v2.VanillaBlockPiece.blockEntityFor(piece, subgrid, level);
+            if (blockEntity != null) {
+                blockEntity.triggerEvent(payload.eventId(), payload.eventParam());
+            }
         });
     }
 

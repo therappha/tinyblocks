@@ -14,6 +14,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -101,6 +102,13 @@ public class SubgridEventHandler {
         if (removed == null) return null;
 
         BlockState renderState = removed.definition.renderState(removed);
+        // Both real removal paths (the flicker-free mining-completion path and the debug-fast-
+        // removal fallback) go through here, so this one call covers piece breaking generically —
+        // same volume/pitch formula vanilla's own Level.destroyBlock uses for a block's own sound
+        // type, played at the subgrid's real position (pieces don't have one of their own).
+        var soundType = renderState.getSoundType();
+        level.playSound(null, subgrid.getBlockPos(), soundType.getBreakSound(), SoundSource.BLOCKS,
+                (soundType.getVolume() + 1.0F) / 2.0F, soundType.getPitch() * 0.8F);
         boolean correctTool = !removed.definition.requiresCorrectTool()
                 || player.hasCorrectToolForDrops(renderState);
         if (correctTool && !player.isCreative()) {
@@ -161,16 +169,20 @@ public class SubgridEventHandler {
         }
 
         event.setCanceled(true);
-        // Vanilla's own client/server dispatch tries useOn first, and — if that PASSes — falls
-        // back to a SEPARATE Item.use() call (Minecraft#startUseItem / ServerPlayerGameMode
-        // #useItemOn both do this) UNLESS this event's own result already "consumesAction()".
-        // Leaving the default (PASS) cancellation result meant a cancelled RightClickBlock still
-        // let that fallback run uncontrolled against the REAL world — this is how a water bucket
-        // ended up placing a real, full-size water block next to/on top of the SubgridBlock (which
-        // then behaved like ordinary unsupported vanilla water and drained away): our own useOn-only
-        // handling below never even ran, since the actual placement already happened via a path we
-        // weren't listening to at all. #TODO remove before release if it turns out unnecessary once
-        // the DispensibleContainerItem/BucketPickup fallback below is verified sufficient on its own.
+        // Without this, a cancelled RightClickBlock defaults its result to PASS (see NeoForge's
+        // own PlayerInteractEvent.RightClickBlock javadoc: "if result equals PASS, we proceed to
+        // RightClickItem" — and RightClickItem's own docs say a non-SUCCESS result there makes the
+        // client "continue to other hands"). We DID fully handle this click (a lever flip, a piece
+        // interaction, a placement) — telling vanilla it was a PASS instead let it cascade into
+        // trying the item's own use, and then the OTHER hand's full interaction sequence too,
+        // running this exact handler a second time for one physical click. Found live two separate
+        // ways: a lever (or anything else routed through this handler) toggled twice per click
+        // whenever the player had anything usable in the other hand — a piston wired to it would
+        // extend AND retract within the same tick, interrupting its own animation before it could
+        // ever settle; and separately, a water bucket's fallback Item.use() call (Minecraft
+        // #startUseItem / ServerPlayerGameMode#useItemOn both try this after a PASSed useOn) ran
+        // uncontrolled against the REAL world, placing a real, full-size water block next to/on top
+        // of the SubgridBlock instead of ever reaching our own useOn-only handling below.
         event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
 
@@ -303,7 +315,7 @@ public class SubgridEventHandler {
                         || be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()) != null) {
                     continue;
                 }
-                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel)) {
+                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel) != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }
@@ -404,7 +416,8 @@ public class SubgridEventHandler {
                     be.notifyUpdate();
                 }
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
-                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel)) {
+                PlacedPiece placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
+                if (placed != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }
