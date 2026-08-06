@@ -559,8 +559,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * (not the piece's tiny fake anchor) so stillValid's distance check — which reads the
      * BlockEntity's OWN stored position, set once at construction — works no matter which fake
      * space instance later calls setLevel on it.
+     *
+     * Public and safe to call client-side too (no server-only calls in here) — SubgridRenderer
+     * uses this exact same method to lazily build a client-side phantom BE purely for
+     * BlockEntityRenderer dispatch, generically, for any EntityBlock piece (a chest, an enchanting
+     * table, ...), not just the piston-specific animation path. The synced extraData "be" blob this
+     * reads from already reaches the client via the normal piece-sync payloads (PlacedPiece.save
+     * includes extraData whenever non-empty) — nothing extra needs sending for this to work.
      */
-    private static BlockEntity blockEntityFor(PlacedPiece piece, SubgridBlockEntity be, Level level) {
+    public static BlockEntity blockEntityFor(PlacedPiece piece, SubgridBlockEntity be, Level level) {
         if (piece.runtimeBlockEntity instanceof BlockEntity cached) {
             cached.setLevel(level);
             return cached;
