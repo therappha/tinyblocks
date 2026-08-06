@@ -7,7 +7,6 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.level.material.Fluids;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -63,9 +62,25 @@ public class FakeCellGetter implements BlockGetter {
         return Blocks.AIR.defaultBlockState();
     }
 
+    /**
+     * BlockGetter#getFluidState has no vanilla default (abstract) — every implementer must derive
+     * it themselves. Delegating to getBlockState(pos).getFluidState() is the standard mapping
+     * (matches e.g. LevelChunk's own implementation) and, critically, automatically inherits
+     * whatever boundary/fallback logic a subclass's getBlockState override provides (e.g.
+     * SubgridBlockEntity's real-world neighbor lookups at a subgrid's edge) — a hand-rolled
+     * fluid-specific fallback would have to duplicate that logic and could drift out of sync.
+     *
+     * Previously hardcoded to Fluids.EMPTY unconditionally, a leftover from when this class only
+     * needed to prove hardness/shape queries worked (before fluid support existed at all) — never
+     * updated once FlowingFluid ticking was added. Since FlowingFluid#spreadTo, #getNewLiquid, and
+     * effectively all of vanilla's own flow-decision logic read neighbor state exclusively through
+     * Level#getFluidState (not BlockState#getFluidState), the fake space looked permanently
+     * fluid-free everywhere — including at a piece's own anchor — which is why water placed via
+     * this engine never actually flowed.
+     */
     @Override
     public FluidState getFluidState(BlockPos pos) {
-        return Fluids.EMPTY.defaultFluidState();
+        return getBlockState(pos).getFluidState();
     }
 
     @Override
