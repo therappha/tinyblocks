@@ -51,6 +51,20 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
+     * pos translated by whatever offset maps aliasFrom onto aliasTo — identity when aliasFrom is
+     * null. Pulled out of SubgridFakeCellGetter.resolve (which just delegates here) so this exact
+     * math — the source of three separate bugs in one session (#33, #37): feeding an
+     * ALREADY-LOCAL coordinate like a piece's own anchor through this when aliasFrom is non-null
+     * silently produces a nonsense position, since it's only meant for vanilla call-through
+     * positions relative to aliasFrom — has direct unit test coverage without needing a real
+     * SubgridBlockEntity to construct the aliasing cell getter around.
+     */
+    public static BlockPos aliasOffset(@Nullable BlockPos aliasFrom, BlockPos aliasTo, BlockPos pos) {
+        if (aliasFrom == null) return pos;
+        return aliasTo.offset(pos.getX() - aliasFrom.getX(), pos.getY() - aliasFrom.getY(), pos.getZ() - aliasFrom.getZ());
+    }
+
+    /**
      * Translates pos the same way this cell space's own reads/writes are translated — a no-op
      * here (this base class has no aliasing), overridden by SubgridFakeCellGetter to expose its
      * private resolve() to callers outside VanillaBlockPiece (FakeLevel#blockEvent needs the

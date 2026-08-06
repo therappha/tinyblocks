@@ -533,8 +533,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // Translating the WHOLE neighborhood by the same offset fixes this generically for any
         // block doing a relative lookup during onUse, not just doors.
         private BlockPos resolve(BlockPos pos) {
-            if (aliasFrom == null) return pos;
-            return aliasTo.offset(pos.getX() - aliasFrom.getX(), pos.getY() - aliasFrom.getY(), pos.getZ() - aliasFrom.getZ());
+            return FakeCellGetter.aliasOffset(aliasFrom, aliasTo, pos);
         }
 
         @Override
