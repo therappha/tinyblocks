@@ -34,23 +34,6 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
-     * Writes pos verbatim, bypassing any subclass aliasing/translation (final so nothing can
-     * override that guarantee) — for seeding sibling pieces' own states at their OWN true
-     * fake-local anchors (see VanillaBlockPiece#populateCells), which is a fundamentally DIFFERENT
-     * coordinate space from whatever real-world-relative convention a specific vanilla call
-     * (onUse's realPos aliasing) is using pos for. Using the aliasing set() for this seeding step
-     * was a real regression: SubgridFakeCellGetter#resolve translates ANY given position by the
-     * same realPos->piece.anchor offset now (needed so a door's own neighbor lookup finds its
-     * other half correctly) — applied to populateCells' already-fake-local seed writes, that
-     * offset scattered every sibling piece to a nonsensical position, breaking not just doors but
-     * every onUse interaction (levers, repeaters, everything) since nothing could find its own
-     * seeded state anymore.
-     */
-    public final void setRaw(BlockPos pos, BlockState state) {
-        cells.put(pos, state);
-    }
-
-    /**
      * Translates pos the same way this cell space's own reads/writes are translated — a no-op
      * here (this base class has no aliasing), overridden by SubgridFakeCellGetter to expose its
      * private resolve() to callers outside VanillaBlockPiece (FakeLevel#blockEvent needs the
