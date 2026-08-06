@@ -5,6 +5,7 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
@@ -13,6 +14,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 
 public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> {
 
@@ -33,9 +35,31 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             crackedPiece = be.getPieceAt(crackCell[0], crackCell[1], crackCell[2]);
         }
 
+        SubgridFluidView fluidView = null;
+        // #TODO remove before release — water-rendering investigation. Captured once, BEFORE any
+        // per-piece pushPose/translate below — this is the BE's own unmodified render origin
+        // (camera-relative, exactly what renderSingleBlock's pipeline also builds on top of via
+        // its own translate+scale). See ScaledVertexConsumer's doc comment for why renderLiquid
+        // needs this passed through explicitly instead of just relying on the ambient poseStack.
+        PoseStack.Pose basePose = poseStack.last();
+
         for (PlacedPiece piece : be.getPieces()) {
             BlockState state = piece.definition.renderState(piece);
             if (state == null) continue;
+
+            // #TODO remove before release — water-rendering investigation. A fluid's BlockState
+            // has RenderShape.INVISIBLE (same as any real water/lava), so renderSingleBlock below
+            // is a deliberate no-op for it — fluids render through a completely separate path
+            // (see SubgridFluidView's doc comment) that needs real neighbor-height sampling, not
+            // just this one BlockState. renderLiquid takes no PoseStack (see ScaledVertexConsumer's
+            // doc comment) — the scale has to be applied by wrapping the buffer instead.
+            FluidState fluidState = state.getFluidState();
+            if (!fluidState.isEmpty()) {
+                if (fluidView == null) fluidView = new SubgridFluidView(be, Minecraft.getInstance().level);
+                RenderType fluidRenderType = ItemBlockRenderTypes.getRenderLayer(fluidState);
+                var fluidBuffer = new ScaledVertexConsumer(bufferSource.getBuffer(fluidRenderType), cell, basePose);
+                blockRenderer.renderLiquid(piece.anchor, fluidView, fluidBuffer, state, fluidState);
+            }
 
             poseStack.pushPose();
             poseStack.translate(piece.anchor.getX() * cell, piece.anchor.getY() * cell, piece.anchor.getZ() * cell);

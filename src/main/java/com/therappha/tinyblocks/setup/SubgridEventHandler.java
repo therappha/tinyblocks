@@ -175,10 +175,14 @@ public class SubgridEventHandler {
         // client "continue to other hands"). We DID fully handle this click (a lever flip, a piece
         // interaction, a placement) — telling vanilla it was a PASS instead let it cascade into
         // trying the item's own use, and then the OTHER hand's full interaction sequence too,
-        // running this exact handler a second time for one physical click. Found live: a lever (or
-        // anything else routed through this handler) toggled twice per click whenever the player
-        // had anything usable in the other hand — a piston wired to it would extend AND retract
-        // within the same tick, interrupting its own animation before it could ever settle.
+        // running this exact handler a second time for one physical click. Found live two separate
+        // ways: a lever (or anything else routed through this handler) toggled twice per click
+        // whenever the player had anything usable in the other hand — a piston wired to it would
+        // extend AND retract within the same tick, interrupting its own animation before it could
+        // ever settle; and separately, a water bucket's fallback Item.use() call (Minecraft
+        // #startUseItem / ServerPlayerGameMode#useItemOn both try this after a PASSed useOn) ran
+        // uncontrolled against the REAL world, placing a real, full-size water block next to/on top
+        // of the SubgridBlock instead of ever reaching our own useOn-only handling below.
         event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
 
@@ -355,6 +359,41 @@ public class SubgridEventHandler {
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
+        // #TODO remove before release (or fold into a permanent comment) once verified live —
+        // water-placement investigation.
+        //
+        // Vanilla dispatches useOn first, then falls back to a SEPARATE Item#use(Level, Player,
+        // InteractionHand) call if useOn PASSes (Minecraft#startUseItem / ServerPlayerGameMode
+        // #useItemOn). BucketItem — like any DispensibleContainerItem/BucketPickup — only
+        // overrides use(), never useOn(), so the stack.useOn(...) call above is always a no-op
+        // PASS for it. use() itself would be no help either: it computes its OWN internal
+        // player-eye-position raycast (BucketItem#getPlayerPOVHitResult), which can't resolve
+        // against this fake, small-integer local-grid coordinate space — the player's real eye
+        // position has nothing to do with cell coordinates 0..gridSize. DispensibleContainerItem
+        // (emptying) and BucketPickup (filling) are the same POSITION-based hooks vanilla's own
+        // dispenser code uses instead of a raycast — call them directly with the fakeAnchor/fakeHit
+        // already computed above, generic to any item implementing them, not bucket-specific.
+        if (result == InteractionResult.PASS) {
+            if (stack.getItem() instanceof net.minecraft.world.item.DispensibleContainerItem dispensible
+                    && dispensible.emptyContents(player, fakeLevel, fakeAnchor, fakeHit)) {
+                dispensible.checkExtraContent(player, fakeLevel, stack, fakeAnchor);
+                ItemStack emptied = net.minecraft.world.item.ItemUtils.createFilledResult(
+                        stack, player, net.minecraft.world.item.BucketItem.getEmptySuccessItem(stack, player));
+                player.setItemInHand(hand, emptied);
+                result = InteractionResult.SUCCESS;
+            } else {
+                BlockState currentState = fakeLevel.getBlockState(fakeAnchor);
+                if (currentState.getBlock() instanceof net.minecraft.world.level.block.BucketPickup bucketPickup) {
+                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, fakeAnchor, currentState);
+                    if (!picked.isEmpty()) {
+                        ItemStack filled = net.minecraft.world.item.ItemUtils.createFilledResult(stack, player, picked);
+                        player.setItemInHand(hand, filled);
+                        result = InteractionResult.SUCCESS;
+                    }
+                }
+            }
+        }
+
         for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
             BlockPos touchedPos = touched.getKey();
             BlockState touchedState = touched.getValue();
@@ -363,15 +402,32 @@ public class SubgridEventHandler {
 
             PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
             if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
-                piece.runtimeState = touchedState;
-                be.notifyNeighbors(piece);
-                be.notifyUpdate();
+                if (touchedState.isAir()) {
+                    // #TODO remove before release — water-placement investigation. A piece that
+                    // became air here (e.g. BucketPickup emptying a water piece back into a
+                    // bucket) needs the same real removal applyChanges already does for tick-
+                    // driven self-destruction — just overwriting runtimeState with air would leave
+                    // a ghost piece still occupying (and blocking) the cell.
+                    removeAndDrop(be, serverLevel, be.getBlockPos(),
+                            new Vec3i(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()), player);
+                } else {
+                    piece.runtimeState = touchedState;
+                    be.notifyNeighbors(piece);
+                    be.notifyUpdate();
+                }
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
                 PlacedPiece placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
                 if (placed != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }
             }
+        }
+        // #TODO remove before release — water-placement investigation. Mirrors onBlockBreak/
+        // handleMinePiece's own cleanup: removeAndDrop above (BucketPickup emptying the last
+        // piece in this subgrid) leaves an empty-but-still-present SubgridBlock behind otherwise
+        // — every other removal path already deletes it once nothing's left.
+        if (be.getPieces().isEmpty()) {
+            serverLevel.removeBlock(be.getBlockPos(), false);
         }
         // Whatever ran above (existing-piece update, new-piece placement, or neither) may have
         // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
