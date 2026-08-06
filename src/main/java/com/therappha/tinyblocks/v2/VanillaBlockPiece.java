@@ -223,9 +223,30 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
     @Override
     public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {
-        if (!(piece.runtimeBlockEntity instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving)) {
+        if (piece.runtimeBlockEntity instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
+            clientTickPiston(piece, subgridPos, moving);
             return;
         }
+        // Any OTHER cached BlockEntity (a chest, an enchanting table, a bell, a sculk sensor, ...)
+        // gets its own REAL client-side ticker driven forward every client tick, exactly like
+        // vanilla's own per-chunk BE ticking would — that's what actually advances a chest's lid
+        // openness, an enchanting table's book-flip clock, a bell's ring/shake state, etc. Nothing
+        // block-specific here: same generic getTicker dispatch tickTyped already uses server-side,
+        // just against the client Level instead. Piston is excluded and kept on its own reflection-
+        // based path above deliberately — its real tick() method's finalize branch calls
+        // level.setBlock/removeBlockEntity, which would be dangerous to invoke against a BE
+        // constructed at the REAL subgrid position (see applyClientAnimation) on the client; these
+        // other blocks' tickers are self-contained field/animation updates with no such risk.
+        if (piece.runtimeBlockEntity instanceof BlockEntity generic) {
+            BlockState state = stateOf(piece);
+            if (state != null && state.getBlock() instanceof EntityBlock entityBlock) {
+                tickClientTyped(entityBlock, level, state, generic.getBlockPos(), generic);
+            }
+        }
+    }
+
+    private static void clientTickPiston(PlacedPiece piece, BlockPos subgridPos,
+                                          net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
         try {
             float progress = PISTON_PROGRESS.getFloat(moving);
             if (progress >= 1.0F) {
@@ -247,6 +268,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
         } catch (ReflectiveOperationException e) {
             piece.runtimeBlockEntity = null;
         }
+    }
+
+    /** Client-side twin of tickTyped below — same bridging trick, different (client) Level. */
+    @SuppressWarnings("unchecked")
+    private static <T extends BlockEntity> void tickClientTyped(EntityBlock entityBlock, Level level,
+                                                                  BlockState state, BlockPos pos, T phantom) {
+        var ticker = entityBlock.getTicker(level, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType());
+        if (ticker == null) return;
+        ticker.tick(level, pos, state, phantom);
     }
 
     /**
