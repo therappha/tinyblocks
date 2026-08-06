@@ -14,7 +14,6 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -688,6 +687,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
                     p.runtimeState = now;
                     syncBlockEntity(be, p, p.anchor, cells, (Level) fakeSpace, realLevel);
                     be.notifyNeighbors(p);
+                    // This piece's new state might be the delayed arrival of a block that vacated
+                    // some OTHER cell several ticks ago (see the deferred-drop comment below) — a
+                    // sticky piston retract, for instance, sets the pulled block's old cell to air
+                    // immediately (onNeighborChanged) but only writes its arrival at the new cell
+                    // once that cell's own captured BE finalizes, ticks later. Cancel any pending
+                    // drop with a matching state so it isn't ALSO dropped as an item once its grace
+                    // window expires — found live as a duplication bug (block visibly moved, but an
+                    // item of the same block dropped anyway).
+                    be.cancelPendingDrop(now);
                 }
                 anyChanged = true;
             }
@@ -721,9 +729,18 @@ public final class VanillaBlockPiece extends PieceDefinition {
             Vec3 dropPos = be.realPositionOf(p.anchor);
             PlacedPiece removed = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
             if (removed != null && !movedElsewhere) {
-                for (ItemStack drop : removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY)) {
-                    realLevel.addFreshEntity(new ItemEntity(realLevel, dropPos.x, dropPos.y, dropPos.z, drop));
-                }
+                // Deferred, not dropped immediately: the "moved elsewhere" scan above only sees
+                // positions touched THIS SAME call, but a piston's own move sequence can span
+                // several calls (the vacate happens now, via onNeighborChanged; the matching
+                // arrival at the new cell only gets written ticks later, when that cell's own
+                // captured BE finalizes via tick() — see PistonMovingBlockEntity). Queuing the drop
+                // for a short grace window instead of dropping right away gives that later arrival
+                // a chance to cancel it (see cancelPendingDrop's call sites above/below) — found
+                // live as a duplication bug: sticky piston retract visibly moved the block AND
+                // dropped an item of it, because the immediate same-call check alone could never
+                // see the delayed arrival.
+                List<ItemStack> drops = removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY);
+                be.deferDrop(previousState, dropPos, drops, realLevel);
             }
         }
         // A cell that WASN'T an existing piece before this call but now holds real state — e.g.
@@ -747,6 +764,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // crossing this subgrid's boundary), instead of the write just being silently dropped.
             PlacedPiece placed = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
             if (placed != null) {
+                be.cancelPendingDrop(touchedState);
                 if (isPistonRelated(touchedState)) {
                     LOGGER.info("[piston-anim] new piece at {} (cell {}, withinBounds={}): {}",
                             be.getBlockPos(), pos, withinBounds, touchedState);
@@ -812,12 +830,18 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 LOGGER.info("[piston-anim] server finalized MOVING_PISTON BE at {} (cell {})", be.getBlockPos(), pos);
             }
             piece.runtimeBlockEntity = null;
+            // This piece's own captured operation just finished — see SubgridBlockEntity's
+            // activeCaptures doc for why any pending drop elsewhere in this subgrid waits on this.
+            be.captureEnded(piece);
             return;
         }
         BlockEntity captured = cells.touchedBlockEntities().get(pos);
         if (captured == null) return;
         captured.setLevel(fakeLevel);
         piece.runtimeBlockEntity = captured;
+        // Vanilla just handed us a fully-parameterized BE for an operation it's driving (today
+        // only a piston does this) — see SubgridBlockEntity's activeCaptures doc.
+        be.captureStarted(piece);
         if (captured instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
             LOGGER.info("[piston-anim] captured MOVING_PISTON BE at {} (cell {}) extending={} source={} — sending animation payload",
                     be.getBlockPos(), pos, moving.isExtending(), moving.isSourcePiston());

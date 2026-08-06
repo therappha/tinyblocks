@@ -23,6 +23,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +43,77 @@ public class SubgridBlockEntity extends BlockEntity {
     /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}
     private final List<ScheduledPieceTick> scheduledTicks = new ArrayList<>();
+
+    /**
+     * A piece that went to air without an immediately-visible replacement elsewhere this same
+     * call (see VanillaBlockPiece#applyChanges) — queued instead of dropped right away, since a
+     * piston's own move sequence can vacate a cell in one call (onNeighborChanged) and only write
+     * the block's arrival at its new cell several ticks later, in a separate call (that cell's own
+     * captured BE finalizing via tick()). Held until either something cancels it (the delayed
+     * arrival showed up, see cancelPendingDrop) or activeCaptures genuinely settles back to empty
+     * — NOT a fixed tick count: a fixed guess is either too short (misses a slower animation) or
+     * needlessly delays every genuine destruction by the same margin regardless. safetyDeadlineTick
+     * is pure insurance against a leaked capture (a piece whose captureEnded() never fires, e.g. an
+     * exception mid-finalize) permanently starving this drop — not the primary gate.
+     */
+    private record PendingDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
+                                List<net.minecraft.world.item.ItemStack> drops, long safetyDeadlineTick) {}
+    private final List<PendingDrop> pendingDrops = new ArrayList<>();
+    private static final long PENDING_DROP_SAFETY_TICKS = 200;
+
+    /**
+     * Pieces currently holding a vanilla-captured BE (see VanillaBlockPiece#syncBlockEntity) —
+     * i.e. an operation vanilla itself constructed with real parameters and hasn't finished with
+     * yet (today, only a piston's PistonMovingBlockEntity does this; nothing here is piston-
+     * specific, any future block using the same setBlockEntity/removeBlockEntity capture pattern
+     * is covered the same way). Identity-based: tracks the PlacedPiece instances themselves, not
+     * their state, so it can't be confused by two pieces sharing a BlockState.
+     */
+    private final Set<PlacedPiece> activeCaptures = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    public void captureStarted(PlacedPiece piece) {
+        activeCaptures.add(piece);
+    }
+
+    public void captureEnded(PlacedPiece piece) {
+        activeCaptures.remove(piece);
+    }
+
+    public void deferDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
+                           List<net.minecraft.world.item.ItemStack> drops, ServerLevel level) {
+        if (drops.isEmpty()) return;
+        pendingDrops.add(new PendingDrop(state, dropPos, drops, level.getGameTime() + PENDING_DROP_SAFETY_TICKS));
+    }
+
+    /**
+     * Cancels the oldest pending drop matching state — called whenever ANY piece (new or
+     * existing) ends up holding this same state, on the assumption it's the delayed arrival of
+     * whatever just vacated elsewhere rather than a coincidence. Same imprecision the immediate
+     * same-call movedElsewhere check in applyChanges already accepted (state equality only, no
+     * piece identity) — just widened across time instead of a single call.
+     */
+    public void cancelPendingDrop(BlockState state) {
+        for (int i = 0; i < pendingDrops.size(); i++) {
+            if (pendingDrops.get(i).state().equals(state)) {
+                pendingDrops.remove(i);
+                return;
+            }
+        }
+    }
+
+    private void tickPendingDrops(ServerLevel level) {
+        if (pendingDrops.isEmpty()) return;
+        boolean stillAnimating = !activeCaptures.isEmpty();
+        long now = level.getGameTime();
+        pendingDrops.removeIf(pd -> {
+            if (stillAnimating && pd.safetyDeadlineTick() > now) return false;
+            for (net.minecraft.world.item.ItemStack drop : pd.drops()) {
+                level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(
+                        level, pd.dropPos().x, pd.dropPos().y, pd.dropPos().z, drop));
+            }
+            return true;
+        });
+    }
 
     /**
      * Queues piece.definition.scheduledTick(...) to fire once level.getGameTime() reaches
@@ -226,6 +299,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
         drainScheduledTicks(level);
         sampleRandomTicks(level);
+        tickPendingDrops(level);
     }
 
     /**
