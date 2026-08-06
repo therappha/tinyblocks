@@ -14,6 +14,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -101,6 +102,13 @@ public class SubgridEventHandler {
         if (removed == null) return null;
 
         BlockState renderState = removed.definition.renderState(removed);
+        // Both real removal paths (the flicker-free mining-completion path and the debug-fast-
+        // removal fallback) go through here, so this one call covers piece breaking generically —
+        // same volume/pitch formula vanilla's own Level.destroyBlock uses for a block's own sound
+        // type, played at the subgrid's real position (pieces don't have one of their own).
+        var soundType = renderState.getSoundType();
+        level.playSound(null, subgrid.getBlockPos(), soundType.getBreakSound(), SoundSource.BLOCKS,
+                (soundType.getVolume() + 1.0F) / 2.0F, soundType.getPitch() * 0.8F);
         boolean correctTool = !removed.definition.requiresCorrectTool()
                 || player.hasCorrectToolForDrops(renderState);
         if (correctTool && !player.isCreative()) {

@@ -221,15 +221,21 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     @Override
     public void destroyBlockProgress(int breakerId, BlockPos pos, int progress) {}
 
+    // Delegates to FakeLevel's own fix (real position substitution) instead of no-op'ing — see
+    // that class for why this needs to actually play something now.
     @Override
     public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, double x, double y, double z,
                                  net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
-                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {}
+                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {
+        delegate.playSeededSound(player, x, y, z, sound, source, volume, pitch, seed);
+    }
 
     @Override
     public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, Entity entity,
                                  net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
-                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {}
+                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {
+        delegate.playSeededSound(player, entity, sound, source, volume, pitch, seed);
+    }
 
     // Found live (run/logs/latest.log): BlockEntity.setRemoved() -> IBlockEntityExtension
     // .invalidateCapabilities -> ServerLevel.invalidateCapabilities reads this.capListenerHolder,

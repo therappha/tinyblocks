@@ -146,13 +146,25 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
 
+    // Substitutes the real position for whatever fake position a piece's own code played a sound
+    // at — same reasoning as the light/sky queries below: a subgrid's pieces don't have their own
+    // real-world position to play a sound FROM, but the one real block they all live inside does.
+    // Was a no-op before (piece code calling level.playSound(...) — e.g. PistonBaseBlock's own
+    // extend/retract sounds — silently produced nothing); this is genuinely inaudible-until-fixed,
+    // not a cosmetic-only gap.
     @Override
     public void playSeededSound(@Nullable Player player, double x, double y, double z,
-                                 Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {}
+                                 Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {
+        real.playSeededSound(player, realPos.getX() + 0.5, realPos.getY() + 0.5, realPos.getZ() + 0.5,
+                sound, source, volume, pitch, seed);
+    }
 
     @Override
     public void playSeededSound(@Nullable Player player, Entity entity, Holder<SoundEvent> sound,
-                                 SoundSource source, float volume, float pitch, long seed) {}
+                                 SoundSource source, float volume, float pitch, long seed) {
+        real.playSeededSound(player, realPos.getX() + 0.5, realPos.getY() + 0.5, realPos.getZ() + 0.5,
+                sound, source, volume, pitch, seed);
+    }
 
     @Override
     public String gatherChunkSourceStats() { return "FakeLevel"; }
