@@ -56,8 +56,8 @@ public class SubgridBlockEntity extends BlockEntity {
      * is pure insurance against a leaked capture (a piece whose captureEnded() never fires, e.g. an
      * exception mid-finalize) permanently starving this drop — not the primary gate.
      */
-    private record PendingDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                                List<net.minecraft.world.item.ItemStack> drops, long safetyDeadlineTick) {}
+    record PendingDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
+                        List<net.minecraft.world.item.ItemStack> drops, long safetyDeadlineTick) {}
     private final List<PendingDrop> pendingDrops = new ArrayList<>();
     private static final long PENDING_DROP_SAFETY_TICKS = 200;
 
@@ -79,10 +79,18 @@ public class SubgridBlockEntity extends BlockEntity {
         activeCaptures.remove(piece);
     }
 
+    public boolean hasActiveCaptures() {
+        return !activeCaptures.isEmpty();
+    }
+
+    public int pendingDropCount() {
+        return pendingDrops.size();
+    }
+
     public void deferDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                           List<net.minecraft.world.item.ItemStack> drops, ServerLevel level) {
+                           List<net.minecraft.world.item.ItemStack> drops, long currentGameTime) {
         if (drops.isEmpty()) return;
-        pendingDrops.add(new PendingDrop(state, dropPos, drops, level.getGameTime() + PENDING_DROP_SAFETY_TICKS));
+        pendingDrops.add(new PendingDrop(state, dropPos, drops, currentGameTime + PENDING_DROP_SAFETY_TICKS));
     }
 
     /**
@@ -101,18 +109,31 @@ public class SubgridBlockEntity extends BlockEntity {
         }
     }
 
-    private void tickPendingDrops(ServerLevel level) {
-        if (pendingDrops.isEmpty()) return;
-        boolean stillAnimating = !activeCaptures.isEmpty();
-        long now = level.getGameTime();
+    /**
+     * Decides which pending drops are ready to actually fire at currentGameTime and removes them
+     * from the queue — split out from tickPendingDrops so the decision (does activeCaptures/the
+     * safety deadline say "fire now") is unit-testable on its own, without a real ServerLevel to
+     * spawn the resulting ItemEntity into.
+     */
+    List<PendingDrop> drainReadyDrops(long currentGameTime) {
+        if (pendingDrops.isEmpty()) return List.of();
+        boolean stillAnimating = hasActiveCaptures();
+        List<PendingDrop> ready = new ArrayList<>();
         pendingDrops.removeIf(pd -> {
-            if (stillAnimating && pd.safetyDeadlineTick() > now) return false;
+            if (stillAnimating && pd.safetyDeadlineTick() > currentGameTime) return false;
+            ready.add(pd);
+            return true;
+        });
+        return ready;
+    }
+
+    private void tickPendingDrops(ServerLevel level) {
+        for (PendingDrop pd : drainReadyDrops(level.getGameTime())) {
             for (net.minecraft.world.item.ItemStack drop : pd.drops()) {
                 level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(
                         level, pd.dropPos().x, pd.dropPos().y, pd.dropPos().z, drop));
             }
-            return true;
-        });
+        }
     }
 
     /**

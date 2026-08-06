@@ -739,7 +739,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 // dropped an item of it, because the immediate same-call check alone could never
                 // see the delayed arrival.
                 List<ItemStack> drops = removed.definition.drops(removed, realLevel, be.getBlockPos(), be, ItemStack.EMPTY);
-                be.deferDrop(previousState, dropPos, drops, realLevel);
+                be.deferDrop(previousState, dropPos, drops, realLevel.getGameTime());
             }
         }
         // A cell that WASN'T an existing piece before this call but now holds real state — e.g.
@@ -863,7 +863,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     /** Which face of piece the already-placed changedNeighbor touches, or null if it can't be found. */
-    private static Direction directionTo(SubgridBlockEntity be, PlacedPiece piece, PlacedPiece changedNeighbor) {
+    static Direction directionTo(SubgridBlockEntity be, PlacedPiece piece, PlacedPiece changedNeighbor) {
         // changedNeighbor may already be detached from the grid (removed) by the time this runs
         // — its OWN piece.definition.onNeighborChanged already fired synchronously, updating its
         // state or removing it, before its notifyNeighbors() cascade reaches here — so a live

@@ -1,6 +1,7 @@
 plugins {
     id 'net.neoforged.moddev' version '2.0.142'
     id 'com.modrinth.minotaur' version '2.+'
+    id 'jacoco'
 }
 
 version = mod_version
@@ -58,9 +59,42 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+jacoco {
+    toolVersion = '0.8.12'
+}
+
 tasks.named('test') {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
 }
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+// Not a blanket coverage target for the whole mod — most of this codebase only makes sense
+// running against a real Minecraft world (see GameTest, not unit tests, for that). Scoped instead
+// to classes that already have real unit coverage, as a regression guard: if someone deletes or
+// weakens FakeCellGetterTest later, the build fails instead of silently losing that coverage.
+jacocoTestCoverageVerification {
+    dependsOn jacocoTestReport
+    violationRules {
+        rule {
+            element = 'CLASS'
+            includes = ['com.therappha.tinyblocks.v2.FakeCellGetter']
+            limit {
+                counter = 'LINE'
+                minimum = 0.50
+            }
+        }
+    }
+}
+
+check.dependsOn jacocoTestCoverageVerification
 
 modrinth {
     token = System.getenv("MODRINTH_TOKEN")
