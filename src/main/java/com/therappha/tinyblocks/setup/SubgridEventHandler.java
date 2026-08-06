@@ -161,6 +161,17 @@ public class SubgridEventHandler {
         }
 
         event.setCanceled(true);
+        // Without this, a cancelled RightClickBlock defaults its result to PASS (see NeoForge's
+        // own PlayerInteractEvent.RightClickBlock javadoc: "if result equals PASS, we proceed to
+        // RightClickItem" — and RightClickItem's own docs say a non-SUCCESS result there makes the
+        // client "continue to other hands"). We DID fully handle this click (a lever flip, a piece
+        // interaction, a placement) — telling vanilla it was a PASS instead let it cascade into
+        // trying the item's own use, and then the OTHER hand's full interaction sequence too,
+        // running this exact handler a second time for one physical click. Found live: a lever (or
+        // anything else routed through this handler) toggled twice per click whenever the player
+        // had anything usable in the other hand — a piston wired to it would extend AND retract
+        // within the same tick, interrupting its own animation before it could ever settle.
+        event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
 
         // --- Everything below is server-authoritative; recompute against live state. ---
