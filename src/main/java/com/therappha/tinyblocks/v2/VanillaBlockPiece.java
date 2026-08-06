@@ -489,7 +489,10 @@ public final class VanillaBlockPiece extends PieceDefinition {
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
-                if (s != null) cells.set(p.anchor, s);
+                // setRaw, not set: p.anchor is already the piece's true fake-local coordinate —
+                // must NOT go through SubgridFakeCellGetter's realPos-relative alias translation
+                // (see FakeCellGetter#setRaw's own doc comment for the regression this avoids).
+                if (s != null) cells.setRaw(p.anchor, s);
             }
         }
     }
