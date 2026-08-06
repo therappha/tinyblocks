@@ -34,6 +34,23 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
+     * Reads/writes the raw cell map directly, bypassing any position aliasing a subclass applies
+     * (see SubgridFakeCellGetter.resolve). For internal engine bookkeeping that already operates
+     * in this cell space's own local coordinate frame — e.g. populateCells seeding sibling piece
+     * states by their own anchor, or applyChanges' diff reading them back — as opposed to vanilla
+     * call-through positions (realPos and its neighbor offsets), which DO need alias translation.
+     * final so no subclass can intercept these and reintroduce the same bug.
+     */
+    public final void setRaw(BlockPos pos, BlockState state) {
+        cells.put(pos, state);
+    }
+
+    public final BlockState getStateRaw(BlockPos pos) {
+        BlockState state = cells.get(pos);
+        return state != null ? state : fallback(pos);
+    }
+
+    /**
      * Translates pos the same way this cell space's own reads/writes are translated — a no-op
      * here (this base class has no aliasing), overridden by SubgridFakeCellGetter to expose its
      * private resolve() to callers outside VanillaBlockPiece (FakeLevel#blockEvent needs the
