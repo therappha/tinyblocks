@@ -131,17 +131,32 @@ public final class VanillaBlockPiece extends PieceDefinition {
         BlockState state = stateOf(piece);
         if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return false;
 
-        // Same real-position convention as blockEntityFor/onUse (checkpoint 6) — a ticker like
-        // HopperBlockEntity's push/suck logic reads blockEntity.getBlockPos()/getLevel()
-        // internally (not the pos parameter below) to scan its neighbors, so those neighbor
-        // lookups land on whatever's really above/below the whole SubgridBlock in the real world,
-        // not sibling pieces within the same subgrid. Same accepted degradation already
-        // documented for onUse's bookshelf/double-chest-merge scanning — not a crash, just not
-        // full intra-subgrid neighbor awareness for this one category of lookup. Getting hopper-
-        // to-chest-within-one-subgrid working needs a second, local-anchor-based construction;
-        // see issue #23 for why that's a deliberate follow-up, not done here.
         BlockPos realPos = be.getBlockPos();
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, realPos, piece.anchor);
+        // Alias FROM whatever position the ticker will actually be invoked at, not always realPos.
+        // A freshly-built "blank" BE (hopper, chest, ...) is always constructed at realPos (see
+        // blockEntityFor) — same real-position convention as onUse, needed so a ticker like
+        // HopperBlockEntity's push/suck logic (which reads blockEntity.getBlockPos() internally,
+        // not the pos parameter) still lands its neighbor lookups on sibling pieces instead of
+        // whatever's really above/below the whole SubgridBlock in the real world. Same accepted
+        // degradation already documented for onUse's bookshelf/double-chest-merge scanning — see
+        // issue #23.
+        //
+        // But a captured BE — e.g. a piston's PistonMovingBlockEntity (see syncBlockEntity) — was
+        // constructed by vanilla's OWN code using the piece's fake-local anchor as its position
+        // (that's what PistonBaseBlock.moveBlocks passed to newMovingBlockEntity in the first
+        // place), so its ticker's own internal reads/writes (level.getBlockState/setBlock at its
+        // own pos or a neighbor) already operate in LOCAL terms. Aliasing FROM realPos in that case
+        // double-translates: resolve() would treat the ticker's already-local pos as if it still
+        // needed the realPos->anchor offset applied on top, landing on a nonsense key. That's
+        // exactly why a piston's natural finalize (its own setBlock to the final PISTON_HEAD/base
+        // state) got silently lost — applyChanges' diff never saw it land back at the piece's real
+        // anchor, so the piece stayed stuck mid-animation forever (found live: head vanishes on
+        // extend, whole piston vanishes on retract and never comes back — the original #32 symptom
+        // resurfacing through a different coordinate-space collision). Aliasing FROM the same
+        // position the ticker is about to use makes resolve() an exact identity for that whole call
+        // instead, which is what a captured BE's already-local frame needs.
+        BlockPos tickPos = piece.runtimeBlockEntity instanceof BlockEntity cachedBe ? cachedBe.getBlockPos() : realPos;
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, tickPos, piece.anchor);
         populateCells(cells, be);
         FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, realPos);
         cells.attachLevel(fakeLevel);
@@ -150,21 +165,6 @@ public final class VanillaBlockPiece extends PieceDefinition {
         if (phantom == null) return false;
 
         Map<BlockPos, BlockState> before = snapshot(be);
-        // phantom.getBlockPos(), NOT realPos — matches whatever position THIS SPECIFIC BE instance
-        // actually holds internally. For the generic "blank" BEs blockEntityFor lazily builds
-        // (hopper, chest, ...), that's be.getBlockPos() (realPos) already, so this changes nothing
-        // for them. But a captured BE like a piston's PistonMovingBlockEntity (see syncBlockEntity)
-        // was constructed by vanilla's OWN code with the piece's fake-local anchor as its position
-        // (that's what PistonBaseBlock.moveBlocks passed to newMovingBlockEntity in the first
-        // place) — ticking it against realPos instead is a real mismatch: realPos only gets
-        // resolve()d to piece.anchor for an EXACT match, so the piece's own read/write still landed
-        // correctly, but any NEIGHBOR lookup (realPos.relative(dir)) fell through to a real,
-        // unrelated world position instead of the sibling piece actually sitting there in fake-local
-        // space. That's exactly why a piston head's natural finalize (Block.updateFromNeighbourShapes
-        // checking "is my base still here") found nothing, concluded it had no support, and
-        // destroyed itself instead of becoming a real PISTON_HEAD — found live via the new
-        // [piston-anim] diagnostic logging ("went to air — treated as destroyed").
-        BlockPos tickPos = phantom.getBlockPos();
         if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
         applyChanges(be, fakeLevel, before, level);
         // applyChanges already handles its own notifyUpdate/notifyNeighbors for whatever actually
@@ -489,7 +489,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
-                if (s != null) cells.set(p.anchor, s);
+                if (s != null) cells.setRaw(p.anchor, s);
             }
         }
     }
@@ -661,7 +661,16 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // notifyNeighbors at all). Same fix as SubgridBlockEntity.serverTick's own loop.
         for (PlacedPiece p : new ArrayList<>(be.getPieces())) {
             if (p.definition != INSTANCE) continue;
-            BlockState now = cells.getBlockState(p.anchor);
+            // getStateRaw, NOT getBlockState: p.anchor is already this cell space's own local
+            // coordinate, not a realPos-relative one — feeding it through an active alias (onUse,
+            // tick) would double-translate it into a nonsense position, permanently landing on
+            // fallback()'s out-of-bounds branch (AIR) for every single piece. That's exactly what
+            // silently destroyed the whole subgrid on any interaction once resolve() started doing
+            // full neighborhood translation (see SubgridFakeCellGetter.resolve's own comment) —
+            // this diff read and populateCells' seeding write are the only two internal call sites
+            // that address cells by raw anchor instead of by a vanilla-supplied position, so both
+            // need the raw, alias-bypassing accessor.
+            BlockState now = cells.getStateRaw(p.anchor);
             if (!now.equals(before.get(p.anchor))) {
                 if (now.isAir()) {
                     // A piece's own updateShape/handleNeighborChanged (e.g. a crop losing its
