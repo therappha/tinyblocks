@@ -523,8 +523,19 @@ public final class VanillaBlockPiece extends PieceDefinition {
             this.attachedLevel = level;
         }
 
+        // Offset translation, not just an exact-match swap: onUse aliases the piece's real-world
+        // position (needed for stillValid's distance check) to its fake-local anchor, but vanilla
+        // code frequently queries NEIGHBORS of the position it was given too, not just the position
+        // itself — e.g. DoorBlock.useWithoutItem clicking the UPPER half needs to find its own
+        // LOWER half at pos.below() to toggle/sound it. An exact-match-only swap left every such
+        // neighbor query un-translated, falling through to fallback()'s real-world read instead of
+        // the actual sibling piece sitting right there in fake-local space (found live: clicking a
+        // door's top half sometimes had no sound — the bottom-half lookup silently found nothing).
+        // Translating the WHOLE neighborhood by the same offset fixes this generically for any
+        // block doing a relative lookup during onUse, not just doors.
         private BlockPos resolve(BlockPos pos) {
-            return pos.equals(aliasFrom) ? aliasTo : pos;
+            if (aliasFrom == null) return pos;
+            return aliasTo.offset(pos.getX() - aliasFrom.getX(), pos.getY() - aliasFrom.getY(), pos.getZ() - aliasFrom.getZ());
         }
 
         @Override
