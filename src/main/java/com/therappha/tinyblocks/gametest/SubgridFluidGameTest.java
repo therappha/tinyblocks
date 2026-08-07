@@ -51,4 +51,43 @@ public class SubgridFluidGameTest {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * Regression coverage for PR #31's actual scenario, not just spreading within one grid: a
+     * water source right at a subgrid's own edge must be able to spread PAST that edge, across
+     * the real-world boundary, into a brand new adjacent SubgridBlockEntity — same
+     * placePieceCrossBoundary mechanism SubgridCrossBoundaryGameTest exercises for a pushed
+     * piston block, just reached via the fluid-tick path instead.
+     *
+     * required = false: fails the same way SubgridCrossBoundaryGameTest's piston test does — the
+     * spread itself runs (confirmed by the sibling waterSourceSpreadsIntoNeighboringCells test
+     * above), but the write past the grid's own edge never lands in a newly-created neighbor.
+     * Same shared root cause as #34, not fluid-specific — kept enabled so both flip green
+     * together once that's actually fixed.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100, required = false)
+    public void waterSourceAtTheEdgeSpreadsIntoAnAdjacentSubgrid(GameTestHelper helper) {
+        BlockPos subgridPos = new BlockPos(2, 1, 2);
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, subgridPos);
+        ServerLevel level = helper.getLevel();
+
+        int max = be.getGridSize() - 1;
+        BlockPos edgeAnchor = new BlockPos(max, 0, 4);
+        SubgridTestSupport.placePiece(be, level, edgeAnchor, Blocks.WATER.defaultBlockState());
+
+        BlockPos neighborSubgridPos = subgridPos.relative(Direction.EAST);
+
+        helper.startSequence()
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    if (!(level.getBlockEntity(helper.absolutePos(neighborSubgridPos)) instanceof SubgridBlockEntity neighbor)) {
+                        helper.fail("water never crossed into a new adjacent subgrid", neighborSubgridPos);
+                        return;
+                    }
+                    var landedState = SubgridTestSupport.stateOf(neighbor, new BlockPos(0, 0, 4));
+                    helper.assertTrue(landedState != null && !landedState.getFluidState().isEmpty(),
+                            "the neighboring subgrid exists but has no water piece where the flow should have landed");
+                })
+                .thenSucceed();
+    }
 }

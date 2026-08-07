@@ -97,4 +97,9 @@ final class SubgridTestSupport {
         PlacedPiece piece = be.getPieceAt(anchor.getX(), anchor.getY(), anchor.getZ());
         return piece == null ? null : (BlockState) piece.runtimeState;
     }
+
+    /** Forces (or returns the already-cached) real phantom BlockEntity for a piece — e.g. to seed a hopper's inventory directly. */
+    static net.minecraft.world.level.block.entity.BlockEntity blockEntityOf(SubgridBlockEntity be, PlacedPiece piece, ServerLevel level) {
+        return VanillaBlockPiece.blockEntityFor(piece, be, level);
+    }
 }
