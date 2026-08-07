@@ -3,7 +3,6 @@ package com.therappha.tinyblocks.client;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.network.SubgridMinePiecePayload;
 import com.therappha.tinyblocks.subgrid.GridRay;
-import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.client.Minecraft;
@@ -43,20 +42,10 @@ import net.neoforged.neoforge.network.PacketDistributor;
  *
  * Fix: once we intercept the first CLIENT_HOLD tick for a given SubgridBlock, we cancel EVERY
  * subsequent tick targeting that same block for as long as the hold continues — vanilla's counter
- * never gets a chance to matter again. We track our own per-piece progress independently and drive
- * the crack overlay ourselves each tick, since vanilla's own overlay update lives in the same
- * now-always-cancelled branch. That per-piece tracking has to key on the PIECE ITSELF
- * (trackedPiece, identity-compared), not just its cell — resetting only on cell change repeats the
- * exact bug described above one layer up: a piece destroyed and replaced by a different piece at
- * the same cell would otherwise inherit whatever progress was already accumulated, instantly
- * "finishing" a piece nobody actually mined (found live: a freshly-placed redstone_block piece
- * vanished immediately with no click on it at all).
- *
- * Note this only protects against a piece CHANGE at the same cell — it does not (and structurally
- * can't, since it's client-only state) protect against the underlying MiningTracker/GridRay click-
- * target math misfiring on a piece the player never intended to target in the first place; if
- * accumulated progress turns out to be wrong for a reason other than piece identity, look there
- * next.
+ * never gets a chance to matter again. We track our own per-piece progress independently (reset
+ * per cell, since a fresh piece should need its own full digging time, not inherit leftover
+ * progress from a different piece at the same position) and drive the crack overlay ourselves
+ * each tick, since vanilla's own overlay update lives in the same now-always-cancelled branch.
  *
  * Creative mode doesn't accumulate at all (vanilla breaks it instantly on Action.START, no
  * getDestroyProgress involved), so it doesn't share this bug — handled separately below, simply
@@ -65,20 +54,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public class SubgridMiningInterceptor {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-
     private static BlockPos trackedPos;
     private static Vec3i trackedCell;
-    /**
-     * The exact PlacedPiece instance accumulated progress belongs to — not just its cell.
-     * Same coordinate-vs-identity gap this class' own doc comment already flags for vanilla's own
-     * counter: a cell coordinate alone doesn't mean "the same piece being mined." If the piece at
-     * trackedCell was destroyed and a DIFFERENT piece placed at that exact cell afterward (found
-     * live: a redstone_block piece freshly placed instantly "finished mining" with no click),
-     * accumulated must reset to 0 for the new piece instead of inheriting whatever the old one had
-     * built up — identity (==), not equals(), since two pieces can share the same BlockState.
-     */
-    private static PlacedPiece trackedPiece;
     private static float accumulated;
     private static long lastTick = Long.MIN_VALUE;
 
@@ -139,27 +116,19 @@ public class SubgridMiningInterceptor {
         if (!pos.equals(trackedPos) || now - lastTick > 1) {
             trackedPos = pos;
             trackedCell = null;
-            trackedPiece = null;
             accumulated = 0f;
         }
         lastTick = now;
 
-        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
-        if (piece == null) {
+        if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) == null) {
             trackedCell = null;
-            trackedPiece = null;
             accumulated = 0f;
             Minecraft.getInstance().level.destroyBlockProgress(player.getId(), pos, -1);
             return;
         }
 
-        if (!cell.equals(trackedCell) || piece != trackedPiece) {
-            if (cell.equals(trackedCell) && accumulated > 0f) {
-                LOGGER.info("[mining-diag] piece at cell {} changed identity mid-progress (accumulated={}) — resetting to 0 instead of inheriting it",
-                        cell, accumulated);
-            }
+        if (!cell.equals(trackedCell)) {
             trackedCell = cell;
-            trackedPiece = piece;
             accumulated = 0f;
         }
 
@@ -169,7 +138,6 @@ public class SubgridMiningInterceptor {
 
         if (accumulated >= 1f) {
             trackedCell = null;
-            trackedPiece = null;
             accumulated = 0f;
             Minecraft.getInstance().level.destroyBlockProgress(player.getId(), pos, -1);
             sendMineRequest(level, pos, cell);
@@ -184,7 +152,6 @@ public class SubgridMiningInterceptor {
     private static void reset() {
         trackedPos = null;
         trackedCell = null;
-        trackedPiece = null;
         accumulated = 0f;
         lastTick = Long.MIN_VALUE;
     }
