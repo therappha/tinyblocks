@@ -20,3 +20,13 @@ jobs:
 
       - name: Build
         run: ./gradlew build -Pmod_version=0.0.0
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/reports/tests/test
+            build/reports/jacoco/test
+          if-no-files-found: ignore
