@@ -62,7 +62,7 @@ The constructor auto-registers the definition — no registry call needed. For i
 
 ## Debug commands & items
 
-The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — craftable from a stick and an iron nugget. Everything else below is debug-only, obtainable via `/give`:
+The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — craftable from a stick and an iron nugget. This is the only item you need: hold it in your off-hand and place *any* real vanilla block (piston, water bucket, crops, doors, hoppers, chests, redstone, ...) to shrink it down. Pieces run the block's own real vanilla logic against a fake position space, so behavior — animation, sound, neighbor propagation, container menus, growth, ticking — matches the full-size block, not a reimplementation of it.
 
 ```
 /give @s tinyblocks:subgrid_block_2
@@ -70,22 +70,24 @@ The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — crafta
 /give @s tinyblocks:subgrid_block
 /give @s tinyblocks:subgrid_block_16
 
-/give @s tinyblocks:tiny_stone_block_2
-/give @s tinyblocks:tiny_stone_block_4
-/give @s tinyblocks:tiny_stone_block
-/give @s tinyblocks:tiny_stone_block_16
-
 /give @s tinyblocks:piece_remover_stick   # right-click a piece to remove it without vanilla mining (no flicker)
-
-/give @s tinyblocks:tiny_redstone_block   # always-powered source, for testing neighbor propagation
-/give @s tinyblocks:tiny_redstone_dust    # conducts power like redstone wire, connects visually
-/give @s tinyblocks:tiny_piston           # extends a piston head when powered, retracts when not
 ```
 
 Commands:
 
 - `/tinyblocks status` — inspect the SubgridBlock you're looking at
 - `/tinyblocks highlight [radius]` — toggle cyan outlines on all SubgridBlocks in range (default radius 16)
+
+---
+
+## Testing
+
+```
+./gradlew test               # unit tests — pure logic (coordinate math, grid bookkeeping), seconds to run
+./gradlew runGameTestServer   # GameTest — real headless server, actual pieces inside a real SubgridBlock
+```
+
+Unit tests cover the parts of the engine that don't need a running world. Everything else — a piece's real interaction, ticking, and neighbor-propagation behavior — only means anything against a live `ServerLevel`, which is what `runGameTestServer` boots headlessly and runs against.
 
 ---
 
