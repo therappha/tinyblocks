@@ -286,6 +286,12 @@ public class SubgridBlockEntity extends BlockEntity {
         short idx = cellOwner[indexOf(x, y, z)];
         if (idx == EMPTY) return null;
         PlacedPiece removed = pieces.get(idx);
+        // Unconditional diagnostic (issue #34's live investigation into a redstone_block piece
+        // silently vanishing from be.getPieces() mid piston-animation-cascade, with no "went to
+        // air" or other logged cause): a full stack trace pinpoints exactly which call path
+        // removes it, since every OTHER removal site in this codebase already logs why.
+        LOGGER.info("[piston-anim] removePieceAt({},{},{}) removing {} at anchor {}", x, y, z,
+                removed.definition.renderState(removed), removed.anchor, new Exception("stack trace"));
         rebuildAfterRemove(idx);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {

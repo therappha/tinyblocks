@@ -505,10 +505,21 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     private static void populateCells(FakeCellGetter cells, SubgridBlockEntity be) {
+        // Unconditional diagnostic (issue #34's live investigation into a piston extend/retract
+        // loop): dumps exactly what gets seeded this call, only when a piston-related piece is
+        // involved anywhere in the subgrid, to see whether a redstone_block piece that's still
+        // genuinely present in be.getPieces() ever gets skipped or seeded at an unexpected anchor.
+        boolean trace = false;
+        for (PlacedPiece p : be.getPieces()) {
+            if (isPistonRelated(stateOf(p))) { trace = true; break; }
+        }
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
                 if (s != null) cells.setRaw(p.anchor, s);
+                if (trace) {
+                    LOGGER.info("[piston-anim] populateCells seeded anchor={} state={}", p.anchor, s);
+                }
             }
         }
     }
