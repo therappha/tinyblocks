@@ -397,8 +397,28 @@ public final class VanillaBlockPiece extends PieceDefinition {
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
 
+        // Unconditional (not gated behind isPistonRelated's before/after-changed check, since the
+        // point of this trace is exactly to see WHY a piston's state DIDN'T change) — issue #34's
+        // corrected diagnosis: a plain piston facing a horizontal direction, powered from directly
+        // behind it, never extends. hasSignal is queried per-direction here matching
+        // PistonBaseBlock#getNeighborSignal's own loop exactly, to see what our fake space reports
+        // vanilla would otherwise compute directly against a real chunk.
+        if (isPistonRelated(state)) {
+            StringBuilder signals = new StringBuilder();
+            for (Direction d : Direction.values()) {
+                signals.append(d).append('=').append(fakeLevel.hasSignal(piece.anchor.relative(d), d)).append(' ');
+            }
+            LOGGER.info("[piston-anim] onNeighborChanged BEFORE at {} (cell {}): state={} changedNeighborDir={} neighborState={} hasSignal[{}]",
+                    be.getBlockPos(), piece.anchor, state, dir, neighborState, signals.toString().trim());
+        }
+
         fakeLevel.cells().getBlockState(piece.anchor)
                 .handleNeighborChanged(fakeLevel, piece.anchor, neighborState.getBlock(), fakeNeighborPos, false);
+
+        if (isPistonRelated(state)) {
+            LOGGER.info("[piston-anim] onNeighborChanged AFTER at {} (cell {}): state={}",
+                    be.getBlockPos(), piece.anchor, fakeLevel.cells().getBlockState(piece.anchor));
+        }
 
         if (dir != null) {
             // handleNeighborChanged drives power-level-style self-mutation (a block reacting to

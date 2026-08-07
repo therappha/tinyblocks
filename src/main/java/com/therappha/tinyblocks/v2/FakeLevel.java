@@ -33,6 +33,8 @@ import java.util.List;
  */
 public class FakeLevel extends Level implements FakeSpace {
 
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
     private final Level real;
     private final FakeCellGetter cells;
     private final List<ScheduledEntry> scheduled = new ArrayList<>();
@@ -179,7 +181,17 @@ public class FakeLevel extends Level implements FakeSpace {
      */
     @Override
     public void blockEvent(BlockPos pos, Block block, int id, int param) {
+        // Unconditional diagnostic (issue #34's live investigation): confirms whether
+        // triggerEvent's own internal logic (e.g. PistonBaseBlock's moveBlocks) actually changed
+        // anything, since Level#blockEvent's return type is void and discards triggerEvent's own
+        // boolean result — this is the only way to see whether it silently no-op'd.
+        BlockState before = getBlockState(pos);
         super.blockEvent(pos, block, id, param);
+        BlockState after = getBlockState(pos);
+        if (block instanceof net.minecraft.world.level.block.piston.PistonBaseBlock) {
+            LOGGER.info("[piston-anim] blockEvent pos={} block={} id={} param={} before={} after={} changed={}",
+                    pos, block, id, param, before, after, !before.equals(after));
+        }
         if (real instanceof net.minecraft.server.level.ServerLevel serverLevel) {
             BlockPos cell = cells.resolveLocal(pos);
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
