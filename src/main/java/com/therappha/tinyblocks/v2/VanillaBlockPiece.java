@@ -451,7 +451,16 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // which kind of tick was requested, so always attempt both here — FluidState.tick is a
         // real no-op for Fluids.EMPTY (every non-fluid BlockState), so this is inert for the vast
         // majority of pieces and only does something for genuine water/lava.
-        fakeLevel.cells().getBlockState(piece.anchor).getFluidState().tick(fakeLevel, piece.anchor);
+        // Diagnostic-only (issue #43): traces every boundary resolution reached while vanilla's
+        // own FlowingFluid.tick/spread is running, at INFO — see
+        // SubgridBlockEntity.setTracingFluid's doc for why this needs its own narrow window
+        // instead of just enabling the general [xgrid] DEBUG line.
+        SubgridBlockEntity.setTracingFluid(true);
+        try {
+            fakeLevel.cells().getBlockState(piece.anchor).getFluidState().tick(fakeLevel, piece.anchor);
+        } finally {
+            SubgridBlockEntity.setTracingFluid(false);
+        }
 
         applyChanges(be, fakeLevel, before, level);
     }
