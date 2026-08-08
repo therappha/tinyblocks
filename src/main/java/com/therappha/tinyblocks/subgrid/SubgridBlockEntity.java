@@ -482,9 +482,21 @@ public class SubgridBlockEntity extends BlockEntity {
         return logResolve(dir, x, y, z, ref);
     }
 
+    /**
+     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
+     * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
+     * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
+     * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
+     * the whole log) and caused real lag from the logging volume alone — see issue #42. Guarding on
+     * isDebugEnabled() also skips describeCellRef's string-building work when disabled, not just
+     * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
+     * separately from latest.log — just no longer paid for on every tick by default.
+     */
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
-        LOGGER.info("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
-                dir, worldPosition, x, y, z, describeCellRef(ref));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
+                    dir, worldPosition, x, y, z, describeCellRef(ref));
+        }
         return ref;
     }
 
