@@ -449,15 +449,90 @@ public class SubgridBlockEntity extends BlockEntity {
         return logResolve(dir, x, y, z, ref);
     }
 
+    /** Bounds a pathological chain — comfortably covers a corner overflowing all 3 axes at once. */
+    private static final int MAX_CHAIN_HOPS = 4;
+
     /**
-     * Read-only resolution deriving the direction from single-axis overflow. In-bounds -> Local
-     * without touching level at all. Multi-axis (diagonal) overflow -> OutOfScope.
+     * Read-only resolution deriving the direction from single-axis overflow, CHAINING through
+     * multiple same-gridSize neighbor grids when more than one axis overflows at once (issue
+     * #43). A corner query — one step past a side edge AND one step past the floor — needs two
+     * hops (into the side neighbor, then down from THAT grid's own frame) to find the real
+     * answer; the old single-hop-only version reported every such compound query as bare air
+     * regardless of what was actually there, which is what drew fluid spread toward every
+     * air-adjacent edge (confirmed live via the [xgrid-fluid] trace: local=(8,-1,4) on an 8-cell
+     * grid hit OutOfScope 194 times in one short GameTest run). In-bounds -> Local without
+     * touching level at all. Each hop only peels exactly one grid-width of overflow per axis — a
+     * query overflowing by MORE than one grid-width on any axis (never observed in practice;
+     * vanilla's own relative-position probes never look further than one block away) falls to
+     * OutOfScope rather than guessing further. This is read-only; resolveOrCreate deliberately
+     * stays single-hop (see its own doc) — checking whether a cell is valid shouldn't have the
+     * side effect of creating a whole chain of new subgrids.
      */
     public CellRef resolve(int x, int y, int z) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
-        Direction dir = overflowDirection(x, y, z);
-        if (dir == null) return logResolve(null, x, y, z, new CellRef.OutOfScope());
-        return resolve(dir, x, y, z);
+        if (!(level instanceof ServerLevel serverLevel)) return logResolve(null, x, y, z, new CellRef.OutOfScope());
+
+        SubgridBlockEntity grid = this;
+        int lx = x, ly = y, lz = z;
+        Direction firstHop = null;
+
+        for (int hop = 0; hop < MAX_CHAIN_HOPS && grid.outOfBounds(lx, ly, lz); hop++) {
+            Direction dir = grid.singleStepOverflowAxis(lx, ly, lz);
+            if (dir == null) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
+            if (firstHop == null) firstHop = dir;
+
+            BlockPos targetPos = grid.worldPosition.relative(dir);
+            if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity next) || next.gridSize != gridSize) {
+                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize - 1);
+                return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
+            }
+
+            int max = gridSize - 1;
+            lx = dir.getAxis() == Direction.Axis.X ? wrap(lx, max) : lx;
+            ly = dir.getAxis() == Direction.Axis.Y ? wrap(ly, max) : ly;
+            lz = dir.getAxis() == Direction.Axis.Z ? wrap(lz, max) : lz;
+            grid = next;
+        }
+
+        if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
+        CellRef result = grid == this ? new CellRef.Local(lx, ly, lz) : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
+        return logResolve(firstHop, x, y, z, result);
+    }
+
+    /** First axis (x/y/z, checked in that order) overflowing by exactly one step, or null. */
+    @Nullable
+    /** Package-visible for direct unit testing (SubgridBlockEntityTest) — same idiom as wrap. */
+    Direction singleStepOverflowAxis(int x, int y, int z) {
+        if (x == -1) return Direction.WEST;
+        if (x == gridSize) return Direction.EAST;
+        if (y == -1) return Direction.DOWN;
+        if (y == gridSize) return Direction.UP;
+        if (z == -1) return Direction.NORTH;
+        if (z == gridSize) return Direction.SOUTH;
+        return null;
+    }
+
+    /**
+     * Once a hop finds real (non-subgrid) world space instead of a matching neighbor, any OTHER
+     * axis still overflowing by one step folds directly into further relative() steps from base —
+     * real-world granularity has no "local coordinate" concept beyond this point, so remaining
+     * single-step overflow just means one more real block over in that direction.
+     */
+    static BlockPos foldRemainingIntoRealWorld(BlockPos base, Direction resolvedAxis, int x, int y, int z, int max) {
+        BlockPos pos = base;
+        if (resolvedAxis.getAxis() != Direction.Axis.X) {
+            if (x == -1) pos = pos.relative(Direction.WEST);
+            else if (x == max + 1) pos = pos.relative(Direction.EAST);
+        }
+        if (resolvedAxis.getAxis() != Direction.Axis.Y) {
+            if (y == -1) pos = pos.relative(Direction.DOWN);
+            else if (y == max + 1) pos = pos.relative(Direction.UP);
+        }
+        if (resolvedAxis.getAxis() != Direction.Axis.Z) {
+            if (z == -1) pos = pos.relative(Direction.NORTH);
+            else if (z == max + 1) pos = pos.relative(Direction.SOUTH);
+        }
+        return pos;
     }
 
     /**

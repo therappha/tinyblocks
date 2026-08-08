@@ -212,4 +212,53 @@ class SubgridBlockEntityTest {
         assertEquals(0, SubgridBlockEntity.wrap(8, 7));
         assertEquals(3, SubgridBlockEntity.wrap(3, 7), "in-range values pass through unchanged");
     }
+
+    // --- chained resolution helpers (issue #43) ------------------------------------------------
+
+    @Test
+    void singleStepOverflowAxisIdentifiesExactlyOneStepPastEachEdge() {
+        SubgridBlockEntity be = newEntity(); // gridSize 8, valid range [0,7]
+        assertEquals(Direction.WEST, be.singleStepOverflowAxis(-1, 0, 0));
+        assertEquals(Direction.EAST, be.singleStepOverflowAxis(8, 0, 0));
+        assertEquals(Direction.DOWN, be.singleStepOverflowAxis(0, -1, 0));
+        assertEquals(Direction.UP, be.singleStepOverflowAxis(0, 8, 0));
+        assertEquals(Direction.NORTH, be.singleStepOverflowAxis(0, 0, -1));
+        assertEquals(Direction.SOUTH, be.singleStepOverflowAxis(0, 0, 8));
+    }
+
+    @Test
+    void singleStepOverflowAxisPicksXFirstWhenMultipleAxesOverflow() {
+        SubgridBlockEntity be = newEntity();
+        assertEquals(Direction.EAST, be.singleStepOverflowAxis(8, -1, 4),
+                "matches issue #43's exact repro coordinate — a corner overflowing both X and Y");
+    }
+
+    @Test
+    void singleStepOverflowAxisRefusesMoreThanOneStepOver() {
+        SubgridBlockEntity be = newEntity();
+        assertNull(be.singleStepOverflowAxis(9, 0, 4), "two steps past the edge is out of this chain's scope");
+    }
+
+    @Test
+    void foldRemainingIntoRealWorldAppliesEveryOtherOverflowingAxis() {
+        BlockPos base = new BlockPos(10, 20, 30);
+        // Matches issue #43's exact repro: X already resolved via EAST, Y (-1) still needs folding in.
+        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, -1, 4, 7);
+        assertEquals(new BlockPos(10, 19, 30), result);
+    }
+
+    @Test
+    void foldRemainingIntoRealWorldIsANoOpWhenNoOtherAxisOverflows() {
+        BlockPos base = new BlockPos(10, 20, 30);
+        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, 3, 4, 7);
+        assertEquals(base, result);
+    }
+
+    @Test
+    void resolveCompoundOverflowWithoutServerLevelIsOutOfScope() {
+        // Same as the single-axis case: no ServerLevel to resolve against means the whole chain
+        // bails immediately, before any per-axis analysis.
+        SubgridBlockEntity be = newEntity();
+        assertTrue(be.resolve(8, -1, 4) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+    }
 }
