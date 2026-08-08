@@ -152,4 +152,64 @@ class SubgridBlockEntityTest {
         assertEquals(10 + 0.5 / 8.0, center.y, 1e-9);
         assertEquals(3 + 0.5 / 8.0, center.z, 1e-9);
     }
+
+    // --- cross-grid resolution (CellRef, issue #42) ---------------------------------------------
+
+    @Test
+    void resolveInBoundsReturnsLocalWithoutTouchingLevel() {
+        // newEntity() never calls setLevel — an in-bounds resolve must not depend on it at all.
+        SubgridBlockEntity be = newEntity();
+        SubgridBlockEntity.CellRef ref = be.resolve(2, 3, 4);
+        assertTrue(ref instanceof SubgridBlockEntity.CellRef.Local);
+        var local = (SubgridBlockEntity.CellRef.Local) ref;
+        assertEquals(2, local.x());
+        assertEquals(3, local.y());
+        assertEquals(4, local.z());
+    }
+
+    @Test
+    void resolveSingleAxisOverflowWithoutServerLevelIsOutOfScope() {
+        // Matches crossGridNeighborAt/realBlockStateAt's pre-refactor behavior: no ServerLevel to
+        // check the real world against means the boundary can't be resolved at all.
+        SubgridBlockEntity be = newEntity(); // gridSize 8, valid range [0,7]
+        assertTrue(be.resolve(-1, 0, 0) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+        assertTrue(be.resolve(8, 0, 0) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+    }
+
+    @Test
+    void resolveDiagonalOverflowIsOutOfScopeRegardlessOfLevel() {
+        SubgridBlockEntity be = newEntity();
+        assertTrue(be.resolve(-1, -1, 0) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+        assertTrue(be.resolve(8, 8, 8) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+    }
+
+    @Test
+    void resolveWithKnownDirectionWithoutServerLevelIsOutOfScope() {
+        SubgridBlockEntity be = newEntity();
+        assertTrue(be.resolve(Direction.EAST, 8, 0, 0) instanceof SubgridBlockEntity.CellRef.OutOfScope);
+    }
+
+    @Test
+    void resolveOrCreateInBoundsNeverTouchesRealLevel() {
+        // Passing null realLevel would NPE the instant it's dereferenced — this only passes if the
+        // in-bounds short-circuit genuinely never touches the parameter, matching resolve()'s own
+        // in-bounds passthrough.
+        SubgridBlockEntity be = newEntity();
+        SubgridBlockEntity.CellRef ref = be.resolveOrCreate(0, 0, 0, null);
+        assertTrue(ref instanceof SubgridBlockEntity.CellRef.Local);
+    }
+
+    @Test
+    void resolveOrCreateDiagonalOverflowNeverTouchesRealLevel() {
+        SubgridBlockEntity be = newEntity();
+        SubgridBlockEntity.CellRef ref = be.resolveOrCreate(-1, -1, 0, null);
+        assertTrue(ref instanceof SubgridBlockEntity.CellRef.OutOfScope);
+    }
+
+    @Test
+    void wrapClampsExactlyOneStepPastEitherEdge() {
+        assertEquals(7, SubgridBlockEntity.wrap(-1, 7));
+        assertEquals(0, SubgridBlockEntity.wrap(8, 7));
+        assertEquals(3, SubgridBlockEntity.wrap(3, 7), "in-range values pass through unchanged");
+    }
 }

@@ -215,25 +215,16 @@ public class SubgridBlockEntity extends BlockEntity {
     @Nullable
     public PlacedPiece placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
                                                 Object runtimeState, ServerLevel realLevel) {
-        if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
-            return placeOrUpdatePiece(definition, local, facing, runtimeState);
-        }
-
-        Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
-        if (dir == null) return null;
-
-        BlockPos targetPos = worldPosition.relative(dir);
-        BlockState targetState = realLevel.getBlockState(targetPos);
-        if (targetState.isAir()) {
-            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
-        }
-        if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
-            return null;
-        }
-
-        int max = gridSize - 1;
-        BlockPos wrapped = new BlockPos(wrap(local.getX(), max), wrap(local.getY(), max), wrap(local.getZ(), max));
-        return adjacent.placeOrUpdatePiece(definition, wrapped, facing, runtimeState);
+        CellRef ref = resolveOrCreate(local.getX(), local.getY(), local.getZ(), realLevel);
+        return switch (ref) {
+            case CellRef.Local l -> placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
+            case CellRef.InAdjacentGrid a -> a.grid().placeOrUpdatePiece(
+                    definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
+            case CellRef.Created c -> c.grid().placeOrUpdatePiece(
+                    definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
+            case CellRef.RealWorld ignored -> null;
+            case CellRef.OutOfScope ignored -> null;
+        };
     }
 
     /**
@@ -272,6 +263,20 @@ public class SubgridBlockEntity extends BlockEntity {
         };
     }
 
+    /**
+     * If targetPos is real-world air, creates a SubgridBlockEntity of the given gridSize there.
+     * Returns whatever SubgridBlockEntity now occupies targetPos — freshly created, or whatever
+     * was already there (of ANY gridSize; this doesn't gate on a match, unlike resolveOrCreate,
+     * since a caller placing directly at a clicked block has no "source grid" to match sizes
+     * against) — or null if targetPos is occupied by something that isn't a SubgridBlockEntity.
+     */
+    public static SubgridBlockEntity createAt(ServerLevel realLevel, BlockPos targetPos, int gridSize) {
+        if (realLevel.getBlockState(targetPos).isAir()) {
+            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
+        }
+        return realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity sub ? sub : null;
+    }
+
     @Nullable
     public PlacedPiece getPieceAt(int x, int y, int z) {
         if (outOfBounds(x, y, z)) return null;
@@ -286,6 +291,12 @@ public class SubgridBlockEntity extends BlockEntity {
         short idx = cellOwner[indexOf(x, y, z)];
         if (idx == EMPTY) return null;
         PlacedPiece removed = pieces.get(idx);
+        // Unconditional diagnostic (issue #34's live investigation into a redstone_block piece
+        // silently vanishing from be.getPieces() mid piston-animation-cascade, with no "went to
+        // air" or other logged cause): a full stack trace pinpoints exactly which call path
+        // removes it, since every OTHER removal site in this codebase already logs why.
+        LOGGER.info("[piston-anim] removePieceAt({},{},{}) removing {} at anchor {}", x, y, z,
+                removed.definition.renderState(removed), removed.anchor, new Exception("stack trace"));
         rebuildAfterRemove(idx);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
@@ -401,6 +412,107 @@ public class SubgridBlockEntity extends BlockEntity {
     public record Neighbor(SubgridBlockEntity be, PlacedPiece piece) {}
 
     /**
+     * Where a local coordinate (possibly out of this grid's bounds) actually resolves to — the
+     * single generic answer every boundary-crossing query in this class produces (issue #42).
+     * Read-only resolution (resolve) never returns Created; only resolveOrCreate can. Deliberately
+     * doesn't fetch BlockState/BlockEntity itself, so it stays reusable for state reads,
+     * piece/neighbor reads, and writes without baking in a return type — callers do their own
+     * type-specific read against whatever this resolves to.
+     */
+    public sealed interface CellRef {
+        /** (x,y,z) is inside this grid, unchanged. */
+        record Local(int x, int y, int z) implements CellRef {}
+        /** (x,y,z) overflowed into a same-gridSize neighboring SubgridBlockEntity, wrapped coords. */
+        record InAdjacentGrid(SubgridBlockEntity grid, int x, int y, int z) implements CellRef {}
+        /** Like InAdjacentGrid, but the neighbor didn't exist yet — resolveOrCreate just made it. */
+        record Created(SubgridBlockEntity grid, int x, int y, int z) implements CellRef {}
+        /** Overflowed into real-world space beyond this grid — no same-size subgrid there. */
+        record RealWorld(BlockPos pos) implements CellRef {}
+        /** Overflowed 2+ axes at once (diagonal/corner), or no ServerLevel to resolve against. */
+        record OutOfScope() implements CellRef {}
+    }
+
+    /**
+     * Read-only resolution for a direction the caller already knows (e.g. a per-face neighbor
+     * loop that computed dir before checking bounds) — (x,y,z) is assumed out-of-bounds already.
+     */
+    public CellRef resolve(Direction dir, int x, int y, int z) {
+        if (!(level instanceof ServerLevel)) return logResolve(dir, x, y, z, new CellRef.OutOfScope());
+        BlockPos targetPos = worldPosition.relative(dir);
+        CellRef ref;
+        if (level.getBlockEntity(targetPos) instanceof SubgridBlockEntity other && other.gridSize == gridSize) {
+            int max = gridSize - 1;
+            ref = new CellRef.InAdjacentGrid(other, wrap(x, max), wrap(y, max), wrap(z, max));
+        } else {
+            ref = new CellRef.RealWorld(targetPos);
+        }
+        return logResolve(dir, x, y, z, ref);
+    }
+
+    /**
+     * Read-only resolution deriving the direction from single-axis overflow. In-bounds -> Local
+     * without touching level at all. Multi-axis (diagonal) overflow -> OutOfScope.
+     */
+    public CellRef resolve(int x, int y, int z) {
+        if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
+        Direction dir = overflowDirection(x, y, z);
+        if (dir == null) return logResolve(null, x, y, z, new CellRef.OutOfScope());
+        return resolve(dir, x, y, z);
+    }
+
+    /**
+     * Like resolve(), but if the overflowed real-world position is air, creates a same-gridSize
+     * SubgridBlockEntity there first — the write-side counterpart used whenever something
+     * spreading/moving/growing needs a writable cell across the boundary, creating one if needed.
+     */
+    public CellRef resolveOrCreate(int x, int y, int z, ServerLevel realLevel) {
+        if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
+        Direction dir = overflowDirection(x, y, z);
+        if (dir == null) return logResolve(null, x, y, z, new CellRef.OutOfScope());
+
+        BlockPos targetPos = worldPosition.relative(dir);
+        boolean wasAir = realLevel.getBlockState(targetPos).isAir();
+        SubgridBlockEntity adjacent = createAt(realLevel, targetPos, gridSize);
+        if (adjacent == null || adjacent.gridSize != gridSize) {
+            return logResolve(dir, x, y, z, new CellRef.RealWorld(targetPos));
+        }
+        int max = gridSize - 1;
+        int wx = wrap(x, max), wy = wrap(y, max), wz = wrap(z, max);
+        CellRef ref = wasAir ? new CellRef.Created(adjacent, wx, wy, wz) : new CellRef.InAdjacentGrid(adjacent, wx, wy, wz);
+        return logResolve(dir, x, y, z, ref);
+    }
+
+    /**
+     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
+     * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
+     * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
+     * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
+     * the whole log) and caused real lag from the logging volume alone — see issue #42. Guarding on
+     * isDebugEnabled() also skips describeCellRef's string-building work when disabled, not just
+     * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
+     * separately from latest.log — just no longer paid for on every tick by default.
+     */
+    private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
+                    dir, worldPosition, x, y, z, describeCellRef(ref));
+        }
+        return ref;
+    }
+
+    private static String describeCellRef(CellRef ref) {
+        return switch (ref) {
+            case CellRef.Local l -> "Local(%d,%d,%d)".formatted(l.x(), l.y(), l.z());
+            case CellRef.InAdjacentGrid a -> "InAdjacentGrid(pos=%s,cell=%d,%d,%d)"
+                    .formatted(a.grid().getBlockPos(), a.x(), a.y(), a.z());
+            case CellRef.Created c -> "Created(pos=%s,cell=%d,%d,%d)"
+                    .formatted(c.grid().getBlockPos(), c.x(), c.y(), c.z());
+            case CellRef.RealWorld r -> "RealWorld(%s)".formatted(r.pos());
+            case CellRef.OutOfScope ignored -> "OutOfScope";
+        };
+    }
+
+    /**
      * Calls onNeighborChanged on every piece adjacent to changed's footprint, including pieces
      * hosted by a neighboring SubgridBlock across the grid boundary (same grid size only).
      */
@@ -456,15 +568,13 @@ public class SubgridBlockEntity extends BlockEntity {
 
     @Nullable
     private Neighbor crossGridNeighborAt(Direction dir, int nx, int ny, int nz) {
-        if (!(level instanceof ServerLevel)) return null;
-        if (!(level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other)) return null;
-        if (other.gridSize != gridSize) return null;
-        int max = gridSize - 1;
-        PlacedPiece piece = other.getPieceAt(wrap(nx, max), wrap(ny, max), wrap(nz, max));
-        return piece != null ? new Neighbor(other, piece) : null;
+        if (!(resolve(dir, nx, ny, nz) instanceof CellRef.InAdjacentGrid a)) return null;
+        PlacedPiece piece = a.grid().getPieceAt(a.x(), a.y(), a.z());
+        return piece != null ? new Neighbor(a.grid(), piece) : null;
     }
 
-    private static int wrap(int v, int max) {
+    /** Public: reused outside this package by any caller matching the same wrap-at-boundary convention. */
+    public static int wrap(int v, int max) {
         if (v < 0) return max;
         if (v > max) return 0;
         return v;
@@ -482,22 +592,19 @@ public class SubgridBlockEntity extends BlockEntity {
      * rare for the face-adjacent queries vanilla actually makes) falls back to air.
      */
     public BlockState realBlockStateAt(int x, int y, int z) {
-        if (!outOfBounds(x, y, z)) {
-            PlacedPiece piece = getPieceAt(x, y, z);
-            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
-        }
-        if (!(level instanceof ServerLevel)) return Blocks.AIR.defaultBlockState();
-
-        Direction dir = overflowDirection(x, y, z);
-        if (dir == null) return Blocks.AIR.defaultBlockState();
-
-        int max = gridSize - 1;
-        if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other
-                && other.gridSize == gridSize) {
-            PlacedPiece piece = other.getPieceAt(wrap(x, max), wrap(y, max), wrap(z, max));
-            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
-        }
-        return level.getBlockState(worldPosition.relative(dir));
+        return switch (resolve(x, y, z)) {
+            case CellRef.Local l -> {
+                PlacedPiece piece = getPieceAt(l.x(), l.y(), l.z());
+                yield piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+            }
+            case CellRef.InAdjacentGrid a -> {
+                PlacedPiece piece = a.grid().getPieceAt(a.x(), a.y(), a.z());
+                yield piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+            }
+            case CellRef.RealWorld r -> level.getBlockState(r.pos());
+            case CellRef.Created ignored -> Blocks.AIR.defaultBlockState(); // resolve() never creates
+            case CellRef.OutOfScope ignored -> Blocks.AIR.defaultBlockState();
+        };
     }
 
     /** The single axis (x/y/z) that (x,y,z) overflows, or null if zero or multiple axes do. */

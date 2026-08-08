@@ -397,8 +397,28 @@ public final class VanillaBlockPiece extends PieceDefinition {
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
 
+        // Unconditional (not gated behind isPistonRelated's before/after-changed check, since the
+        // point of this trace is exactly to see WHY a piston's state DIDN'T change) — issue #34's
+        // corrected diagnosis: a plain piston facing a horizontal direction, powered from directly
+        // behind it, never extends. hasSignal is queried per-direction here matching
+        // PistonBaseBlock#getNeighborSignal's own loop exactly, to see what our fake space reports
+        // vanilla would otherwise compute directly against a real chunk.
+        if (isPistonRelated(state)) {
+            StringBuilder signals = new StringBuilder();
+            for (Direction d : Direction.values()) {
+                signals.append(d).append('=').append(fakeLevel.hasSignal(piece.anchor.relative(d), d)).append(' ');
+            }
+            LOGGER.info("[piston-anim] onNeighborChanged BEFORE at {} (cell {}): state={} changedNeighborDir={} neighborState={} hasSignal[{}]",
+                    be.getBlockPos(), piece.anchor, state, dir, neighborState, signals.toString().trim());
+        }
+
         fakeLevel.cells().getBlockState(piece.anchor)
                 .handleNeighborChanged(fakeLevel, piece.anchor, neighborState.getBlock(), fakeNeighborPos, false);
+
+        if (isPistonRelated(state)) {
+            LOGGER.info("[piston-anim] onNeighborChanged AFTER at {} (cell {}): state={}",
+                    be.getBlockPos(), piece.anchor, fakeLevel.cells().getBlockState(piece.anchor));
+        }
 
         if (dir != null) {
             // handleNeighborChanged drives power-level-style self-mutation (a block reacting to
@@ -485,10 +505,21 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     private static void populateCells(FakeCellGetter cells, SubgridBlockEntity be) {
+        // Unconditional diagnostic (issue #34's live investigation into a piston extend/retract
+        // loop): dumps exactly what gets seeded this call, only when a piston-related piece is
+        // involved anywhere in the subgrid, to see whether a redstone_block piece that's still
+        // genuinely present in be.getPieces() ever gets skipped or seeded at an unexpected anchor.
+        boolean trace = false;
+        for (PlacedPiece p : be.getPieces()) {
+            if (isPistonRelated(stateOf(p))) { trace = true; break; }
+        }
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
                 if (s != null) cells.setRaw(p.anchor, s);
+                if (trace) {
+                    LOGGER.info("[piston-anim] populateCells seeded anchor={} state={}", p.anchor, s);
+                }
             }
         }
     }
