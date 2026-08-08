@@ -59,13 +59,13 @@ public class SubgridFluidGameTest {
      * placePieceCrossBoundary mechanism SubgridCrossBoundaryGameTest exercises for a pushed
      * piston block, just reached via the fluid-tick path instead.
      *
-     * required = false: fails the same way SubgridCrossBoundaryGameTest's piston test does — the
-     * spread itself runs (confirmed by the sibling waterSourceSpreadsIntoNeighboringCells test
-     * above), but the write past the grid's own edge never lands in a newly-created neighbor.
-     * Same shared root cause as #34, not fluid-specific — kept enabled so both flip green
-     * together once that's actually fixed.
+     * Previously required = false, believed to share #34's root cause. CORRECTED: not an engine
+     * bug at all — empty_platform's own stone extends 2 blocks past the subgrid's edge before
+     * hitting the room's barrier wall, confirmed live via a pristine (pre-test) real-block-state
+     * check, so there was never actually open air here for water to spread into. Fixed by
+     * explicitly clearing that one real-world cell instead of reshaping the shared structure.
      */
-    @GameTest(template = PLATFORM, timeoutTicks = 100, required = false)
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
     public void waterSourceAtTheEdgeSpreadsIntoAnAdjacentSubgrid(GameTestHelper helper) {
         BlockPos subgridPos = new BlockPos(2, 1, 2);
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, subgridPos);
@@ -73,9 +73,11 @@ public class SubgridFluidGameTest {
 
         int max = be.getGridSize() - 1;
         BlockPos edgeAnchor = new BlockPos(max, 0, 4);
-        SubgridTestSupport.placePiece(be, level, edgeAnchor, Blocks.WATER.defaultBlockState());
 
         BlockPos neighborSubgridPos = subgridPos.relative(Direction.EAST);
+        helper.setBlock(neighborSubgridPos, Blocks.AIR.defaultBlockState());
+
+        SubgridTestSupport.placePiece(be, level, edgeAnchor, Blocks.WATER.defaultBlockState());
 
         helper.startSequence()
                 .thenIdle(30)
