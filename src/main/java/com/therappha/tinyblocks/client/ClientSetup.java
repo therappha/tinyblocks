@@ -222,10 +222,39 @@ class SubgridClientHandler {
 
         BlockPos targetPos;
         int gs;
+        int gx, gy, gz;
         if (clickedState.getBlock() instanceof SubgridBlock csb) {
-            targetPos = clickedPos;
             gs = mc.level.getBlockEntity(clickedPos) instanceof SubgridBlockEntity cbe
                 ? cbe.gridSize : csb.gridSize;
+            int max = gs - 1;
+            double nudge = 0.5 / gs;
+            int hx = (int)(((hitLoc.x - clickedPos.getX()) - face.getStepX() * nudge) * gs);
+            int hy = (int)(((hitLoc.y - clickedPos.getY()) - face.getStepY() * nudge) * gs);
+            int hz = (int)(((hitLoc.z - clickedPos.getZ()) - face.getStepZ() * nudge) * gs);
+            int nx = hx + face.getStepX();
+            int ny = hy + face.getStepY();
+            int nz = hz + face.getStepZ();
+
+            if (nx >= 0 && nx < gs && ny >= 0 && ny < gs && nz >= 0 && nz < gs) {
+                targetPos = clickedPos;
+                gx = nx; gy = ny; gz = nz;
+            } else {
+                // Mirrors TinyPieceItem.useOn's own overflow branch exactly, so the ghost never
+                // shows a placement the real click would refuse (mismatched gridSize) or land
+                // somewhere else (a same-size neighbor across the boundary).
+                targetPos = clickedPos.relative(face);
+                BlockState targetState = mc.level.getBlockState(targetPos);
+                if (targetState.getBlock() instanceof SubgridBlock tsb) {
+                    int adjacentGs = mc.level.getBlockEntity(targetPos) instanceof SubgridBlockEntity tbe
+                        ? tbe.gridSize : tsb.gridSize;
+                    if (adjacentGs != gs) return;
+                } else if (!targetState.isAir()) {
+                    return;
+                }
+                gx = SubgridBlockEntity.wrap(nx, max);
+                gy = SubgridBlockEntity.wrap(ny, max);
+                gz = SubgridBlockEntity.wrap(nz, max);
+            }
         } else {
             targetPos = clickedPos.relative(face);
             BlockState targetState = mc.level.getBlockState(targetPos);
@@ -233,10 +262,9 @@ class SubgridClientHandler {
             gs = targetState.getBlock() instanceof SubgridBlock tsb
                 ? (mc.level.getBlockEntity(targetPos) instanceof SubgridBlockEntity tbe ? tbe.gridSize : tsb.gridSize)
                 : Registration.SUBGRID_BLOCK.get().gridSize;
+            int[] grid = TinyPieceItem.computeGridCell(clickedPos, face, hitLoc, gs);
+            gx = grid[0]; gy = grid[1]; gz = grid[2];
         }
-
-        int[] grid = TinyPieceItem.computeGridCell(clickedState, clickedPos, face, hitLoc, gs);
-        int gx = grid[0], gy = grid[1], gz = grid[2];
 
         BlockState targetState = mc.level.getBlockState(targetPos);
         if (targetState.getBlock() instanceof SubgridBlock) {

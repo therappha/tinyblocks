@@ -248,7 +248,7 @@ public class SubgridEventHandler {
             SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.preferredSubgrid().gridSize);
             if (created == null) return;
             be = created;
-            int[] cell = TinyPieceItem.computeGridCell(clickedState, pos, face, hit.getLocation(), be.gridSize);
+            int[] cell = TinyPieceItem.computeGridCell(pos, face, hit.getLocation(), be.gridSize);
             nx = cell[0]; ny = cell[1]; nz = cell[2];
         }
 

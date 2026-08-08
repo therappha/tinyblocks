@@ -86,7 +86,7 @@ public abstract class TinyPieceItem extends Item {
             gs = targetState.getBlock() instanceof SubgridBlock tsb
                 ? gridSizeAt(level, targetPos, tsb)
                 : preferredSubgrid().gridSize;
-            int[] grid = computeGridCell(clickedState, clickedPos, face, hit, gs);
+            int[] grid = computeGridCell(clickedPos, face, hit, gs);
             gx = grid[0]; gy = grid[1]; gz = grid[2];
         }
 
@@ -108,33 +108,25 @@ public abstract class TinyPieceItem extends Item {
         return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.gridSize : block.gridSize;
     }
 
-    public static int[] computeGridCell(BlockState clickedState, BlockPos clickedPos,
-                                         Direction face, Vec3 hit, int gs) {
+    /**
+     * Which cell of a gs-sized grid at clickedPos.relative(face) the ray hit — for placing
+     * against a block that ISN'T itself a subgrid (a fresh subgrid about to be created there, or
+     * an existing one of a different origin than the block actually clicked). Every caller only
+     * ever invokes this when clickedPos's own block is confirmed NOT a SubgridBlock; a click
+     * that overflows an existing subgrid's own bounds is resolved separately, via
+     * SubgridBlockEntity.resolve/resolveOrCreate's gridSize-match + wrap (see useOn above).
+     */
+    public static int[] computeGridCell(BlockPos clickedPos, Direction face, Vec3 hit, int gs) {
         int max = gs - 1;
         double nudge = 0.5 / gs;
-
-        if (clickedState.getBlock() instanceof SubgridBlock) {
-            double hxf = (hit.x - clickedPos.getX()) - face.getStepX() * nudge;
-            double hyf = (hit.y - clickedPos.getY()) - face.getStepY() * nudge;
-            double hzf = (hit.z - clickedPos.getZ()) - face.getStepZ() * nudge;
-            int hx = Mth.clamp((int)(hxf * gs), 0, max);
-            int hy = Mth.clamp((int)(hyf * gs), 0, max);
-            int hz = Mth.clamp((int)(hzf * gs), 0, max);
-            return new int[]{
-                Mth.clamp(hx + face.getStepX(), 0, max),
-                Mth.clamp(hy + face.getStepY(), 0, max),
-                Mth.clamp(hz + face.getStepZ(), 0, max)
-            };
-        } else {
-            BlockPos targetPos = clickedPos.relative(face);
-            double hxf = (hit.x - targetPos.getX()) - face.getStepX() * nudge;
-            double hyf = (hit.y - targetPos.getY()) - face.getStepY() * nudge;
-            double hzf = (hit.z - targetPos.getZ()) - face.getStepZ() * nudge;
-            return new int[]{
-                Mth.clamp((int)(hxf * gs), 0, max),
-                Mth.clamp((int)(hyf * gs), 0, max),
-                Mth.clamp((int)(hzf * gs), 0, max)
-            };
-        }
+        BlockPos targetPos = clickedPos.relative(face);
+        double hxf = (hit.x - targetPos.getX()) - face.getStepX() * nudge;
+        double hyf = (hit.y - targetPos.getY()) - face.getStepY() * nudge;
+        double hzf = (hit.z - targetPos.getZ()) - face.getStepZ() * nudge;
+        return new int[]{
+            Mth.clamp((int)(hxf * gs), 0, max),
+            Mth.clamp((int)(hyf * gs), 0, max),
+            Mth.clamp((int)(hzf * gs), 0, max)
+        };
     }
 }
