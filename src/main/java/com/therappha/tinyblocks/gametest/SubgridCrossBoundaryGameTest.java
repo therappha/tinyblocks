@@ -94,4 +94,61 @@ public class SubgridCrossBoundaryGameTest {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * Live-reported follow-up: with a pre-existing block already occupying the neighbor cell a
+     * pushed block would land on, the piston extended but the pushed block seemed to vanish.
+     * Root cause: wrap() collapsed ANY overflow magnitude to the boundary (0 or max) instead of
+     * the correct wrapped cell — so the oak_log's landing (origin-relative position 8) and the
+     * pre-existing stone's own chain-pushed destination (position 9, one grid-width further)
+     * both wrapped onto the SAME neighbor cell (0,0,4) instead of two different ones (0,0,4 and
+     * 1,0,4), and the second write silently clobbered the first. Fixed in wrap() itself (see its
+     * doc) — this is a real chain push, vanilla correctly pushes the stone one further to make
+     * room, exactly like pushing two blocks in a row anywhere else.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void pistonPushIntoAnAlreadyOccupiedNeighborCell(GameTestHelper helper) {
+        BlockPos subgridPos = new BlockPos(2, 1, 2);
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, subgridPos);
+        ServerLevel level = helper.getLevel();
+
+        int max = be.getGridSize() - 1;
+        BlockPos pistonAnchor = new BlockPos(max - 1, 0, 4);
+        BlockPos pushedAnchor = new BlockPos(max, 0, 4);
+        BlockPos powerAnchor = pistonAnchor.relative(Direction.WEST);
+
+        SubgridTestSupport.placePiece(be, level, pistonAnchor,
+                Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.EAST));
+        SubgridTestSupport.placePiece(be, level, pushedAnchor, Blocks.OAK_LOG.defaultBlockState());
+
+        // Pre-existing neighbor, already occupied at the exact cell the pushed block would land on.
+        BlockPos neighborSubgridPos = subgridPos.relative(Direction.EAST);
+        helper.setBlock(neighborSubgridPos, Blocks.AIR.defaultBlockState());
+        SubgridBlockEntity neighbor = SubgridTestSupport.placeSubgrid(helper, neighborSubgridPos);
+        SubgridTestSupport.placePiece(neighbor, level, new BlockPos(0, 0, 4), Blocks.STONE.defaultBlockState());
+
+        LOGGER.info("[XTEST-crossboundary-occupied] origin {} (abs {}), neighbor {} (abs {}) pre-occupied at (0,0,4)",
+                be.getBlockPos(), helper.absolutePos(subgridPos), neighbor.getBlockPos(), helper.absolutePos(neighborSubgridPos));
+
+        helper.startSequence()
+                .thenExecute(() -> SubgridTestSupport.placePiece(be, level, powerAnchor, Blocks.REDSTONE_BLOCK.defaultBlockState()))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    var pistonState = SubgridTestSupport.stateOf(be, pistonAnchor);
+                    var pushedCellState = SubgridTestSupport.stateOf(be, pushedAnchor);
+                    var landedCellState = SubgridTestSupport.stateOf(neighbor, new BlockPos(0, 0, 4));
+                    var chainedCellState = SubgridTestSupport.stateOf(neighbor, new BlockPos(1, 0, 4));
+                    LOGGER.info("[XTEST-crossboundary-occupied] after idle: pistonState={} pushedCellState={} landedCellState={} chainedCellState={}",
+                            pistonState, pushedCellState, landedCellState, chainedCellState);
+                    helper.assertTrue(pistonState != null && pistonState.getValue(PistonBaseBlock.EXTENDED),
+                            "piston never extended at all (state=" + pistonState + ")");
+                    helper.assertTrue(pushedCellState != null && pushedCellState.is(Blocks.PISTON_HEAD),
+                            "the piston head never took over the pushed cell (state=" + pushedCellState + ")");
+                    helper.assertTrue(landedCellState != null && landedCellState.is(Blocks.OAK_LOG),
+                            "the pushed oak_log never landed in the neighbor's cell (state=" + landedCellState + ")");
+                    helper.assertTrue(chainedCellState != null && chainedCellState.is(Blocks.STONE),
+                            "the pre-existing stone was never chain-pushed one further (state=" + chainedCellState + ")");
+                })
+                .thenSucceed();
+    }
 }

@@ -461,12 +461,12 @@ public class SubgridBlockEntity extends BlockEntity {
      * regardless of what was actually there, which is what drew fluid spread toward every
      * air-adjacent edge (confirmed live via the [xgrid-fluid] trace: local=(8,-1,4) on an 8-cell
      * grid hit OutOfScope 194 times in one short GameTest run). In-bounds -> Local without
-     * touching level at all. Each hop only peels exactly one grid-width of overflow per axis — a
-     * query overflowing by MORE than one grid-width on any axis (never observed in practice;
-     * vanilla's own relative-position probes never look further than one block away) falls to
-     * OutOfScope rather than guessing further. This is read-only; resolveOrCreate deliberately
-     * stays single-hop (see its own doc) — checking whether a cell is valid shouldn't have the
-     * side effect of creating a whole chain of new subgrids.
+     * touching level at all. Each hop fully resolves whatever magnitude of overflow that axis has
+     * (via wrap's floorMod, not a fixed ±1 collapse — a piston chain-pushing a second block past
+     * the first needs exactly this, see wrap's own doc) before moving to the next axis; capped at
+     * MAX_CHAIN_HOPS grids crossed, not at overflow magnitude. This is read-only; resolveOrCreate
+     * deliberately stays single-hop (see its own doc) — checking whether a cell is valid shouldn't
+     * have the side effect of creating a whole chain of new subgrids.
      */
     public CellRef resolve(int x, int y, int z) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
@@ -483,7 +483,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
             BlockPos targetPos = grid.worldPosition.relative(dir);
             if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity next) || next.gridSize != gridSize) {
-                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize - 1);
+                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize);
                 return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
             }
 
@@ -499,38 +499,42 @@ public class SubgridBlockEntity extends BlockEntity {
         return logResolve(firstHop, x, y, z, result);
     }
 
-    /** First axis (x/y/z, checked in that order) overflowing by exactly one step, or null. */
+    /**
+     * First axis (x/y/z, checked in that order) that's out of bounds, regardless of how far —
+     * magnitude only matters for how far foldRemainingIntoRealWorld/wrap step, not for whether an
+     * axis counts as overflowing at all. Package-visible for direct unit testing.
+     */
     @Nullable
-    /** Package-visible for direct unit testing (SubgridBlockEntityTest) — same idiom as wrap. */
     Direction singleStepOverflowAxis(int x, int y, int z) {
-        if (x == -1) return Direction.WEST;
-        if (x == gridSize) return Direction.EAST;
-        if (y == -1) return Direction.DOWN;
-        if (y == gridSize) return Direction.UP;
-        if (z == -1) return Direction.NORTH;
-        if (z == gridSize) return Direction.SOUTH;
+        if (x < 0) return Direction.WEST;
+        if (x >= gridSize) return Direction.EAST;
+        if (y < 0) return Direction.DOWN;
+        if (y >= gridSize) return Direction.UP;
+        if (z < 0) return Direction.NORTH;
+        if (z >= gridSize) return Direction.SOUTH;
         return null;
     }
 
     /**
      * Once a hop finds real (non-subgrid) world space instead of a matching neighbor, any OTHER
-     * axis still overflowing by one step folds directly into further relative() steps from base —
-     * real-world granularity has no "local coordinate" concept beyond this point, so remaining
-     * single-step overflow just means one more real block over in that direction.
+     * axis still out of bounds folds directly into further relative() steps from base — real-world
+     * granularity has no "local coordinate" concept beyond this point, so remaining overflow just
+     * means that many more real blocks over in that direction. floorDiv, not a fixed ±1: a magnitude
+     * of exactly one grid-width was the only case ever confirmed live, but a piston chain-pushing a
+     * SECOND block past the first (issue #34's live follow-up) reads a position a full grid-width
+     * further still — collapsing that to the same single step as the first would silently alias two
+     * distinct real positions onto one, exactly the bug this generalizes away.
      */
-    static BlockPos foldRemainingIntoRealWorld(BlockPos base, Direction resolvedAxis, int x, int y, int z, int max) {
+    static BlockPos foldRemainingIntoRealWorld(BlockPos base, Direction resolvedAxis, int x, int y, int z, int gridSize) {
         BlockPos pos = base;
         if (resolvedAxis.getAxis() != Direction.Axis.X) {
-            if (x == -1) pos = pos.relative(Direction.WEST);
-            else if (x == max + 1) pos = pos.relative(Direction.EAST);
+            pos = pos.relative(Direction.EAST, Math.floorDiv(x, gridSize));
         }
         if (resolvedAxis.getAxis() != Direction.Axis.Y) {
-            if (y == -1) pos = pos.relative(Direction.DOWN);
-            else if (y == max + 1) pos = pos.relative(Direction.UP);
+            pos = pos.relative(Direction.UP, Math.floorDiv(y, gridSize));
         }
         if (resolvedAxis.getAxis() != Direction.Axis.Z) {
-            if (z == -1) pos = pos.relative(Direction.NORTH);
-            else if (z == max + 1) pos = pos.relative(Direction.SOUTH);
+            pos = pos.relative(Direction.SOUTH, Math.floorDiv(z, gridSize));
         }
         return pos;
     }
@@ -669,11 +673,17 @@ public class SubgridBlockEntity extends BlockEntity {
         return piece != null ? new Neighbor(a.grid(), piece) : null;
     }
 
-    /** Public: reused outside this package by any caller matching the same wrap-at-boundary convention. */
+    /**
+     * Wraps v into [0,max]. Math.floorMod, not a fixed boundary-collapse: two DIFFERENT overflowed
+     * values one grid-width apart (e.g. 8 and 9, gridSize 8) must land on DIFFERENT wrapped cells
+     * (0 and 1) in the neighbor grid, not silently collapse onto the same one — found live via a
+     * piston chain-pushing a second block past the first, which needs exactly this (issue #34's
+     * live follow-up). floorMod agrees with a naive "collapse to boundary" implementation for
+     * every magnitude-1 case (the only one ever exercised before), so this is a strict superset,
+     * not a behavior change for anything already working.
+     */
     public static int wrap(int v, int max) {
-        if (v < 0) return max;
-        if (v > max) return 0;
-        return v;
+        return Math.floorMod(v, max + 1);
     }
 
     /**
