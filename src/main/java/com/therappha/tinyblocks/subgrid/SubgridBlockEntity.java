@@ -492,7 +492,28 @@ public class SubgridBlockEntity extends BlockEntity {
      * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
      * separately from latest.log — just no longer paid for on every tick by default.
      */
+    /**
+     * Diagnostic-only (issue #43): set true around FluidState.tick calls (VanillaBlockPiece
+     * .scheduledTick) so logResolve can trace which boundary reads happen mid fluid-spread at
+     * INFO — the regular [xgrid] DEBUG line turned out not to actually be captured anywhere by
+     * this project's default logging config (checked: debug.log has zero [xgrid] entries even
+     * with LOGGER.isDebugEnabled() guarding it), so a targeted, narrowly-scoped INFO trace is the
+     * only way to get real visibility without reintroducing the volume problem #42's downgrade
+     * fixed. Safe at INFO specifically because fluid ticks are throttled/infrequent, unlike the
+     * constant hasSignal/canSurvive traffic every resolve() call sees generally. Single-threaded
+     * server tick — no concurrency concerns with this being static.
+     */
+    private static boolean tracingFluid = false;
+
+    public static void setTracingFluid(boolean value) {
+        tracingFluid = value;
+    }
+
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
+        if (tracingFluid) {
+            LOGGER.info("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
+                    dir, worldPosition, x, y, z, describeCellRef(ref));
+        }
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
                     dir, worldPosition, x, y, z, describeCellRef(ref));
