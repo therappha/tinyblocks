@@ -199,24 +199,26 @@ class SubgridBlockEntityTest {
         assertTrue(ref instanceof SubgridBlockEntity.CellRef.Local);
     }
 
-    @Test
-    void resolveOrCreateDiagonalOverflowNeverTouchesRealLevel() {
-        SubgridBlockEntity be = newEntity();
-        SubgridBlockEntity.CellRef ref = be.resolveOrCreate(-1, -1, 0, null);
-        assertTrue(ref instanceof SubgridBlockEntity.CellRef.OutOfScope);
-    }
+    // Diagonal overflow used to short-circuit to OutOfScope without ever touching realLevel — now
+    // (issue #46) resolveOrCreate genuinely attempts to resolve it via chaining, same as resolve(),
+    // so it necessarily touches realLevel. That needs a real ServerLevel to test meaningfully;
+    // covered by SubgridCrossBoundaryGameTest instead of a null-realLevel unit test.
 
     @Test
-    void wrapClampsExactlyOneStepPastEitherEdge() {
+    void wrapHandlesAnyOverflowMagnitudeNotJustOneStep() {
         assertEquals(7, SubgridBlockEntity.wrap(-1, 7));
         assertEquals(0, SubgridBlockEntity.wrap(8, 7));
         assertEquals(3, SubgridBlockEntity.wrap(3, 7), "in-range values pass through unchanged");
+        // Issue #34's live follow-up: a piston chain-pushing a second block past the first needs
+        // 8 and 9 to land on DIFFERENT wrapped cells (0 and 1), not collapse onto the same one.
+        assertEquals(1, SubgridBlockEntity.wrap(9, 7), "one grid-width further than a single overflow");
+        assertEquals(6, SubgridBlockEntity.wrap(-2, 7), "two steps under, wrapping from the far edge");
     }
 
-    // --- chained resolution helpers (issue #43) ------------------------------------------------
+    // --- chained resolution helpers (issue #43 / #34) ------------------------------------------
 
     @Test
-    void singleStepOverflowAxisIdentifiesExactlyOneStepPastEachEdge() {
+    void singleStepOverflowAxisIdentifiesEachOverflowingEdge() {
         SubgridBlockEntity be = newEntity(); // gridSize 8, valid range [0,7]
         assertEquals(Direction.WEST, be.singleStepOverflowAxis(-1, 0, 0));
         assertEquals(Direction.EAST, be.singleStepOverflowAxis(8, 0, 0));
@@ -234,24 +236,35 @@ class SubgridBlockEntityTest {
     }
 
     @Test
-    void singleStepOverflowAxisRefusesMoreThanOneStepOver() {
+    void singleStepOverflowAxisAcceptsMoreThanOneStepOver() {
+        // Was refused (returned null -> OutOfScope) before issue #34's live follow-up: a piston
+        // chain-pushing a second block past the first reads a position a full grid-width further
+        // still, which is a real, correctly-resolvable query, not out of scope.
         SubgridBlockEntity be = newEntity();
-        assertNull(be.singleStepOverflowAxis(9, 0, 4), "two steps past the edge is out of this chain's scope");
+        assertEquals(Direction.EAST, be.singleStepOverflowAxis(9, 0, 4));
     }
 
     @Test
     void foldRemainingIntoRealWorldAppliesEveryOtherOverflowingAxis() {
         BlockPos base = new BlockPos(10, 20, 30);
         // Matches issue #43's exact repro: X already resolved via EAST, Y (-1) still needs folding in.
-        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, -1, 4, 7);
+        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, -1, 4, 8);
         assertEquals(new BlockPos(10, 19, 30), result);
     }
 
     @Test
     void foldRemainingIntoRealWorldIsANoOpWhenNoOtherAxisOverflows() {
         BlockPos base = new BlockPos(10, 20, 30);
-        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, 3, 4, 7);
+        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, 3, 4, 8);
         assertEquals(base, result);
+    }
+
+    @Test
+    void foldRemainingIntoRealWorldStepsMultipleBlocksForLargerMagnitude() {
+        BlockPos base = new BlockPos(10, 20, 30);
+        // Y overflowing by two full grid-widths (16 on an 8-cell grid) should step 2 real blocks up.
+        BlockPos result = SubgridBlockEntity.foldRemainingIntoRealWorld(base, Direction.EAST, 8, 16, 4, 8);
+        assertEquals(new BlockPos(10, 22, 30), result);
     }
 
     @Test

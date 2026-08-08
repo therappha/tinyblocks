@@ -20,16 +20,15 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * real-world cell as plain air beforehand (not a pre-placed subgrid) since #34's own report was
  * specifically about pushing into open air.
  *
- * required = false: confirmed still broken, but NOT where it first looked. Two consecutive
- * thenExecute steps below run in the same tick with no thenIdle between them — GameTestSequence's
- * own tick() loop lets a failed thenExecute call parent.fail(...) without stopping, so the SECOND
- * step's failure silently overwrote the first one's message. With unconditional (not
- * isPistonRelated-gated) logging added directly in this test, the real finding is: a plain
- * (non-sticky) EAST-facing piston powered by a redstone_block directly WEST of it (behind, not to
- * a side) never extends at all — see issue #34's own comment thread for the corrected diagnosis.
- * Kept enabled and reported rather than deleted so the suite documents the exact live failure and
- * flips green automatically whenever this actually gets fixed, instead of silently regressing
- * back to "no coverage."
+ * Previously believed broken two different ways in sequence — both corrected:
+ * 1. A misdiagnosed "piston never extends" (an artifact of GameTestSequence's own same-tick
+ *    thenExecute failure-overwriting, not a real engine bug — see issue #34's history).
+ * 2. Once #42/#43 landed, the piston DID extend correctly, but the cross-boundary landing still
+ *    failed — turned out to be empty_platform's own stone extending 2 blocks past the subgrid's
+ *    edge before hitting the room's barrier wall, confirmed live via a pristine (pre-test)
+ *    real-block-state check. There was never actually open air here to push into; not an engine
+ *    bug. Fixed by explicitly clearing that one real-world cell instead of reshaping the shared
+ *    structure (used by several other tests that never look past the subgrid's own edge).
  */
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -38,7 +37,7 @@ public class SubgridCrossBoundaryGameTest {
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static final String PLATFORM = "empty_platform";
 
-    @GameTest(template = PLATFORM, timeoutTicks = 100, required = false)
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
     public void pistonPushAcrossSubgridBoundaryCreatesTheNeighborAndLandsThePiece(GameTestHelper helper) {
         BlockPos subgridPos = new BlockPos(2, 1, 2);
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, subgridPos);
@@ -54,6 +53,12 @@ public class SubgridCrossBoundaryGameTest {
         SubgridTestSupport.placePiece(be, level, pushedAnchor, Blocks.OAK_LOG.defaultBlockState());
 
         BlockPos neighborSubgridPos = subgridPos.relative(Direction.EAST);
+        // empty_platform's own stone extends 2 blocks past the subgrid's edge before hitting the
+        // room's barrier wall — confirmed live, not actually open air anywhere in this direction
+        // within the structure's bounds. Every other test sharing this platform is fine with that
+        // (they never look past the subgrid's own edge); only a cross-boundary test cares, so
+        // clear this one cell explicitly rather than reshaping the shared structure.
+        helper.setBlock(neighborSubgridPos, Blocks.AIR.defaultBlockState());
         LOGGER.info("[XTEST-crossboundary] subgrid at {} (abs {}), piston {} pushed {} power {} expecting neighbor at abs {}",
                 be.getBlockPos(), helper.absolutePos(subgridPos), pistonAnchor, pushedAnchor, powerAnchor, helper.absolutePos(neighborSubgridPos));
 
@@ -61,17 +66,19 @@ public class SubgridCrossBoundaryGameTest {
                 .thenExecute(() -> SubgridTestSupport.placePiece(be, level, powerAnchor, Blocks.REDSTONE_BLOCK.defaultBlockState()))
                 .thenIdle(20)
                 .thenExecute(() -> {
-                    // Pins down exactly which half is broken: the piston circuit itself (power ->
-                    // extend -> vacate the pushed cell) works fine — confirmed here — so the
-                    // failure below is isolated to applyChanges' cross-boundary landing, not the
-                    // push mechanics.
+                    // A normal (non-sticky) piston's HEAD legitimately occupies the pushed block's
+                    // old cell once extended — the oak_log itself moves one further, to the
+                    // neighboring subgrid checked below. Pins down that the piston circuit itself
+                    // (power -> extend -> head lands) works, so any remaining failure is isolated
+                    // to the cross-boundary landing, not the push mechanics.
                     var pistonState = SubgridTestSupport.stateOf(be, pistonAnchor);
+                    var pushedCellState = SubgridTestSupport.stateOf(be, pushedAnchor);
                     LOGGER.info("[XTEST-crossboundary] after idle: pistonState={} pushedCellState={}",
-                            pistonState, SubgridTestSupport.stateOf(be, pushedAnchor));
+                            pistonState, pushedCellState);
                     helper.assertTrue(pistonState != null && pistonState.getValue(PistonBaseBlock.EXTENDED),
                             "piston never extended at all (state=" + pistonState + ")");
-                    helper.assertTrue(SubgridTestSupport.stateOf(be, pushedAnchor) == null,
-                            "pushed block's old cell should be vacated by now");
+                    helper.assertTrue(pushedCellState != null && pushedCellState.is(Blocks.PISTON_HEAD),
+                            "the piston head never took over the pushed cell (state=" + pushedCellState + ")");
                 })
                 .thenExecute(() -> {
                     BlockPos abs = helper.absolutePos(neighborSubgridPos);
@@ -84,9 +91,104 @@ public class SubgridCrossBoundaryGameTest {
                     }
                     PlacedPiece landed = neighbor.getPieceAt(0, 0, 4);
                     helper.assertTrue(landed != null, "the pushed block never landed in the new neighboring subgrid");
-                    helper.assertTrue(SubgridTestSupport.stateOf(be, pushedAnchor) == null,
-                            "the original subgrid still thinks the pushed cell is occupied");
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * Live-reported follow-up: with a pre-existing block already occupying the neighbor cell a
+     * pushed block would land on, the piston extended but the pushed block seemed to vanish.
+     * Root cause: wrap() collapsed ANY overflow magnitude to the boundary (0 or max) instead of
+     * the correct wrapped cell — so the oak_log's landing (origin-relative position 8) and the
+     * pre-existing stone's own chain-pushed destination (position 9, one grid-width further)
+     * both wrapped onto the SAME neighbor cell (0,0,4) instead of two different ones (0,0,4 and
+     * 1,0,4), and the second write silently clobbered the first. Fixed in wrap() itself (see its
+     * doc) — this is a real chain push, vanilla correctly pushes the stone one further to make
+     * room, exactly like pushing two blocks in a row anywhere else.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void pistonPushIntoAnAlreadyOccupiedNeighborCell(GameTestHelper helper) {
+        BlockPos subgridPos = new BlockPos(2, 1, 2);
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, subgridPos);
+        ServerLevel level = helper.getLevel();
+
+        int max = be.getGridSize() - 1;
+        BlockPos pistonAnchor = new BlockPos(max - 1, 0, 4);
+        BlockPos pushedAnchor = new BlockPos(max, 0, 4);
+        BlockPos powerAnchor = pistonAnchor.relative(Direction.WEST);
+
+        SubgridTestSupport.placePiece(be, level, pistonAnchor,
+                Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.EAST));
+        SubgridTestSupport.placePiece(be, level, pushedAnchor, Blocks.OAK_LOG.defaultBlockState());
+
+        // Pre-existing neighbor, already occupied at the exact cell the pushed block would land on.
+        BlockPos neighborSubgridPos = subgridPos.relative(Direction.EAST);
+        helper.setBlock(neighborSubgridPos, Blocks.AIR.defaultBlockState());
+        SubgridBlockEntity neighbor = SubgridTestSupport.placeSubgrid(helper, neighborSubgridPos);
+        SubgridTestSupport.placePiece(neighbor, level, new BlockPos(0, 0, 4), Blocks.STONE.defaultBlockState());
+
+        LOGGER.info("[XTEST-crossboundary-occupied] origin {} (abs {}), neighbor {} (abs {}) pre-occupied at (0,0,4)",
+                be.getBlockPos(), helper.absolutePos(subgridPos), neighbor.getBlockPos(), helper.absolutePos(neighborSubgridPos));
+
+        helper.startSequence()
+                .thenExecute(() -> SubgridTestSupport.placePiece(be, level, powerAnchor, Blocks.REDSTONE_BLOCK.defaultBlockState()))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    var pistonState = SubgridTestSupport.stateOf(be, pistonAnchor);
+                    var pushedCellState = SubgridTestSupport.stateOf(be, pushedAnchor);
+                    var landedCellState = SubgridTestSupport.stateOf(neighbor, new BlockPos(0, 0, 4));
+                    var chainedCellState = SubgridTestSupport.stateOf(neighbor, new BlockPos(1, 0, 4));
+                    LOGGER.info("[XTEST-crossboundary-occupied] after idle: pistonState={} pushedCellState={} landedCellState={} chainedCellState={}",
+                            pistonState, pushedCellState, landedCellState, chainedCellState);
+                    helper.assertTrue(pistonState != null && pistonState.getValue(PistonBaseBlock.EXTENDED),
+                            "piston never extended at all (state=" + pistonState + ")");
+                    helper.assertTrue(pushedCellState != null && pushedCellState.is(Blocks.PISTON_HEAD),
+                            "the piston head never took over the pushed cell (state=" + pushedCellState + ")");
+                    helper.assertTrue(landedCellState != null && landedCellState.is(Blocks.OAK_LOG),
+                            "the pushed oak_log never landed in the neighbor's cell (state=" + landedCellState + ")");
+                    helper.assertTrue(chainedCellState != null && chainedCellState.is(Blocks.STONE),
+                            "the pre-existing stone was never chain-pushed one further (state=" + chainedCellState + ")");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Live-reported follow-up (issue #46): resolveOrCreate is single-hop only (deliberately, when
+     * #43 fixed the read-only resolve() to chain) — a write landing TWO real-world hops away (a
+     * 3rd subgrid, not just the immediate neighbor) currently can't resolve at all. Direct,
+     * focused check of resolveOrCreate itself rather than a full multi-block piston chain, since
+     * that's the exact method with the gap.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void resolveOrCreateReachesAThirdSubgrid(GameTestHelper helper) {
+        BlockPos originPos = new BlockPos(2, 1, 2);
+        SubgridBlockEntity origin = SubgridTestSupport.placeSubgrid(helper, originPos);
+        ServerLevel level = helper.getLevel();
+        int gridSize = origin.getGridSize();
+
+        // Pre-existing immediate neighbor (1 hop east) — resolveOrCreate must chain THROUGH this
+        // one to reach the 2nd hop, not stop here.
+        BlockPos neighbor1Pos = originPos.relative(Direction.EAST);
+        helper.setBlock(neighbor1Pos, Blocks.AIR.defaultBlockState());
+        SubgridTestSupport.placeSubgrid(helper, neighbor1Pos);
+
+        // The 3rd grid doesn't exist yet — resolveOrCreate should create it, same as it already
+        // does for a 1-hop write into open air.
+        BlockPos neighbor2Pos = neighbor1Pos.relative(Direction.EAST);
+        helper.setBlock(neighbor2Pos, Blocks.AIR.defaultBlockState());
+
+        // Local x = 2 grid-widths east, still in-bounds on y/z — lands at neighbor2's local (0,0,4).
+        SubgridBlockEntity.CellRef ref = origin.resolveOrCreate(gridSize * 2, 0, 4, level);
+        LOGGER.info("[XTEST-crossboundary-3rd-grid] resolveOrCreate(2 hops east) -> {}", ref);
+
+        helper.assertTrue(ref instanceof SubgridBlockEntity.CellRef.Created
+                        || ref instanceof SubgridBlockEntity.CellRef.InAdjacentGrid,
+                "resolveOrCreate couldn't reach a 3rd subgrid two real-world hops away (result=" + ref + ")");
+
+        BlockPos abs = helper.absolutePos(neighbor2Pos);
+        helper.assertTrue(level.getBlockEntity(abs) instanceof SubgridBlockEntity,
+                "no SubgridBlockEntity was created at the 3rd grid's real-world position");
+
+        helper.succeed();
     }
 }
