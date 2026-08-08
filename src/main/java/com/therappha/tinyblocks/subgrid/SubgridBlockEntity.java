@@ -263,6 +263,20 @@ public class SubgridBlockEntity extends BlockEntity {
         };
     }
 
+    /**
+     * If targetPos is real-world air, creates a SubgridBlockEntity of the given gridSize there.
+     * Returns whatever SubgridBlockEntity now occupies targetPos — freshly created, or whatever
+     * was already there (of ANY gridSize; this doesn't gate on a match, unlike resolveOrCreate,
+     * since a caller placing directly at a clicked block has no "source grid" to match sizes
+     * against) — or null if targetPos is occupied by something that isn't a SubgridBlockEntity.
+     */
+    public static SubgridBlockEntity createAt(ServerLevel realLevel, BlockPos targetPos, int gridSize) {
+        if (realLevel.getBlockState(targetPos).isAir()) {
+            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
+        }
+        return realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity sub ? sub : null;
+    }
+
     @Nullable
     public PlacedPiece getPieceAt(int x, int y, int z) {
         if (outOfBounds(x, y, z)) return null;
@@ -457,18 +471,14 @@ public class SubgridBlockEntity extends BlockEntity {
         if (dir == null) return logResolve(null, x, y, z, new CellRef.OutOfScope());
 
         BlockPos targetPos = worldPosition.relative(dir);
-        BlockState targetState = realLevel.getBlockState(targetPos);
-        boolean created = false;
-        if (targetState.isAir()) {
-            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
-            created = true;
-        }
-        if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
+        boolean wasAir = realLevel.getBlockState(targetPos).isAir();
+        SubgridBlockEntity adjacent = createAt(realLevel, targetPos, gridSize);
+        if (adjacent == null || adjacent.gridSize != gridSize) {
             return logResolve(dir, x, y, z, new CellRef.RealWorld(targetPos));
         }
         int max = gridSize - 1;
         int wx = wrap(x, max), wy = wrap(y, max), wz = wrap(z, max);
-        CellRef ref = created ? new CellRef.Created(adjacent, wx, wy, wz) : new CellRef.InAdjacentGrid(adjacent, wx, wy, wz);
+        CellRef ref = wasAir ? new CellRef.Created(adjacent, wx, wy, wz) : new CellRef.InAdjacentGrid(adjacent, wx, wy, wz);
         return logResolve(dir, x, y, z, ref);
     }
 

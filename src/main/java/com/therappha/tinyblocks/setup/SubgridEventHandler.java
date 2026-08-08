@@ -229,37 +229,24 @@ public class SubgridEventHandler {
 
             if (blockItem == null) return;
 
-            int max = existing.gridSize - 1;
+            // Overflow (if any) continues into the adjacent real-world position, same size as the
+            // grid being left — resolveOrCreate creates one if that position is air, matching what
+            // notifyNeighbors/realBlockStateAt already require for cross-grid propagation to see it.
             int cx = clickedCell.getX() + face.getStepX();
             int cy = clickedCell.getY() + face.getStepY();
             int cz = clickedCell.getZ() + face.getStepZ();
 
-            if (cx >= 0 && cx <= max && cy >= 0 && cy <= max && cz >= 0 && cz <= max) {
-                be = existing;
-                nx = cx; ny = cy; nz = cz;
-            } else {
-                // Overflowed past this grid's edge — continue into the adjacent real-world
-                // position, same size as the grid being left (needed for cross-grid propagation
-                // to work at all — see SubgridBlockEntity.crossGridNeighborAt's gridSize check)
-                // and same wrap convention it already uses for that boundary.
-                BlockPos targetPos = pos.relative(face);
-                BlockState targetState = serverLevel.getBlockState(targetPos);
-                if (targetState.isAir()) {
-                    serverLevel.setBlock(targetPos, subgridBlockFor(existing.gridSize).defaultBlockState(), Block.UPDATE_ALL);
-                }
-                if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent)) return;
-                if (adjacent.gridSize != existing.gridSize) return;
-                be = adjacent;
-                int wmax = adjacent.gridSize - 1;
-                nx = wrap(cx, wmax); ny = wrap(cy, wmax); nz = wrap(cz, wmax);
+            SubgridBlockEntity.CellRef ref = existing.resolveOrCreate(cx, cy, cz, serverLevel);
+            switch (ref) {
+                case SubgridBlockEntity.CellRef.Local l -> { be = existing; nx = l.x(); ny = l.y(); nz = l.z(); }
+                case SubgridBlockEntity.CellRef.InAdjacentGrid a -> { be = a.grid(); nx = a.x(); ny = a.y(); nz = a.z(); }
+                case SubgridBlockEntity.CellRef.Created c -> { be = c.grid(); nx = c.x(); ny = c.y(); nz = c.z(); }
+                default -> { return; }
             }
         } else {
             BlockPos targetPos = pos.relative(face);
-            BlockState targetState = serverLevel.getBlockState(targetPos);
-            if (targetState.isAir()) {
-                serverLevel.setBlock(targetPos, minimizer.preferredSubgrid().defaultBlockState(), Block.UPDATE_ALL);
-            }
-            if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity created)) return;
+            SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.preferredSubgrid().gridSize);
+            if (created == null) return;
             be = created;
             int[] cell = TinyPieceItem.computeGridCell(clickedState, pos, face, hit.getLocation(), be.gridSize);
             nx = cell[0]; ny = cell[1]; nz = cell[2];
@@ -438,21 +425,6 @@ public class SubgridEventHandler {
                     serverLevel.getGameTime() + entry.delay());
         }
         return result != InteractionResult.PASS;
-    }
-
-    private static int wrap(int v, int max) {
-        if (v < 0) return max;
-        if (v > max) return 0;
-        return v;
-    }
-
-    private static SubgridBlock subgridBlockFor(int gridSize) {
-        return switch (gridSize) {
-            case 2 -> Registration.SUBGRID_BLOCK_2.get();
-            case 4 -> Registration.SUBGRID_BLOCK_4.get();
-            case 16 -> Registration.SUBGRID_BLOCK_16.get();
-            default -> Registration.SUBGRID_BLOCK.get();
-        };
     }
 
     /**
