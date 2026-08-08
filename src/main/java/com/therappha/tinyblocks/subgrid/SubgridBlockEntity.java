@@ -215,25 +215,16 @@ public class SubgridBlockEntity extends BlockEntity {
     @Nullable
     public PlacedPiece placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
                                                 Object runtimeState, ServerLevel realLevel) {
-        if (!outOfBounds(local.getX(), local.getY(), local.getZ())) {
-            return placeOrUpdatePiece(definition, local, facing, runtimeState);
-        }
-
-        Direction dir = overflowDirection(local.getX(), local.getY(), local.getZ());
-        if (dir == null) return null;
-
-        BlockPos targetPos = worldPosition.relative(dir);
-        BlockState targetState = realLevel.getBlockState(targetPos);
-        if (targetState.isAir()) {
-            realLevel.setBlock(targetPos, subgridBlockFor(gridSize).defaultBlockState(), Block.UPDATE_ALL);
-        }
-        if (!(realLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity adjacent) || adjacent.gridSize != gridSize) {
-            return null;
-        }
-
-        int max = gridSize - 1;
-        BlockPos wrapped = new BlockPos(wrap(local.getX(), max), wrap(local.getY(), max), wrap(local.getZ(), max));
-        return adjacent.placeOrUpdatePiece(definition, wrapped, facing, runtimeState);
+        CellRef ref = resolveOrCreate(local.getX(), local.getY(), local.getZ(), realLevel);
+        return switch (ref) {
+            case CellRef.Local l -> placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
+            case CellRef.InAdjacentGrid a -> a.grid().placeOrUpdatePiece(
+                    definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
+            case CellRef.Created c -> c.grid().placeOrUpdatePiece(
+                    definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
+            case CellRef.RealWorld ignored -> null;
+            case CellRef.OutOfScope ignored -> null;
+        };
     }
 
     /**
@@ -555,12 +546,9 @@ public class SubgridBlockEntity extends BlockEntity {
 
     @Nullable
     private Neighbor crossGridNeighborAt(Direction dir, int nx, int ny, int nz) {
-        if (!(level instanceof ServerLevel)) return null;
-        if (!(level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other)) return null;
-        if (other.gridSize != gridSize) return null;
-        int max = gridSize - 1;
-        PlacedPiece piece = other.getPieceAt(wrap(nx, max), wrap(ny, max), wrap(nz, max));
-        return piece != null ? new Neighbor(other, piece) : null;
+        if (!(resolve(dir, nx, ny, nz) instanceof CellRef.InAdjacentGrid a)) return null;
+        PlacedPiece piece = a.grid().getPieceAt(a.x(), a.y(), a.z());
+        return piece != null ? new Neighbor(a.grid(), piece) : null;
     }
 
     /** Package-visible for direct unit testing (SubgridBlockEntityTest) — same idiom as directionTo. */
@@ -582,22 +570,19 @@ public class SubgridBlockEntity extends BlockEntity {
      * rare for the face-adjacent queries vanilla actually makes) falls back to air.
      */
     public BlockState realBlockStateAt(int x, int y, int z) {
-        if (!outOfBounds(x, y, z)) {
-            PlacedPiece piece = getPieceAt(x, y, z);
-            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
-        }
-        if (!(level instanceof ServerLevel)) return Blocks.AIR.defaultBlockState();
-
-        Direction dir = overflowDirection(x, y, z);
-        if (dir == null) return Blocks.AIR.defaultBlockState();
-
-        int max = gridSize - 1;
-        if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other
-                && other.gridSize == gridSize) {
-            PlacedPiece piece = other.getPieceAt(wrap(x, max), wrap(y, max), wrap(z, max));
-            return piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
-        }
-        return level.getBlockState(worldPosition.relative(dir));
+        return switch (resolve(x, y, z)) {
+            case CellRef.Local l -> {
+                PlacedPiece piece = getPieceAt(l.x(), l.y(), l.z());
+                yield piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+            }
+            case CellRef.InAdjacentGrid a -> {
+                PlacedPiece piece = a.grid().getPieceAt(a.x(), a.y(), a.z());
+                yield piece != null ? piece.definition.renderState(piece) : Blocks.AIR.defaultBlockState();
+            }
+            case CellRef.RealWorld r -> level.getBlockState(r.pos());
+            case CellRef.Created ignored -> Blocks.AIR.defaultBlockState(); // resolve() never creates
+            case CellRef.OutOfScope ignored -> Blocks.AIR.defaultBlockState();
+        };
     }
 
     /** The single axis (x/y/z) that (x,y,z) overflows, or null if zero or multiple axes do. */
