@@ -13,9 +13,9 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -43,10 +43,11 @@ public abstract class TinyPieceItem extends Item {
         Vec3 hit = context.getClickLocation();
 
         BlockPos targetPos;
+        int gs;
         int gx, gy, gz;
 
         if (clickedState.getBlock() instanceof SubgridBlock clickedSB) {
-            int gs = gridSizeAt(level, clickedPos, clickedSB);
+            gs = gridSizeAt(level, clickedPos, clickedSB);
             int max = gs - 1;
             double nudge = 0.5 / gs;
             int hx = (int)(((hit.x - clickedPos.getX()) - face.getStepX() * nudge) * gs);
@@ -62,12 +63,19 @@ public abstract class TinyPieceItem extends Item {
             } else {
                 targetPos = clickedPos.relative(face);
                 BlockState targetState = level.getBlockState(targetPos);
-                if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) {
+                if (targetState.getBlock() instanceof SubgridBlock) {
+                    // Same-size gate: matches SubgridBlockEntity.resolve/resolveOrCreate's
+                    // gridSize-match check everywhere else in the engine — a mismatched-size
+                    // neighbor refuses the cross, it doesn't clamp into whatever range fits.
+                    if (gridSizeAt(level, targetPos, (SubgridBlock) targetState.getBlock()) != gs) {
+                        return InteractionResult.PASS;
+                    }
+                } else if (!targetState.isAir()) {
                     return InteractionResult.PASS;
                 }
-                gx = nx < 0 ? max : nx > max ? 0 : Mth.clamp(nx, 0, max);
-                gy = ny < 0 ? max : ny > max ? 0 : Mth.clamp(ny, 0, max);
-                gz = nz < 0 ? max : nz > max ? 0 : Mth.clamp(nz, 0, max);
+                gx = SubgridBlockEntity.wrap(nx, max);
+                gy = SubgridBlockEntity.wrap(ny, max);
+                gz = SubgridBlockEntity.wrap(nz, max);
             }
         } else {
             targetPos = clickedPos.relative(face);
@@ -75,7 +83,7 @@ public abstract class TinyPieceItem extends Item {
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) {
                 return InteractionResult.PASS;
             }
-            int gs = targetState.getBlock() instanceof SubgridBlock tsb
+            gs = targetState.getBlock() instanceof SubgridBlock tsb
                 ? gridSizeAt(level, targetPos, tsb)
                 : preferredSubgrid().gridSize;
             int[] grid = computeGridCell(clickedState, clickedPos, face, hit, gs);
@@ -84,15 +92,12 @@ public abstract class TinyPieceItem extends Item {
 
         PlacedPiece piece = new PlacedPiece(pieceDefinition(), new BlockPos(gx, gy, gz), face);
 
-        if (!level.isClientSide) {
-            BlockState targetState = level.getBlockState(targetPos);
-            if (targetState.isAir()) {
-                level.setBlock(targetPos, preferredSubgrid().defaultBlockState(), Block.UPDATE_ALL);
-            }
-            BlockEntity be = level.getBlockEntity(targetPos);
-            if (be instanceof SubgridBlockEntity subgrid && subgrid.placePiece(piece)) {
+        if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
+            BlockState beforeState = level.getBlockState(targetPos);
+            SubgridBlockEntity subgrid = SubgridBlockEntity.createAt(serverLevel, targetPos, gs);
+            if (subgrid != null && subgrid.placePiece(piece)) {
                 if (player != null && !player.isCreative()) context.getItemInHand().shrink(1);
-                level.sendBlockUpdated(targetPos, targetState, level.getBlockState(targetPos), Block.UPDATE_CLIENTS);
+                level.sendBlockUpdated(targetPos, beforeState, level.getBlockState(targetPos), Block.UPDATE_CLIENTS);
             }
         }
 
