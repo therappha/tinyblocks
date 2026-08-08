@@ -563,7 +563,8 @@ public class SubgridBlockEntity extends BlockEntity {
         return piece != null ? new Neighbor(other, piece) : null;
     }
 
-    private static int wrap(int v, int max) {
+    /** Package-visible for direct unit testing (SubgridBlockEntityTest) — same idiom as directionTo. */
+    static int wrap(int v, int max) {
         if (v < 0) return max;
         if (v > max) return 0;
         return v;
