@@ -464,9 +464,11 @@ public class SubgridBlockEntity extends BlockEntity {
      * touching level at all. Each hop fully resolves whatever magnitude of overflow that axis has
      * (via wrap's floorMod, not a fixed ±1 collapse — a piston chain-pushing a second block past
      * the first needs exactly this, see wrap's own doc) before moving to the next axis; capped at
-     * MAX_CHAIN_HOPS grids crossed, not at overflow magnitude. This is read-only; resolveOrCreate
-     * deliberately stays single-hop (see its own doc) — checking whether a cell is valid shouldn't
-     * have the side effect of creating a whole chain of new subgrids.
+     * MAX_CHAIN_HOPS grids crossed, not at overflow magnitude. This is read-only — it never calls
+     * createAt, so a diagonal query now genuinely attempts to resolve through existing grids
+     * instead of short-circuiting to OutOfScope, but still can't conjure one into existence just
+     * because something asked. resolveOrCreate (see its own doc) chains the same way but creates
+     * along the way — the write-side counterpart, where creating a subgrid is already its point.
      */
     public CellRef resolve(int x, int y, int z) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
@@ -487,16 +489,24 @@ public class SubgridBlockEntity extends BlockEntity {
                 return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
             }
 
-            int max = gridSize - 1;
-            lx = dir.getAxis() == Direction.Axis.X ? wrap(lx, max) : lx;
-            ly = dir.getAxis() == Direction.Axis.Y ? wrap(ly, max) : ly;
-            lz = dir.getAxis() == Direction.Axis.Z ? wrap(lz, max) : lz;
+            // Peel exactly ONE grid-width per hop, not the fully-reduced final coordinate — a
+            // magnitude spanning 2+ grids (e.g. 16 on an 8-cell grid) needs an equal number of
+            // hops, one real subgrid-existence check per grid crossed, not a single floorMod
+            // jump straight to the final answer while only ever advancing past one neighbor.
+            lx = dir.getAxis() == Direction.Axis.X ? peelOneGridWidth(lx, gridSize) : lx;
+            ly = dir.getAxis() == Direction.Axis.Y ? peelOneGridWidth(ly, gridSize) : ly;
+            lz = dir.getAxis() == Direction.Axis.Z ? peelOneGridWidth(lz, gridSize) : lz;
             grid = next;
         }
 
         if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
         CellRef result = grid == this ? new CellRef.Local(lx, ly, lz) : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
         return logResolve(firstHop, x, y, z, result);
+    }
+
+    /** One hop's worth of wrap — subtracts/adds exactly one gridSize, may still be out of bounds. */
+    private static int peelOneGridWidth(int v, int gridSize) {
+        return v < 0 ? v + gridSize : v - gridSize;
     }
 
     /**
@@ -540,25 +550,48 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
-     * Like resolve(), but if the overflowed real-world position is air, creates a same-gridSize
-     * SubgridBlockEntity there first — the write-side counterpart used whenever something
-     * spreading/moving/growing needs a writable cell across the boundary, creating one if needed.
+     * Like resolve(), but chains through creating a same-gridSize SubgridBlockEntity at any hop
+     * whose real-world target is air, instead of only ever reading — the write-side counterpart
+     * used whenever something spreading/moving/growing needs a writable cell across the boundary.
+     * A write landing a full 2+ real-world hops away (a 3rd subgrid, not just the immediate
+     * neighbor — issue #46's live follow-up: a piston chain-push spanning that far couldn't
+     * resolve at all) creates every intermediate grid along the way that doesn't exist yet, the
+     * same way a single hop already created one. Reports Created if ANY hop in the chain needed
+     * creating, InAdjacentGrid only if every hop crossed was already there.
      */
     public CellRef resolveOrCreate(int x, int y, int z, ServerLevel realLevel) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
-        Direction dir = overflowDirection(x, y, z);
-        if (dir == null) return logResolve(null, x, y, z, new CellRef.OutOfScope());
 
-        BlockPos targetPos = worldPosition.relative(dir);
-        boolean wasAir = realLevel.getBlockState(targetPos).isAir();
-        SubgridBlockEntity adjacent = createAt(realLevel, targetPos, gridSize);
-        if (adjacent == null || adjacent.gridSize != gridSize) {
-            return logResolve(dir, x, y, z, new CellRef.RealWorld(targetPos));
+        SubgridBlockEntity grid = this;
+        int lx = x, ly = y, lz = z;
+        Direction firstHop = null;
+        boolean anyCreated = false;
+
+        for (int hop = 0; hop < MAX_CHAIN_HOPS && grid.outOfBounds(lx, ly, lz); hop++) {
+            Direction dir = grid.singleStepOverflowAxis(lx, ly, lz);
+            if (dir == null) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
+            if (firstHop == null) firstHop = dir;
+
+            BlockPos targetPos = grid.worldPosition.relative(dir);
+            boolean wasAir = realLevel.getBlockState(targetPos).isAir();
+            SubgridBlockEntity next = createAt(realLevel, targetPos, gridSize);
+            if (next == null || next.gridSize != gridSize) {
+                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize);
+                return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
+            }
+            if (wasAir) anyCreated = true;
+
+            lx = dir.getAxis() == Direction.Axis.X ? peelOneGridWidth(lx, gridSize) : lx;
+            ly = dir.getAxis() == Direction.Axis.Y ? peelOneGridWidth(ly, gridSize) : ly;
+            lz = dir.getAxis() == Direction.Axis.Z ? peelOneGridWidth(lz, gridSize) : lz;
+            grid = next;
         }
-        int max = gridSize - 1;
-        int wx = wrap(x, max), wy = wrap(y, max), wz = wrap(z, max);
-        CellRef ref = wasAir ? new CellRef.Created(adjacent, wx, wy, wz) : new CellRef.InAdjacentGrid(adjacent, wx, wy, wz);
-        return logResolve(dir, x, y, z, ref);
+
+        if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
+        CellRef result = anyCreated
+                ? new CellRef.Created(grid, lx, ly, lz)
+                : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
+        return logResolve(firstHop, x, y, z, result);
     }
 
     /**
@@ -711,19 +744,6 @@ public class SubgridBlockEntity extends BlockEntity {
             case CellRef.Created ignored -> Blocks.AIR.defaultBlockState(); // resolve() never creates
             case CellRef.OutOfScope ignored -> Blocks.AIR.defaultBlockState();
         };
-    }
-
-    /** The single axis (x/y/z) that (x,y,z) overflows, or null if zero or multiple axes do. */
-    @Nullable
-    private Direction overflowDirection(int x, int y, int z) {
-        int max = gridSize - 1;
-        boolean overX = x < 0 || x > max;
-        boolean overY = y < 0 || y > max;
-        boolean overZ = z < 0 || z > max;
-        if ((overX ? 1 : 0) + (overY ? 1 : 0) + (overZ ? 1 : 0) != 1) return null;
-        if (overX) return x < 0 ? Direction.WEST : Direction.EAST;
-        if (overY) return y < 0 ? Direction.DOWN : Direction.UP;
-        return z < 0 ? Direction.NORTH : Direction.SOUTH;
     }
 
     public void notifyUpdate() {

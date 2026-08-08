@@ -151,4 +151,44 @@ public class SubgridCrossBoundaryGameTest {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * Live-reported follow-up (issue #46): resolveOrCreate is single-hop only (deliberately, when
+     * #43 fixed the read-only resolve() to chain) — a write landing TWO real-world hops away (a
+     * 3rd subgrid, not just the immediate neighbor) currently can't resolve at all. Direct,
+     * focused check of resolveOrCreate itself rather than a full multi-block piston chain, since
+     * that's the exact method with the gap.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void resolveOrCreateReachesAThirdSubgrid(GameTestHelper helper) {
+        BlockPos originPos = new BlockPos(2, 1, 2);
+        SubgridBlockEntity origin = SubgridTestSupport.placeSubgrid(helper, originPos);
+        ServerLevel level = helper.getLevel();
+        int gridSize = origin.getGridSize();
+
+        // Pre-existing immediate neighbor (1 hop east) — resolveOrCreate must chain THROUGH this
+        // one to reach the 2nd hop, not stop here.
+        BlockPos neighbor1Pos = originPos.relative(Direction.EAST);
+        helper.setBlock(neighbor1Pos, Blocks.AIR.defaultBlockState());
+        SubgridTestSupport.placeSubgrid(helper, neighbor1Pos);
+
+        // The 3rd grid doesn't exist yet — resolveOrCreate should create it, same as it already
+        // does for a 1-hop write into open air.
+        BlockPos neighbor2Pos = neighbor1Pos.relative(Direction.EAST);
+        helper.setBlock(neighbor2Pos, Blocks.AIR.defaultBlockState());
+
+        // Local x = 2 grid-widths east, still in-bounds on y/z — lands at neighbor2's local (0,0,4).
+        SubgridBlockEntity.CellRef ref = origin.resolveOrCreate(gridSize * 2, 0, 4, level);
+        LOGGER.info("[XTEST-crossboundary-3rd-grid] resolveOrCreate(2 hops east) -> {}", ref);
+
+        helper.assertTrue(ref instanceof SubgridBlockEntity.CellRef.Created
+                        || ref instanceof SubgridBlockEntity.CellRef.InAdjacentGrid,
+                "resolveOrCreate couldn't reach a 3rd subgrid two real-world hops away (result=" + ref + ")");
+
+        BlockPos abs = helper.absolutePos(neighbor2Pos);
+        helper.assertTrue(level.getBlockEntity(abs) instanceof SubgridBlockEntity,
+                "no SubgridBlockEntity was created at the 3rd grid's real-world position");
+
+        helper.succeed();
+    }
 }

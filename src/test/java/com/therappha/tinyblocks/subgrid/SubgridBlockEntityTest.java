@@ -199,12 +199,10 @@ class SubgridBlockEntityTest {
         assertTrue(ref instanceof SubgridBlockEntity.CellRef.Local);
     }
 
-    @Test
-    void resolveOrCreateDiagonalOverflowNeverTouchesRealLevel() {
-        SubgridBlockEntity be = newEntity();
-        SubgridBlockEntity.CellRef ref = be.resolveOrCreate(-1, -1, 0, null);
-        assertTrue(ref instanceof SubgridBlockEntity.CellRef.OutOfScope);
-    }
+    // Diagonal overflow used to short-circuit to OutOfScope without ever touching realLevel — now
+    // (issue #46) resolveOrCreate genuinely attempts to resolve it via chaining, same as resolve(),
+    // so it necessarily touches realLevel. That needs a real ServerLevel to test meaningfully;
+    // covered by SubgridCrossBoundaryGameTest instead of a null-realLevel unit test.
 
     @Test
     void wrapHandlesAnyOverflowMagnitudeNotJustOneStep() {
