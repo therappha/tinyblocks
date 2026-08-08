@@ -208,20 +208,35 @@ public class SubgridBlockEntity extends BlockEntity {
      * spreading/falling/growing across a subgrid's boundary (fluids, falling blocks, tree
      * growth) continues into a new subgrid instead of the write being silently dropped. Diagonal
      * overflow (2+ axes at once) is out of scope, same as realBlockStateAt above — returns null.
-     * Returns the placed piece (rather than a boolean) so a caller that also captured a real
-     * BlockEntity for this same write (e.g. a piston's moving-block animation state) has something
-     * to attach it to — see VanillaBlockPiece.applyChanges' syncBlockEntity.
+     * Returns the placed piece AND which SubgridBlockEntity actually owns it (rather than a bare
+     * boolean or just the piece) — a caller that also captured a real BlockEntity for this same
+     * write (e.g. a piston's moving-block animation state) needs both: something to attach the
+     * capture to, AND the correct owner to run capture bookkeeping against when the write lands in
+     * a DIFFERENT grid than the one that made this call (see VanillaBlockPiece.applyChanges'
+     * syncBlockEntity — issue #46's cross-grid sticky-piston-duplication fix depends on this being
+     * the real owner, not always the calling grid).
      */
+    public record PlacementResult(SubgridBlockEntity owner, PlacedPiece piece) {}
+
     @Nullable
-    public PlacedPiece placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
-                                                Object runtimeState, ServerLevel realLevel) {
+    public PlacementResult placePieceCrossBoundary(PieceDefinition definition, BlockPos local, Direction facing,
+                                                     Object runtimeState, ServerLevel realLevel) {
         CellRef ref = resolveOrCreate(local.getX(), local.getY(), local.getZ(), realLevel);
         return switch (ref) {
-            case CellRef.Local l -> placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
-            case CellRef.InAdjacentGrid a -> a.grid().placeOrUpdatePiece(
-                    definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
-            case CellRef.Created c -> c.grid().placeOrUpdatePiece(
-                    definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
+            case CellRef.Local l -> {
+                PlacedPiece p = placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
+                yield p != null ? new PlacementResult(this, p) : null;
+            }
+            case CellRef.InAdjacentGrid a -> {
+                PlacedPiece p = a.grid().placeOrUpdatePiece(
+                        definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
+                yield p != null ? new PlacementResult(a.grid(), p) : null;
+            }
+            case CellRef.Created c -> {
+                PlacedPiece p = c.grid().placeOrUpdatePiece(
+                        definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
+                yield p != null ? new PlacementResult(c.grid(), p) : null;
+            }
             case CellRef.RealWorld ignored -> null;
             case CellRef.OutOfScope ignored -> null;
         };

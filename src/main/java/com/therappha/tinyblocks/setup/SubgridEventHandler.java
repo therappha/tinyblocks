@@ -403,7 +403,7 @@ public class SubgridEventHandler {
                     be.notifyUpdate();
                 }
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
-                PlacedPiece placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
+                SubgridBlockEntity.PlacementResult placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
                 if (placed != null) {
                     com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
                 }

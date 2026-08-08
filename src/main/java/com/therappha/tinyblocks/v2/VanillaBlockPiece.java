@@ -724,7 +724,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                                 be.getBlockPos(), p.anchor, before.get(p.anchor), now);
                     }
                     p.runtimeState = now;
-                    syncBlockEntity(be, p, p.anchor, cells, (Level) fakeSpace, realLevel);
+                    syncBlockEntity(be, p, p.anchor, p.anchor, cells, (Level) fakeSpace, realLevel);
                     be.notifyNeighbors(p);
                     // This piece's new state might be the delayed arrival of a block that vacated
                     // some OTHER cell several ticks ago (see the deferred-drop comment below) — a
@@ -801,30 +801,25 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // placePieceCrossBoundary finds/creates an adjacent same-size SubgridBlockEntity when
             // pos overflows past exactly one edge (e.g. water/a falling block/a growing tree
             // crossing this subgrid's boundary), instead of the write just being silently dropped.
-            PlacedPiece placed = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
-            if (placed != null) {
+            SubgridBlockEntity.PlacementResult result = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
+            if (result != null) {
+                PlacedPiece placed = result.piece();
                 be.cancelPendingDrop(touchedState);
                 if (isPistonRelated(touchedState)) {
                     LOGGER.info("[piston-anim] new piece at {} (cell {}, withinBounds={}): {}",
                             be.getBlockPos(), pos, withinBounds, touchedState);
                 }
-                if (withinBounds) {
-                    syncBlockEntity(be, placed, pos, cells, (Level) fakeSpace, realLevel);
-                } else {
-                    // Landed on a different SubgridBlockEntity than be (crossed the subgrid
-                    // boundary) — still safe to attach any captured BE directly (position-agnostic,
-                    // just a field on the piece), but syncBlockEntity's animation-hint payload needs
-                    // the correct OWNING SubgridBlockEntity + its own local anchor to address the
-                    // client update to, neither of which is `be`/`pos` here. Narrow, accepted gap: a
-                    // piston that extends exactly across a subgrid boundary still ends up in the
-                    // right final state (server-authoritative), it just won't animate that specific
-                    // hop client-side.
-                    BlockEntity capturedElsewhere = cells.touchedBlockEntities().get(pos);
-                    if (capturedElsewhere != null) {
-                        capturedElsewhere.setLevel((Level) fakeSpace);
-                        placed.runtimeBlockEntity = capturedElsewhere;
-                    }
-                }
+                // result.owner() is the grid the piece actually landed in — placeOrUpdatePiece
+                // already stored the correctly-wrapped local coordinate as placed.anchor, so this
+                // one call is correct whether the write stayed in be or crossed into a neighbor.
+                // Previously the cross-grid case skipped this entirely (captureStarted/captureEnded
+                // ran against `be`, never the real owner) — issue #46's live-reported sticky piston
+                // retract duplication: hasActiveCaptures() on the piece's ACTUAL grid never saw it
+                // as still-animating, so its deferred drop's grace window fired immediately instead
+                // of waiting for this exact arrival to cancel it. Also fixes the "won't animate that
+                // specific hop client-side" gap this used to accept — now genuinely correct instead
+                // of a documented shortcut.
+                syncBlockEntity(result.owner(), placed, pos, placed.anchor, cells, (Level) fakeSpace, realLevel);
                 // placePiece already calls notifyNeighbors + the new piece's own onNeighborChanged
                 // — but NOT onPlace, same gap BlockAccess was added for at the top-level placement
                 // flow. A freshly-spread cell needs its own onPlace to schedule ITS next step, or
@@ -861,29 +856,40 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * SAME cached BE instance without another setBlockEntity call (PistonMovingBlockEntity.tick
      * mutates its own fields in place), so touchedBlockEntities() is empty on those ticks and this
      * whole method no-ops via the captured == null check below.
+     *
+     * Two distinct positions, not one (issue #46): fakeSpacePos is whatever key vanilla's own
+     * setBlock/setBlockEntity call actually used against the fake cell map — always relative to
+     * the ORIGIN grid that built this fake space, even when the piece landed in a different real
+     * SubgridBlockEntity (owner) after crossing a boundary. ownerLocalPos is that piece's own
+     * correct local coordinate WITHIN owner (already wrapped by placeOrUpdatePiece). Conflating
+     * the two used to mean a cross-grid landing either read the wrong fake-space key or announced
+     * the wrong local position — previously sidestepped entirely by skipping this method for
+     * cross-grid pieces, which is what let their capture bookkeeping (owner.captureStarted/
+     * captureEnded) never run at all, defeating the deferred-drop anti-duplication check on
+     * whichever grid the piece actually lives in.
      */
-    private static void syncBlockEntity(SubgridBlockEntity be, PlacedPiece piece, BlockPos pos,
-                                         FakeCellGetter cells, Level fakeLevel, ServerLevel realLevel) {
-        if (cells.removedBlockEntityPositions().contains(pos)) {
+    private static void syncBlockEntity(SubgridBlockEntity owner, PlacedPiece piece, BlockPos fakeSpacePos,
+                                         BlockPos ownerLocalPos, FakeCellGetter cells, Level fakeLevel, ServerLevel realLevel) {
+        if (cells.removedBlockEntityPositions().contains(fakeSpacePos)) {
             if (piece.runtimeBlockEntity instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) {
-                LOGGER.info("[piston-anim] server finalized MOVING_PISTON BE at {} (cell {})", be.getBlockPos(), pos);
+                LOGGER.info("[piston-anim] server finalized MOVING_PISTON BE at {} (cell {})", owner.getBlockPos(), ownerLocalPos);
             }
             piece.runtimeBlockEntity = null;
             // This piece's own captured operation just finished — see SubgridBlockEntity's
             // activeCaptures doc for why any pending drop elsewhere in this subgrid waits on this.
-            be.captureEnded(piece);
+            owner.captureEnded(piece);
             return;
         }
-        BlockEntity captured = cells.touchedBlockEntities().get(pos);
+        BlockEntity captured = cells.touchedBlockEntities().get(fakeSpacePos);
         if (captured == null) return;
         captured.setLevel(fakeLevel);
         piece.runtimeBlockEntity = captured;
         // Vanilla just handed us a fully-parameterized BE for an operation it's driving (today
         // only a piston does this) — see SubgridBlockEntity's activeCaptures doc.
-        be.captureStarted(piece);
+        owner.captureStarted(piece);
         if (captured instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
             LOGGER.info("[piston-anim] captured MOVING_PISTON BE at {} (cell {}) extending={} source={} — sending animation payload",
-                    be.getBlockPos(), pos, moving.isExtending(), moving.isSourcePiston());
+                    owner.getBlockPos(), ownerLocalPos, moving.isExtending(), moving.isSourcePiston());
             CompoundTag beNbt = moving.saveCustomOnly(realLevel.registryAccess());
             // PistonMovingBlockEntity's constructor requires its OWN outer BlockState (MOVING_PISTON,
             // matching BlockEntityType.PISTON) — saveCustomOnly above doesn't include it (that's the
@@ -897,8 +903,8 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // this BE was actually captured.
             beNbt.put("outerState", NbtUtils.writeBlockState(stateOf(piece)));
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(realLevel,
-                    new net.minecraft.world.level.ChunkPos(be.getBlockPos()),
-                    new com.therappha.tinyblocks.network.PistonAnimationPayload(be.getBlockPos(), pos, beNbt));
+                    new net.minecraft.world.level.ChunkPos(owner.getBlockPos()),
+                    new com.therappha.tinyblocks.network.PistonAnimationPayload(owner.getBlockPos(), ownerLocalPos, beNbt));
         }
     }
 
