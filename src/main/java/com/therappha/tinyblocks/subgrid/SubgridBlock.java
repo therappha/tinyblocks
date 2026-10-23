@@ -22,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
@@ -142,6 +143,20 @@ public class SubgridBlock extends BaseEntityBlock {
         float digSpeed = player.getDigSpeed(renderState, be.getBlockPos());
         boolean correct = !piece.definition.requiresCorrectTool() || player.hasCorrectToolForDrops(renderState);
         return digSpeed / hardness / (correct ? 30f : 100f);
+    }
+
+    /**
+     * Pick block (and overlays that read the pick-block stack): the player is looking at the piece
+     * under the crosshair, not at this host block (issue #58). Nothing to pick on an empty cell.
+     */
+    @Override
+    public ItemStack getCloneItemStack(BlockState state, HitResult target, LevelReader level, BlockPos pos, Player player) {
+        if (target instanceof BlockHitResult hit && level.getBlockEntity(pos) instanceof SubgridBlockEntity be) {
+            Vec3i cell = GridRay.cellAt(pos, hit.getLocation(), hit.getDirection(), be.gridSize);
+            PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+            if (piece != null) return piece.definition.cloneStack(piece, target, level, pos, player);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Nullable
