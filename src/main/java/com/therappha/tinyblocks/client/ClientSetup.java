@@ -45,6 +45,15 @@ public class ClientSetup {
     }
 
     @SubscribeEvent
+    public static void onClientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
+        event.enqueueWork(() -> {
+            if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
+                com.therappha.tinyblocks.client.flywheel.FlywheelCompat.register();
+            }
+        });
+    }
+
+    @SubscribeEvent
     public static void onRegisterClientExtensions(RegisterClientExtensionsEvent event) {
         event.registerBlock(SubgridClientExtensions.INSTANCE,
             Registration.SUBGRID_BLOCK_2.get(), Registration.SUBGRID_BLOCK_4.get(),

@@ -27,3 +27,10 @@ Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drop
     ordering = "NONE"
     side = "BOTH"
 
+# EXPERIMENT: optional so the mod still loads without Flywheel; ordered after it when present.
+[[dependencies.tinyblocks]]
+    modId = "flywheel"
+    type = "optional"
+    versionRange = "[1.0,)"
+    ordering = "AFTER"
+    side = "CLIENT"

@@ -81,7 +81,9 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             if (piece.runtimeBlockEntity == null && piece.definition == VanillaBlockPiece.INSTANCE) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
-            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity) {
+            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
+                    && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
+                            && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
                 BlockEntityRenderer<BlockEntity> ber =
                         Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
                 if (ber != null) {
