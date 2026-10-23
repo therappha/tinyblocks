@@ -131,6 +131,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
         if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return false;
 
         BlockPos realPos = be.getBlockPos();
+
+        // Cheap ticker check FIRST (issue #50): most EntityBlocks (chest, sign, bed, ...) have no
+        // server ticker at all, and everything below — a reflection-allocated FakeServerLevel, a
+        // field transplant, populateCells over every sibling, a snapshot — was being built and
+        // thrown away every single tick just to find that out. blockEntityFor caches the phantom
+        // on the piece, so the call further down reuses it instead of building a second one.
+        BlockEntity candidate = blockEntityFor(piece, be, level);
+        if (candidate == null || !hasServerTicker(entityBlock, level, state, candidate)) return false;
+
         // Alias FROM whatever position the ticker will actually be invoked at, not always realPos.
         // A freshly-built "blank" BE (hopper, chest, ...) is always constructed at realPos (see
         // blockEntityFor) — same real-position convention as onUse, needed so a ticker like
@@ -255,7 +264,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                     // piece's real end state via the normal update path — dropping the animation
                     // copy just lets SubgridRenderer fall back to rendering that real state's
                     // static model instead of a BER for it.
-                    LOGGER.info("[piston-anim] client animation finished at {}, dropping local copy", subgridPos);
+                    LOGGER.debug("[piston-anim] client animation finished at {}, dropping local copy", subgridPos);
                     piece.runtimeBlockEntity = null;
                 } else {
                     PISTON_DEATH_TICKS.setInt(moving, lingered);
@@ -293,7 +302,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // SubgridPieceAddedPayload hasn't been processed on this client yet, the piece just
             // doesn't exist here yet. Logged rather than silently dropped so a still-missing
             // extend-animation is distinguishable from this specific race vs some other cause.
-            LOGGER.info("[piston-anim] client got animation payload for {} (cell {}) but no matching piece exists yet — dropped",
+            LOGGER.debug("[piston-anim] client got animation payload for {} (cell {}) but no matching piece exists yet — dropped",
                     be.getBlockPos(), cell);
             return;
         }
@@ -308,7 +317,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         moving.loadCustomOnly(beNbt, level.registryAccess());
         moving.setLevel(level);
         piece.runtimeBlockEntity = moving;
-        LOGGER.info("[piston-anim] client built local animation copy at {} (cell {}) extending={} source={}",
+        LOGGER.debug("[piston-anim] client built local animation copy at {} (cell {}) extending={} source={}",
                 be.getBlockPos(), cell, moving.isExtending(), moving.isSourcePiston());
     }
 
@@ -319,6 +328,12 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * BaseEntityBlock.createTickerHelper does. Safe: phantom.getType() IS phantom's real type,
      * the unchecked cast just tells the compiler what's already true at runtime.
      */
+    @SuppressWarnings("unchecked")
+    private static <T extends BlockEntity> boolean hasServerTicker(EntityBlock entityBlock, ServerLevel level,
+                                                                     BlockState state, T phantom) {
+        return entityBlock.getTicker(level, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType()) != null;
+    }
+
     @SuppressWarnings("unchecked")
     private static <T extends BlockEntity> boolean tickTyped(EntityBlock entityBlock, FakeServerLevel fakeLevel,
                                                               BlockState state, BlockPos pos, T phantom) {
@@ -403,12 +418,12 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // behind it, never extends. hasSignal is queried per-direction here matching
         // PistonBaseBlock#getNeighborSignal's own loop exactly, to see what our fake space reports
         // vanilla would otherwise compute directly against a real chunk.
-        if (isPistonRelated(state)) {
+        if (LOGGER.isDebugEnabled() && isPistonRelated(state)) {
             StringBuilder signals = new StringBuilder();
             for (Direction d : Direction.values()) {
                 signals.append(d).append('=').append(fakeLevel.hasSignal(piece.anchor.relative(d), d)).append(' ');
             }
-            LOGGER.info("[piston-anim] onNeighborChanged BEFORE at {} (cell {}): state={} changedNeighborDir={} neighborState={} hasSignal[{}]",
+            LOGGER.debug("[piston-anim] onNeighborChanged BEFORE at {} (cell {}): state={} changedNeighborDir={} neighborState={} hasSignal[{}]",
                     be.getBlockPos(), piece.anchor, state, dir, neighborState, signals.toString().trim());
         }
 
@@ -416,7 +431,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 .handleNeighborChanged(fakeLevel, piece.anchor, neighborState.getBlock(), fakeNeighborPos, false);
 
         if (isPistonRelated(state)) {
-            LOGGER.info("[piston-anim] onNeighborChanged AFTER at {} (cell {}): state={}",
+            LOGGER.debug("[piston-anim] onNeighborChanged AFTER at {} (cell {}): state={}",
                     be.getBlockPos(), piece.anchor, fakeLevel.cells().getBlockState(piece.anchor));
         }
 
@@ -519,15 +534,17 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // involved anywhere in the subgrid, to see whether a redstone_block piece that's still
         // genuinely present in be.getPieces() ever gets skipped or seeded at an unexpected anchor.
         boolean trace = false;
-        for (PlacedPiece p : be.getPieces()) {
-            if (isPistonRelated(stateOf(p))) { trace = true; break; }
+        if (LOGGER.isDebugEnabled()) {
+            for (PlacedPiece p : be.getPieces()) {
+                if (isPistonRelated(stateOf(p))) { trace = true; break; }
+            }
         }
         for (PlacedPiece p : be.getPieces()) {
             if (p.definition == INSTANCE) {
                 BlockState s = stateOf(p);
                 if (s != null) cells.setRaw(p.anchor, s);
                 if (trace) {
-                    LOGGER.info("[piston-anim] populateCells seeded anchor={} state={}", p.anchor, s);
+                    LOGGER.debug("[piston-anim] populateCells seeded anchor={} state={}", p.anchor, s);
                 }
             }
         }
@@ -720,7 +737,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                     selfDestructed.add(p);
                 } else {
                     if (isPistonRelated(before.get(p.anchor)) || isPistonRelated(now)) {
-                        LOGGER.info("[piston-anim] state transition at {} (cell {}): {} -> {}",
+                        LOGGER.debug("[piston-anim] state transition at {} (cell {}): {} -> {}",
                                 be.getBlockPos(), p.anchor, before.get(p.anchor), now);
                     }
                     p.runtimeState = now;
@@ -759,7 +776,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 }
             }
             if (isPistonRelated(previousState)) {
-                LOGGER.info("[piston-anim] {} at {} (cell {}) went to air — {}",
+                LOGGER.debug("[piston-anim] {} at {} (cell {}) went to air — {}",
                         previousState, be.getBlockPos(), p.anchor, movedElsewhere ? "moved elsewhere, no drop" : "treated as destroyed, dropping");
             }
             // realPositionOf, not be.getBlockPos()+0.5 — that would collapse every piece's drop
@@ -806,7 +823,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 PlacedPiece placed = result.piece();
                 be.cancelPendingDrop(touchedState);
                 if (isPistonRelated(touchedState)) {
-                    LOGGER.info("[piston-anim] new piece at {} (cell {}, withinBounds={}): {}",
+                    LOGGER.debug("[piston-anim] new piece at {} (cell {}, withinBounds={}): {}",
                             be.getBlockPos(), pos, withinBounds, touchedState);
                 }
                 // result.owner() is the grid the piece actually landed in — placeOrUpdatePiece
@@ -872,7 +889,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                                          BlockPos ownerLocalPos, FakeCellGetter cells, Level fakeLevel, ServerLevel realLevel) {
         if (cells.removedBlockEntityPositions().contains(fakeSpacePos)) {
             if (piece.runtimeBlockEntity instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) {
-                LOGGER.info("[piston-anim] server finalized MOVING_PISTON BE at {} (cell {})", owner.getBlockPos(), ownerLocalPos);
+                LOGGER.debug("[piston-anim] server finalized MOVING_PISTON BE at {} (cell {})", owner.getBlockPos(), ownerLocalPos);
             }
             piece.runtimeBlockEntity = null;
             // This piece's own captured operation just finished — see SubgridBlockEntity's
@@ -888,7 +905,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // only a piston does this) — see SubgridBlockEntity's activeCaptures doc.
         owner.captureStarted(piece);
         if (captured instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
-            LOGGER.info("[piston-anim] captured MOVING_PISTON BE at {} (cell {}) extending={} source={} — sending animation payload",
+            LOGGER.debug("[piston-anim] captured MOVING_PISTON BE at {} (cell {}) extending={} source={} — sending animation payload",
                     owner.getBlockPos(), ownerLocalPos, moving.isExtending(), moving.isSourcePiston());
             CompoundTag beNbt = moving.saveCustomOnly(realLevel.registryAccess());
             // PistonMovingBlockEntity's constructor requires its OWN outer BlockState (MOVING_PISTON,

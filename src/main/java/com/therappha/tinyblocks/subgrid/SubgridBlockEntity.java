@@ -306,12 +306,6 @@ public class SubgridBlockEntity extends BlockEntity {
         short idx = cellOwner[indexOf(x, y, z)];
         if (idx == EMPTY) return null;
         PlacedPiece removed = pieces.get(idx);
-        // Unconditional diagnostic (issue #34's live investigation into a redstone_block piece
-        // silently vanishing from be.getPieces() mid piston-animation-cascade, with no "went to
-        // air" or other logged cause): a full stack trace pinpoints exactly which call path
-        // removes it, since every OTHER removal site in this codebase already logs why.
-        LOGGER.info("[piston-anim] removePieceAt({},{},{}) removing {} at anchor {}", x, y, z,
-                removed.definition.renderState(removed), removed.anchor, new Exception("stack trace"));
         rebuildAfterRemove(idx);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
@@ -638,7 +632,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
         if (tracingFluid) {
-            LOGGER.info("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
+            LOGGER.debug("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
                     dir, worldPosition, x, y, z, describeCellRef(ref));
         }
         if (LOGGER.isDebugEnabled()) {
@@ -781,13 +775,18 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private void addToGrid(PlacedPiece p) {
+        addToGridNoShape(p);
+        rebuildShape();
+    }
+
+    /** Like addToGrid but leaves the merged shape stale — callers adding many pieces rebuild once. */
+    private void addToGridNoShape(PlacedPiece p) {
         short idx = (short) pieces.size();
         pieces.add(p);
         for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
             for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
                 for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
                     cellOwner[indexOf(x, y, z)] = idx;
-        rebuildShape();
     }
 
     private void rebuildAfterRemove(short removedIdx) {
@@ -810,7 +809,11 @@ public class SubgridBlockEntity extends BlockEntity {
      * paid an increasingly large cost on every single place/break. This is bounded by
      * gridSize^3 regardless of piece count (see issue #27).
      */
+    /** Test hook: how many times the merged shape has been rebuilt. */
+    int shapeRebuildCount = 0;
+
     private void rebuildShape() {
+        shapeRebuildCount++;
         var discrete = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
         boolean any = false;
         for (int y = 0; y < gridSize; y++)
@@ -886,9 +889,12 @@ public class SubgridBlockEntity extends BlockEntity {
         ListTag list = tag.getList("pieces", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             PlacedPiece piece = PlacedPiece.load(list.getCompound(i));
-            addToGrid(piece);
+            addToGridNoShape(piece);
             piece.definition.onLoaded(piece, registries);
         }
+        // Once, not per piece: rebuildShape is O(gridSize^3), so rebuilding after every add made
+        // loading N pieces cost N x gridSize^3 (issue #50).
+        rebuildShape();
 
         scheduledTicks.clear();
         if (tag.contains("scheduledTicks")) {
