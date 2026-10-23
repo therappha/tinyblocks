@@ -189,7 +189,7 @@ public class FakeLevel extends Level implements FakeSpace {
         super.blockEvent(pos, block, id, param);
         BlockState after = getBlockState(pos);
         if (block instanceof net.minecraft.world.level.block.piston.PistonBaseBlock) {
-            LOGGER.info("[piston-anim] blockEvent pos={} block={} id={} param={} before={} after={} changed={}",
+            LOGGER.debug("[piston-anim] blockEvent pos={} block={} id={} param={} before={} after={} changed={}",
                     pos, block, id, param, before, after, !before.equals(after));
         }
         if (real instanceof net.minecraft.server.level.ServerLevel serverLevel) {

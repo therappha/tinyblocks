@@ -274,4 +274,26 @@ class SubgridBlockEntityTest {
         SubgridBlockEntity be = newEntity();
         assertTrue(be.resolve(8, -1, 4) instanceof SubgridBlockEntity.CellRef.OutOfScope);
     }
+
+    // --- load cost (issue #50) ---------------------------------------------------------------
+
+    @Test
+    void loadingManyPiecesRebuildsTheShapeOnlyOnce() {
+        var registries = net.minecraft.data.registries.VanillaRegistries.createLookup();
+        SubgridBlockEntity source = newEntity();
+        for (int x = 0; x < 5; x++) {
+            PlacedPiece p = piece(new BlockPos(x, 0, 0));
+            p.runtimeState = Blocks.STONE.defaultBlockState();
+            assertTrue(source.placePiece(p));
+        }
+        net.minecraft.nbt.CompoundTag tag = source.getUpdateTag(registries);
+
+        SubgridBlockEntity loaded = newEntity();
+        loaded.loadAdditional(tag, registries);
+
+        assertEquals(5, loaded.getPieces().size());
+        assertEquals(1, loaded.shapeRebuildCount,
+                "loading N pieces must rebuild the O(gridSize^3) shape once, not once per piece");
+        assertFalse(loaded.getCachedShape().isEmpty());
+    }
 }
