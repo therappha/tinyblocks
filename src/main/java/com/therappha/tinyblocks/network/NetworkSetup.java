@@ -44,7 +44,7 @@ public class NetworkSetup {
             }
             // This payload only ever reaches a client (playToClient) — safe to release the mining
             // interceptor's in-flight guard here (see SubgridMiningInterceptor for why it exists).
-            com.therappha.tinyblocks.client.SubgridMiningInterceptor.onMineConfirmed();
+            com.therappha.tinyblocks.client.SubgridMiningInterceptor.onMineConfirmed(payload.pos());
         });
     }
 
