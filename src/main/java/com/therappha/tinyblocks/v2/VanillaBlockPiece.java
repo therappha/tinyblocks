@@ -620,17 +620,25 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
                 return blockEntityFor(piece, be, attachedLevel);
             }
-            // Out-of-bounds: resolved is a real-world position (same reasoning as fallback()'s
-            // realBlockStateAt use below) — a piece scanning past the subgrid's edge (a funnel's
-            // extraction target, a hopper's suck-from-above) needs to see whatever REAL
-            // BlockEntity genuinely sits there, e.g. a real chest placed next to the subgrid
-            // block, not the permanent null this used to return for every out-of-bounds query
-            // regardless of what was actually there. getPieceAt used to be called here with these
-            // same huge real-world coordinates and threw AIOOBE (indexOf has no range check),
-            // silently caught by the piece-tick safety net — the funnel/hopper ticker looked like
-            // it ran but never found anything, every tick, forever.
-            Level real = be.getLevel();
-            return real != null ? real.getBlockEntity(resolved) : null;
+            // Out-of-bounds: resolved is still a grid-LOCAL coordinate (e.g. (4,-1,4)), NOT a
+            // real-world position — it has to go through be.resolve(...) exactly like fallback()'s
+            // realBlockStateAt does, or the real level gets asked about a tiny integer coordinate
+            // and always answers null (issue #55: a hopper at the bottom of a subgrid saw "a
+            // hopper/chest is there" via getBlockState but no BlockEntity to put items into).
+            // A piece scanning past the edge (a hopper's extraction/insertion target, a funnel) needs
+            // whatever genuinely sits there: a sibling grid's piece, or a real BlockEntity.
+            return switch (be.resolve(resolved.getX(), resolved.getY(), resolved.getZ())) {
+                case SubgridBlockEntity.CellRef.InAdjacentGrid a -> {
+                    PlacedPiece other = a.grid().getPieceAt(a.x(), a.y(), a.z());
+                    if (other == null || other.definition != INSTANCE || attachedLevel == null) yield null;
+                    yield blockEntityFor(other, a.grid(), attachedLevel);
+                }
+                case SubgridBlockEntity.CellRef.RealWorld r -> {
+                    Level real = be.getLevel();
+                    yield real != null ? real.getBlockEntity(r.pos()) : null;
+                }
+                default -> null;
+            };
         }
     }
 
