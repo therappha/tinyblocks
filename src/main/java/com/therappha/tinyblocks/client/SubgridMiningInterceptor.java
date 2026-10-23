@@ -69,6 +69,8 @@ public class SubgridMiningInterceptor {
     private static long requestSentTick = Long.MIN_VALUE;
     private static final long REQUEST_TIMEOUT_TICKS = 10;
 
+    private static final MineCooldown cooldown = new MineCooldown();
+
     @SubscribeEvent
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
         Level level = event.getLevel();
@@ -115,6 +117,14 @@ public class SubgridMiningInterceptor {
         if (requestInFlight && now - requestSentTick > REQUEST_TIMEOUT_TICKS) requestInFlight = false;
         if (requestInFlight) return;
 
+        // Vanilla's own 5-tick gap between consecutive breaks (issue #49) — see MineCooldown.
+        if (cooldown.isActive(now)) {
+            trackedCell = null;
+            accumulated = 0f;
+            Minecraft.getInstance().level.destroyBlockProgress(player.getId(), pos, -1);
+            return;
+        }
+
         if (!pos.equals(trackedPos) || now - lastTick > 1) {
             trackedPos = pos;
             trackedCell = null;
@@ -146,9 +156,20 @@ public class SubgridMiningInterceptor {
         }
     }
 
-    /** Called from NetworkSetup once the server's removal delta lands, releasing the guard above. */
-    public static void onMineConfirmed() {
+    /**
+     * Called from NetworkSetup once the server's removal delta lands, releasing the guard above.
+     * Also starts the break cooldown when the removal is on the block the player is currently
+     * attacking — whether our own mine request caused it or the server's normal destroy path did
+     * (an instant-break piece), so one click can't be followed straight away by a second piece
+     * (issue #49). Removals elsewhere (a piston, say) don't interrupt mining.
+     */
+    public static void onMineConfirmed(BlockPos removedAt) {
         requestInFlight = false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || !mc.options.keyAttack.isDown()) return;
+        if (mc.hitResult instanceof BlockHitResult bhr && bhr.getBlockPos().equals(removedAt)) {
+            cooldown.start(mc.level.getGameTime());
+        }
     }
 
     private static void reset() {

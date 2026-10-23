@@ -307,7 +307,7 @@ public class SubgridEventHandler {
                 }
             }
             if (!player.isCreative()) stack.shrink(1);
-            // Same NeoForge post-cancel resync race onBlockBreak/onLeftClickBlock already work
+            // Same NeoForge post-cancel resync race onBlockBreak already works
             // around: an immediate sendBlockUpdated wasn't enough on a freshly-created
             // SubgridBlock, so also schedule a delayed re-notify to land after that resync.
             BlockPos subgridPos = be.getBlockPos();
@@ -425,47 +425,5 @@ public class SubgridEventHandler {
                     serverLevel.getGameTime() + entry.delay());
         }
         return result != InteractionResult.PASS;
-    }
-
-    /**
-     * Phase C debug convenience (v2): holding a real BlockItem and left-clicking a piece inside
-     * a SubgridBlock removes it instantly — skips destroyTime()/mining-progress entirely, for
-     * fast placement/removal iteration while testing. The real hardness path (mining without a
-     * block item in hand) is unaffected.
-     */
-    @SubscribeEvent
-    public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
-        if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START) return;
-        if (!(event.getLevel() instanceof ServerLevel level)) return;
-        BlockPos pos = event.getPos();
-        if (!(level.getBlockState(pos).getBlock() instanceof SubgridBlock)) return;
-
-        Player player = event.getEntity();
-        if (!(player.getMainHandItem().getItem() instanceof BlockItem)) return;
-        if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
-
-        HitResult hit = player.pick(5.0, 0f, false);
-        if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
-
-        Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
-        PlacedPiece removed = be.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
-        if (removed == null) return;
-
-        event.setCanceled(true);
-        if (!player.isCreative()) {
-            List<ItemStack> drops = removed.definition.drops(removed, level, pos, be, player.getMainHandItem());
-            Vec3 dropPos = be.realPositionOf(new BlockPos(cell));
-            for (ItemStack drop : drops) {
-                level.addFreshEntity(new ItemEntity(level, dropPos.x, dropPos.y, dropPos.z, drop));
-            }
-        }
-        if (be.getPieces().isEmpty()) {
-            level.removeBlock(pos, false);
-        } else {
-            // Same NeoForge post-cancel resync race onBlockBreak already works around: schedule
-            // a tick 2 ticks out so notifyUpdate() fires AFTER the client has processed that
-            // resync, instead of being stomped by it.
-            level.getBlockTicks().schedule(new ScheduledTick<>(level.getBlockState(pos).getBlock(), pos, level.getGameTime() + 2, 0L));
-        }
     }
 }
