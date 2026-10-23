@@ -643,20 +643,47 @@ public final class VanillaBlockPiece extends PieceDefinition {
             if (be.inBounds(resolved.getX(), resolved.getY(), resolved.getZ())) {
                 PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
                 if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
-                return blockEntityFor(piece, be, attachedLevel);
+                // Only the piece actually being operated on (its own tick/onUse — aliasTo is its
+                // anchor) may bind its phantom to this fake level; a sibling merely READING it must
+                // not re-point it (issue #57, see peekBlockEntity).
+                boolean own = aliasTo != null && resolved.equals(aliasTo);
+                return own ? blockEntityFor(piece, be, attachedLevel) : peekBlockEntity(piece, be, attachedLevel);
             }
-            // Out-of-bounds: resolved is a real-world position (same reasoning as fallback()'s
-            // realBlockStateAt use below) — a piece scanning past the subgrid's edge (a funnel's
-            // extraction target, a hopper's suck-from-above) needs to see whatever REAL
-            // BlockEntity genuinely sits there, e.g. a real chest placed next to the subgrid
-            // block, not the permanent null this used to return for every out-of-bounds query
-            // regardless of what was actually there. getPieceAt used to be called here with these
-            // same huge real-world coordinates and threw AIOOBE (indexOf has no range check),
-            // silently caught by the piece-tick safety net — the funnel/hopper ticker looked like
-            // it ran but never found anything, every tick, forever.
-            Level real = be.getLevel();
-            return real != null ? real.getBlockEntity(resolved) : null;
+            // Out-of-bounds: resolved is still a grid-LOCAL coordinate (e.g. (4,-1,4)), NOT a
+            // real-world position — it has to go through be.resolve(...) exactly like fallback()'s
+            // realBlockStateAt does, or the real level gets asked about a tiny integer coordinate
+            // and always answers null (issue #55: a hopper at the bottom of a subgrid saw "a
+            // hopper/chest is there" via getBlockState but no BlockEntity to put items into).
+            // A piece scanning past the edge (a hopper's extraction/insertion target, a funnel) needs
+            // whatever genuinely sits there: a sibling grid's piece, or a real BlockEntity.
+            return switch (be.resolve(resolved.getX(), resolved.getY(), resolved.getZ())) {
+                case SubgridBlockEntity.CellRef.InAdjacentGrid a -> {
+                    PlacedPiece other = a.grid().getPieceAt(a.x(), a.y(), a.z());
+                    if (other == null || other.definition != INSTANCE || attachedLevel == null) yield null;
+                    yield peekBlockEntity(other, a.grid(), attachedLevel);
+                }
+                case SubgridBlockEntity.CellRef.RealWorld r -> {
+                    Level real = be.getLevel();
+                    yield real != null ? real.getBlockEntity(r.pos()) : null;
+                }
+                default -> null;
+            };
         }
+    }
+
+    /**
+     * Like blockEntityFor, but for a piece that is only being READ by some other piece's operation
+     * (a hopper looking at the chest above it): returns the phantom without re-pointing an
+     * already-bound one at the reader's fake level. blockEntityFor's unconditional setLevel gave the
+     * chest the hopper-tick level, whose alias maps the chest's real position to the HOPPER's
+     * anchor — so the chest's open menu, which validates through phantom.getLevel().getBlockEntity(
+     * phantom.getBlockPos()) == phantom, failed and closed on every hopper cooldown (issue #57).
+     * An unbound phantom still gets the reader's level so it is usable at all until its own
+     * tick/onUse binds it properly.
+     */
+    private static BlockEntity peekBlockEntity(PlacedPiece piece, SubgridBlockEntity be, Level level) {
+        if (piece.runtimeBlockEntity instanceof BlockEntity cached && cached.getLevel() != null) return cached;
+        return blockEntityFor(piece, be, level);
     }
 
     /**
