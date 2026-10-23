@@ -49,6 +49,8 @@ import java.util.concurrent.Executor;
 public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     private FakeLevel delegate;
+    /** The real ServerLevel this fake space was built from — for ServerLevel-only state the transplant can't copy. */
+    private ServerLevel realServer;
 
     // Not initialized inline — field initializers are compiled into the constructor, which never
     // runs for a reflection-allocated instance. Set explicitly in create() instead.
@@ -77,6 +79,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
             FakeServerLevel instance = ctor.newInstance();
             FakeLevel delegateLevel = new FakeLevel(real, cells, realPos);
             instance.delegate = delegateLevel;
+            instance.realServer = (ServerLevel) real;
             instance.scheduled = new ArrayList<>();
 
             // Reflection allocation skips the *entire* constructor chain, not just ServerLevel's
@@ -150,6 +153,32 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     @Override
     public FluidState getFluidState(BlockPos pos) { return delegate.getFluidState(pos); }
+
+
+    // Found live with Create (run/logs/latest.log): both are ServerLevel-only state create()'s Level-field
+    // transplant never populates, so anything touching them NPE'd and aborted the whole piece tick.
+    //  - sendParticles reads this.players (Create's KineticEffectHandler rotation indicators);
+    //  - getRandomSequence reads this.randomSequences (any loot-table roll via Level.destroyBlock ->
+    //    Block.dropResources, e.g. Create's RotationPropagator destroying a conflicting gear).
+    // The exception mid-propagation left the kinetic network half-updated ("gear locks up").
+    @Override
+    public net.minecraft.util.RandomSource getRandomSequence(net.minecraft.resources.ResourceLocation id) {
+        return realServer.getRandomSequence(id);
+    }
+
+    // Particles at fake-local coordinates would land nowhere meaningful in the real world; drop them.
+    @Override
+    public <T extends net.minecraft.core.particles.ParticleOptions> int sendParticles(T type, double x, double y, double z,
+            int count, double dx, double dy, double dz, double speed) {
+        return 0;
+    }
+
+    @Override
+    public <T extends net.minecraft.core.particles.ParticleOptions> boolean sendParticles(
+            net.minecraft.server.level.ServerPlayer player, T type, boolean longDistance, double x, double y, double z,
+            int count, double dx, double dy, double dz, double speed) {
+        return false;
+    }
 
     @Override
     public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {

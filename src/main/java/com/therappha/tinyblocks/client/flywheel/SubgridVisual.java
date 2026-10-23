@@ -49,7 +49,11 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     private record Child(BlockState state, VisualEmbedding embedding, BlockEntityVisual<?> visual) {}
 
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static int lightLogBudget = 12;
+
     private final VisualizationContext context;
+    private int frames = 0;
     private final Map<PlacedPiece, Child> children = new IdentityHashMap<>();
 
     public SubgridVisual(VisualizationContext context, SubgridBlockEntity blockEntity, float partialTick) {
@@ -141,6 +145,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void updateLight(float partialTick) {
+        logLight("updateLight");
         for (Child child : children.values()) {
             if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
@@ -148,9 +153,28 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         }
     }
 
+    private void logLight(String where) {
+        if (lightLogBudget <= 0) return;
+        lightLogBudget--;
+        int packed = net.minecraft.client.renderer.LevelRenderer.getLightColor(level, blockEntity.getBlockPos());
+        LOGGER.info("[fw-light] {} subgrid={} sections={} packed=0x{} (block={} sky={}) children={}",
+                where, blockEntity.getBlockPos(), lightSections != null, Integer.toHexString(packed),
+                (packed >> 4) & 0xF, (packed >> 20) & 0xF, children.size());
+    }
+
     @Override
     public void beginFrame(DynamicVisual.Context ctx) {
         reconcile(ctx.partialTick());
+        // Safety net: re-run the children's first-light pass about once a second, in case anything
+        // reset or skipped it. Cheap (one relight per hosted visual).
+        if (++frames % 60 == 0 && lightSections != null) {
+            for (Child child : children.values()) {
+                if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+                    lit.updateLight(ctx.partialTick());
+                }
+            }
+            logLight("periodic");
+        }
         for (Child child : children.values()) {
             if (child.visual() instanceof DynamicVisual dynamic) {
                 Plan<DynamicVisual.Context> plan = dynamic.planFrame();
