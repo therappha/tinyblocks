@@ -121,4 +121,37 @@ public class SubgridHopperGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** Issue #55: hopper -> hopper across the boundary (the receiving side is itself a ticking hopper piece). */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void hopperFeedsAHopperPieceInTheSubgridBelow(GameTestHelper helper) {
+        SubgridBlockEntity lower = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity upper = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 2, 2));
+        ServerLevel level = helper.getLevel();
+        int top = lower.getGridSize() - 1;
+
+        BlockPos lowerAnchor = new BlockPos(4, top, 4);
+        BlockPos upperAnchor = new BlockPos(4, 0, 4);
+        PlacedPiece lowerHopper = SubgridTestSupport.placePiece(lower, level, lowerAnchor,
+                Blocks.HOPPER.defaultBlockState().setValue(HopperBlock.FACING, Direction.DOWN));
+        PlacedPiece upperHopper = SubgridTestSupport.placePiece(upper, level, upperAnchor,
+                Blocks.HOPPER.defaultBlockState().setValue(HopperBlock.FACING, Direction.DOWN));
+
+        helper.startSequence()
+                .thenExecute(() -> {
+                    BlockEntity hopperBE = SubgridTestSupport.blockEntityOf(upper, upperHopper, level);
+                    helper.assertTrue(hopperBE instanceof Container, "upper hopper piece has no Container BlockEntity");
+                    ((Container) hopperBE).setItem(0, new ItemStack(Items.APPLE));
+                })
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    BlockEntity upperBE = upperHopper.runtimeBlockEntity instanceof BlockEntity b ? b : null;
+                    BlockEntity lowerBE = lowerHopper.runtimeBlockEntity instanceof BlockEntity b ? b : null;
+                    helper.assertTrue(upperBE instanceof Container up && up.isEmpty(),
+                            "upper hopper still holds the item: it never passed it down");
+                    helper.assertTrue(lowerBE instanceof Container low && !low.isEmpty(),
+                            "hopper piece in the subgrid below never received the item");
+                })
+                .thenSucceed();
+    }
 }
