@@ -264,14 +264,15 @@ public class SubgridEventHandler {
             return;
         }
 
-        BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
+        BlockPos fakeAnchor = new BlockPos(nx, ny, nz); // local cell
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, hit.isInside());
+        BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, hit.isInside());
         BlockPlaceContext placeCtx = new BlockPlaceContext(
                 new UseOnContext(fakeLevel, player, event.getHand(), stack, fakeHit));
 
         BlockState state = blockItem.getBlock().getStateForPlacement(placeCtx);
-        if (state == null || !state.canSurvive(fakeLevel, fakeAnchor)) return;
+        if (state == null || !state.canSurvive(fakeLevel, at)) return;
 
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
@@ -283,12 +284,9 @@ public class SubgridEventHandler {
             // just placed." Rebuild the fake space (now including this piece) and fire onPlace
             // explicitly so any block relying on it behaves the same as it would in the real world.
             FakeLevel placedFakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
-            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, fakeAnchor, Blocks.AIR.defaultBlockState(), false);
-            for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : placedFakeLevel.scheduledTicks()) {
-                be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
-                        serverLevel.getGameTime() + entry.delay());
-            }
-            state.getBlock().setPlacedBy(fakeLevel, fakeAnchor, state, player, stack);
+            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, placedFakeLevel.world(fakeAnchor), Blocks.AIR.defaultBlockState(), false);
+            VanillaBlockPiece.scheduleCaptured(be, placedFakeLevel, serverLevel.getGameTime());
+            state.getBlock().setPlacedBy(fakeLevel, at, state, player, stack);
             // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
             // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
             // "untracked write" pattern VanillaBlockPiece.applyChanges already generalizes for
@@ -303,7 +301,7 @@ public class SubgridEventHandler {
                     continue;
                 }
                 if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel) != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
                 }
             }
             if (!player.isCreative()) stack.shrink(1);
@@ -337,13 +335,14 @@ public class SubgridEventHandler {
     private static boolean runItemInteraction(SubgridBlockEntity be, ServerLevel serverLevel, Player player,
                                                InteractionHand hand, ItemStack stack, Direction face,
                                                BlockHitResult realHit, int x, int y, int z) {
-        BlockPos fakeAnchor = new BlockPos(x, y, z);
+        BlockPos fakeAnchor = new BlockPos(x, y, z); // local cell
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
         java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
 
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
         // #TODO remove before release (or fold into a permanent comment) once verified live —
@@ -362,16 +361,16 @@ public class SubgridEventHandler {
         // already computed above, generic to any item implementing them, not bucket-specific.
         if (result == InteractionResult.PASS) {
             if (stack.getItem() instanceof net.minecraft.world.item.DispensibleContainerItem dispensible
-                    && dispensible.emptyContents(player, fakeLevel, fakeAnchor, fakeHit)) {
-                dispensible.checkExtraContent(player, fakeLevel, stack, fakeAnchor);
+                    && dispensible.emptyContents(player, fakeLevel, at, fakeHit)) {
+                dispensible.checkExtraContent(player, fakeLevel, stack, at);
                 ItemStack emptied = net.minecraft.world.item.ItemUtils.createFilledResult(
                         stack, player, net.minecraft.world.item.BucketItem.getEmptySuccessItem(stack, player));
                 player.setItemInHand(hand, emptied);
                 result = InteractionResult.SUCCESS;
             } else {
-                BlockState currentState = fakeLevel.getBlockState(fakeAnchor);
+                BlockState currentState = fakeLevel.getBlockState(at);
                 if (currentState.getBlock() instanceof net.minecraft.world.level.block.BucketPickup bucketPickup) {
-                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, fakeAnchor, currentState);
+                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, at, currentState);
                     if (!picked.isEmpty()) {
                         ItemStack filled = net.minecraft.world.item.ItemUtils.createFilledResult(stack, player, picked);
                         player.setItemInHand(hand, filled);
@@ -405,7 +404,7 @@ public class SubgridEventHandler {
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
                 SubgridBlockEntity.PlacementResult placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
                 if (placed != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
                 }
             }
         }
@@ -420,10 +419,7 @@ public class SubgridEventHandler {
         // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
         // the onPlace call just above. Same drain FakeSpace callers always do after touching a
         // fake space; skipped here previously since this function never called applyChanges.
-        for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
-            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
-                    serverLevel.getGameTime() + entry.delay());
-        }
+        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, serverLevel.getGameTime());
         return result != InteractionResult.PASS;
     }
 

@@ -76,6 +76,21 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
+     * The vanilla-visible ("world") position of local cell {@code local}. Identity here; the subgrid-backed
+     * subclass maps its cells into a virtual cube around the SubgridBlock's real position, so every phantom
+     * block entity gets its own unique, consistent BlockPos (Create identifies and orients kinetic blocks purely
+     * by BlockPos differences) and open container menus stay within interaction range of the player.
+     */
+    public BlockPos toWorld(BlockPos local) {
+        return local;
+    }
+
+    /** Inverse of {@link #toWorld}. */
+    public BlockPos toLocal(BlockPos world) {
+        return world;
+    }
+
+    /**
      * Every position explicitly written this call (via set, i.e. real vanilla code calling
      * setBlock), NOT including positions only ever read via fallback(). Lets a caller notice a
      * write to a position that isn't an already-tracked piece — e.g. water spreading into a

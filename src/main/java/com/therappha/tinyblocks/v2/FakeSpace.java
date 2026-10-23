@@ -19,4 +19,7 @@ public interface FakeSpace {
     FakeCellGetter cells();
 
     List<ScheduledEntry> scheduledTicks();
+
+    /** Position to hand to vanilla code for local cell {@code local}. */
+    default net.minecraft.core.BlockPos world(net.minecraft.core.BlockPos local) { return cells().toWorld(local); }
 }

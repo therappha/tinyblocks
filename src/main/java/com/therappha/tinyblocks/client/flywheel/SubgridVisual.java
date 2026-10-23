@@ -53,12 +53,15 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     private static int lightLogBudget = 3;
 
     private final VisualizationContext context;
+    /** Level the hosted phantoms are bound to; answers light at this SubgridBlock's real position. */
+    private final net.minecraft.world.level.Level hostLevel;
     private int frames = 0;
     private final Map<PlacedPiece, Child> children = new IdentityHashMap<>();
 
     public SubgridVisual(VisualizationContext context, SubgridBlockEntity blockEntity, float partialTick) {
         super(context, blockEntity, partialTick);
         this.context = context;
+        this.hostLevel = VanillaBlockPiece.buildClientFakeSpace(blockEntity, blockEntity.getLevel());
         reconcile(partialTick);
     }
 
@@ -86,13 +89,15 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         BlockState state = piece.definition.renderState(piece);
         if (state == null || !(state.getBlock() instanceof EntityBlock)) return null;
 
-        BlockEntity phantom = VanillaBlockPiece.blockEntityFor(piece, blockEntity, blockEntity.getLevel());
+        BlockEntity phantom = VanillaBlockPiece.blockEntityFor(piece, blockEntity, hostLevel);
         if (phantom == null) return null;
         BlockEntityVisualizer visualizer = VisualizerRegistry.getVisualizer(phantom.getType());
         if (visualizer == null) return null;
 
-        BlockPos pos = blockEntity.getBlockPos();
-        VisualEmbedding embedding = context.createEmbedding(pos);
+        // Anchor the embedding at the phantom's OWN position so the hosted visual (which places itself at
+        // blockEntity.getBlockPos() - renderOrigin) sits at the embedding's origin; cellTransform then
+        // carries it to the cell's real-world place.
+        VisualEmbedding embedding = context.createEmbedding(phantom.getBlockPos());
         embedding.transforms(cellTransform(piece), new Matrix3f());
         BlockEntityVisual<?> visual = visualizer.createVisual(embedding, phantom, partialTick);
         if (lightSections != null && visual instanceof SectionTrackedVisual tracked) {

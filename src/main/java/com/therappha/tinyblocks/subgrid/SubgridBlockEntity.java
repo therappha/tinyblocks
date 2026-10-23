@@ -872,6 +872,21 @@ public class SubgridBlockEntity extends BlockEntity {
         );
     }
 
+    /**
+     * World-frame position of local cell (0,0,0): the virtual cube a piece's vanilla code sees is
+     * centred on this SubgridBlock's real position, so it is both internally consistent (unique BlockPos
+     * per cell) and near the player (open menus validate by distance to their block entity's position).
+     */
+    public BlockPos virtualOrigin() {
+        int half = gridSize / 2;
+        return worldPosition.offset(-half, -half, -half);
+    }
+
+    /** World-frame position a phantom block entity for the piece at {@code cell} lives at. */
+    public BlockPos virtualPosOf(net.minecraft.core.Vec3i cell) {
+        return virtualOrigin().offset(cell);
+    }
+
     private boolean outOfBounds(int x, int y, int z) {
         return x < 0 || x >= gridSize || y < 0 || y >= gridSize || z < 0 || z >= gridSize;
     }
