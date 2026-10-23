@@ -48,10 +48,8 @@ final class SubgridTestSupport {
             throw new IllegalStateException("cell " + anchor + " in subgrid at " + be.getBlockPos() + " is already occupied");
         }
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(state, fakeLevel, anchor, Blocks.AIR.defaultBlockState(), false);
-        for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
-            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(), level.getGameTime() + entry.delay());
-        }
+        BlockAccess.onPlace(state, fakeLevel, fakeLevel.world(anchor), Blocks.AIR.defaultBlockState(), false);
+        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         return piece;
     }
 
@@ -66,8 +64,9 @@ final class SubgridTestSupport {
                               net.minecraft.world.item.ItemStack stack, BlockPos anchor) {
         com.therappha.tinyblocks.v2.FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, level);
         java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        BlockPos at = fakeLevel.world(anchor); // world frame, see FakeSpace#world
         net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
-                net.minecraft.world.phys.Vec3.atCenterOf(anchor), Direction.UP, anchor, false);
+                net.minecraft.world.phys.Vec3.atCenterOf(at), Direction.UP, at, false);
         net.minecraft.world.InteractionResult result = stack.useOn(
                 new net.minecraft.world.item.context.UseOnContext(fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, stack, hit));
 

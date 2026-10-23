@@ -148,31 +148,12 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 ? cached : blockEntityFor(piece, be, level);
         if (candidate == null || !hasServerTicker(entityBlock, level, state, candidate)) return false;
 
-        // Alias FROM whatever position the ticker will actually be invoked at, not always realPos.
-        // A freshly-built "blank" BE (hopper, chest, ...) is always constructed at realPos (see
-        // blockEntityFor) — same real-position convention as onUse, needed so a ticker like
-        // HopperBlockEntity's push/suck logic (which reads blockEntity.getBlockPos() internally,
-        // not the pos parameter) still lands its neighbor lookups on sibling pieces instead of
-        // whatever's really above/below the whole SubgridBlock in the real world. Same accepted
-        // degradation already documented for onUse's bookshelf/double-chest-merge scanning — see
-        // issue #23.
-        //
-        // But a captured BE — e.g. a piston's PistonMovingBlockEntity (see syncBlockEntity) — was
-        // constructed by vanilla's OWN code using the piece's fake-local anchor as its position
-        // (that's what PistonBaseBlock.moveBlocks passed to newMovingBlockEntity in the first
-        // place), so its ticker's own internal reads/writes (level.getBlockState/setBlock at its
-        // own pos or a neighbor) already operate in LOCAL terms. Aliasing FROM realPos in that case
-        // double-translates: resolve() would treat the ticker's already-local pos as if it still
-        // needed the realPos->anchor offset applied on top, landing on a nonsense key. That's
-        // exactly why a piston's natural finalize (its own setBlock to the final PISTON_HEAD/base
-        // state) got silently lost — applyChanges' diff never saw it land back at the piece's real
-        // anchor, so the piece stayed stuck mid-animation forever (found live: head vanishes on
-        // extend, whole piston vanishes on retract and never comes back — the original #32 symptom
-        // resurfacing through a different coordinate-space collision). Aliasing FROM the same
-        // position the ticker is about to use makes resolve() an exact identity for that whole call
-        // instead, which is what a captured BE's already-local frame needs.
-        BlockPos tickPos = piece.runtimeBlockEntity instanceof BlockEntity cachedBe ? cachedBe.getBlockPos() : realPos;
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, tickPos, piece.anchor);
+        // The ticker runs at the phantom's own unique virtual position (see SubgridBlockEntity#virtualOrigin);
+        // every block entity in the grid shares one constant coordinate frame, so a ticker that reads
+        // blockEntity.getBlockPos() and its neighbours (hopper, Create's rotation propagation) sees the
+        // real layout, and a captured BE built by vanilla at a world-frame position needs no special case.
+        BlockPos tickPos = be.virtualPosOf(piece.anchor);
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
         populateCells(cells, be);
         FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, realPos);
         cells.attachLevel(fakeLevel);
@@ -393,27 +374,19 @@ public final class VanillaBlockPiece extends PieceDefinition {
             return InteractionResult.SUCCESS;
         }
 
-        // stillValid (the check every open container menu runs each tick) validates two things
-        // against ONE captured position: the block is still the right type, AND the player is
-        // still close enough. The fake local anchor already satisfies the first (getBlockState
-        // resolves correctly), but is a tiny integer nowhere near the player's real coordinates
-        // — so any menu-opening piece (chest, anvil, enchanting table) auto-closes the instant it
-        // opens. Using the piece's REAL world position as the hit position instead fixes the
-        // distance check; aliasing that real position to piece.anchor in the fake cell space
-        // keeps getBlockState/setBlock landing on the same cell either way, so basic state
-        // read/write (lever flipping etc.) is unaffected. The one accepted cost: any OTHER
-        // position-offset logic inside this same call (e.g. the enchanting table's bookshelf
-        // scan) now reads real-world neighbors instead of fake subgrid siblings — degrades that
-        // one feature gracefully rather than breaking correctness.
+        // The piece lives at its own unique virtual position inside a cube centred on the SubgridBlock's
+        // real position, so stillValid's distance check (player vs the phantom's stored position) is
+        // satisfied by proximity alone and every neighbour lookup lands on the real sibling layout.
         BlockPos realPos = be.getBlockPos();
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, realPos, piece.anchor);
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
         populateCells(cells, be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, realPos);
         cells.attachLevel(fakeLevel);
         Map<BlockPos, BlockState> before = snapshot(be);
 
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(realPos), hit.getDirection(), realPos, hit.isInside());
-        InteractionResult result = cells.getBlockState(realPos).useWithoutItem(fakeLevel, player, fakeHit);
+        BlockPos at = cells.toWorld(piece.anchor);
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), hit.getDirection(), at, hit.isInside());
+        InteractionResult result = cells.getBlockState(at).useWithoutItem(fakeLevel, player, fakeHit);
 
         applyChanges(be, fakeLevel, before, serverLevel);
         return result;
@@ -426,10 +399,11 @@ public final class VanillaBlockPiece extends PieceDefinition {
         if (state == null) return;
 
         Direction dir = directionTo(be, piece, changedNeighbor);
-        BlockPos fakeNeighborPos = dir != null ? piece.anchor.relative(dir) : piece.anchor;
         BlockState neighborState = changedNeighbor.definition.renderState(changedNeighbor);
 
         FakeLevel fakeLevel = buildFakeSpace(be, level);
+        BlockPos at = fakeLevel.world(piece.anchor);
+        BlockPos fakeNeighborPos = dir != null ? at.relative(dir) : at;
         Map<BlockPos, BlockState> before = snapshot(be);
 
         // Unconditional (not gated behind isPistonRelated's before/after-changed check, since the
@@ -441,18 +415,18 @@ public final class VanillaBlockPiece extends PieceDefinition {
         if (LOGGER.isDebugEnabled() && isPistonRelated(state)) {
             StringBuilder signals = new StringBuilder();
             for (Direction d : Direction.values()) {
-                signals.append(d).append('=').append(fakeLevel.hasSignal(piece.anchor.relative(d), d)).append(' ');
+                signals.append(d).append('=').append(fakeLevel.hasSignal(at.relative(d), d)).append(' ');
             }
             LOGGER.debug("[piston-anim] onNeighborChanged BEFORE at {} (cell {}): state={} changedNeighborDir={} neighborState={} hasSignal[{}]",
                     be.getBlockPos(), piece.anchor, state, dir, neighborState, signals.toString().trim());
         }
 
-        fakeLevel.cells().getBlockState(piece.anchor)
-                .handleNeighborChanged(fakeLevel, piece.anchor, neighborState.getBlock(), fakeNeighborPos, false);
+        fakeLevel.cells().getBlockState(at)
+                .handleNeighborChanged(fakeLevel, at, neighborState.getBlock(), fakeNeighborPos, false);
 
         if (isPistonRelated(state)) {
             LOGGER.debug("[piston-anim] onNeighborChanged AFTER at {} (cell {}): state={}",
-                    be.getBlockPos(), piece.anchor, fakeLevel.cells().getBlockState(piece.anchor));
+                    be.getBlockPos(), piece.anchor, fakeLevel.cells().getBlockState(at));
         }
 
         if (dir != null) {
@@ -462,9 +436,9 @@ public final class VanillaBlockPiece extends PieceDefinition {
             // to). That's a separate vanilla hook — real placement already runs it once via
             // getStateForPlacement, but we don't have vanilla's automatic post-placement
             // shape-update cascade, so ongoing neighbor changes need it called explicitly too.
-            BlockState reshaped = fakeLevel.cells().getBlockState(piece.anchor)
-                    .updateShape(dir, neighborState, fakeLevel, piece.anchor, fakeNeighborPos);
-            fakeLevel.cells().set(piece.anchor, reshaped);
+            BlockState reshaped = fakeLevel.cells().getBlockState(at)
+                    .updateShape(dir, neighborState, fakeLevel, at, fakeNeighborPos);
+            fakeLevel.cells().set(at, reshaped);
         }
 
         applyChanges(be, fakeLevel, before, level);
@@ -477,8 +451,9 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
         FakeServerLevel fakeLevel = buildFakeServerSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
+        BlockPos at = fakeLevel.world(piece.anchor);
 
-        fakeLevel.cells().getBlockState(piece.anchor).tick(fakeLevel, piece.anchor, level.getRandom());
+        fakeLevel.cells().getBlockState(at).tick(fakeLevel, at, level.getRandom());
         // LiquidBlock doesn't override the regular block tick above at all — water/lava spread
         // exclusively through the SEPARATE fluid-tick schedule (LiquidBlock.onPlace/
         // neighborChanged, both already reached, call level.scheduleTick(pos, fluid, delay), now
@@ -492,7 +467,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // instead of just enabling the general [xgrid] DEBUG line.
         SubgridBlockEntity.setTracingFluid(true);
         try {
-            fakeLevel.cells().getBlockState(piece.anchor).getFluidState().tick(fakeLevel, piece.anchor);
+            fakeLevel.cells().getBlockState(at).getFluidState().tick(fakeLevel, at);
         } finally {
             SubgridBlockEntity.setTracingFluid(false);
         }
@@ -507,8 +482,9 @@ public final class VanillaBlockPiece extends PieceDefinition {
 
         FakeServerLevel fakeLevel = buildFakeServerSpace(be, level);
         Map<BlockPos, BlockState> before = snapshot(be);
+        BlockPos at = fakeLevel.world(piece.anchor);
 
-        fakeLevel.cells().getBlockState(piece.anchor).randomTick(fakeLevel, piece.anchor, level.getRandom());
+        fakeLevel.cells().getBlockState(at).randomTick(fakeLevel, at, level.getRandom());
 
         applyChanges(be, fakeLevel, before, level);
     }
@@ -522,6 +498,19 @@ public final class VanillaBlockPiece extends PieceDefinition {
      * FakeServerLevel (see buildFakeServerSpace), which is scoped to just the Tier 3 tick methods
      * that are statically typed to require one.
      */
+    /**
+     * A fake space for CLIENT-side hosts of phantom block entities (the Flywheel SubgridVisual). Its light
+     * and biome queries are answered at the SubgridBlock's real position, so a hosted visual that lights
+     * itself from its block entity's position — which is now a virtual-cube position that can be inside
+     * solid ground — still gets the light of the block it visually sits in.
+     */
+    public static FakeLevel buildClientFakeSpace(SubgridBlockEntity be, Level clientLevel) {
+        SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
+        FakeLevel fakeLevel = new FakeLevel(clientLevel, cells, be.getBlockPos());
+        cells.attachLevel(fakeLevel);
+        return fakeLevel;
+    }
+
     public static FakeLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
         SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, be.getBlockPos());
@@ -543,7 +532,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     private static FakeCellGetter cellsFor(SubgridBlockEntity be) {
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, null, null);
+        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, null);
         populateCells(cells, be);
         return cells;
     }
@@ -571,15 +560,16 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     /**
-     * Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla
-     * view. Optionally aliases one position to another before every read/write — used by onUse
-     * to let vanilla code address a piece by its REAL world BlockPos (needed for stillValid's
-     * distance check, see onUse) while still landing on the same fake cell as piece.anchor.
+     * Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla view.
+     * Vanilla code addresses it in the grid's virtual world frame (SubgridBlockEntity#virtualOrigin);
+     * internal bookkeeping (cell map keys, touchedCells, populateCells) stays in LOCAL cell coordinates.
      */
     private static final class SubgridFakeCellGetter extends FakeCellGetter {
         private final SubgridBlockEntity be;
-        @javax.annotation.Nullable private final BlockPos aliasFrom;
-        @javax.annotation.Nullable private final BlockPos aliasTo;
+        /** World-frame position of local cell (0,0,0). */
+        private final BlockPos origin;
+        /** The local cell whose own tick/onUse this space was built for, or null when nothing is being operated. */
+        @javax.annotation.Nullable private final BlockPos operatedCell;
         /**
          * Set right after the FakeLevel/FakeServerLevel wrapping this cell space is constructed —
          * can't be known at this object's own construction time, since it's built first and
@@ -588,34 +578,33 @@ public final class VanillaBlockPiece extends PieceDefinition {
          */
         private Level attachedLevel;
 
-        SubgridFakeCellGetter(SubgridBlockEntity be, @javax.annotation.Nullable BlockPos aliasFrom,
-                               @javax.annotation.Nullable BlockPos aliasTo) {
+        SubgridFakeCellGetter(SubgridBlockEntity be, @javax.annotation.Nullable BlockPos operatedCell) {
             this.be = be;
-            this.aliasFrom = aliasFrom;
-            this.aliasTo = aliasTo;
+            this.origin = be.virtualOrigin();
+            this.operatedCell = operatedCell;
         }
 
         void attachLevel(Level level) {
             this.attachedLevel = level;
         }
 
-        // Offset translation, not just an exact-match swap: onUse aliases the piece's real-world
-        // position (needed for stillValid's distance check) to its fake-local anchor, but vanilla
-        // code frequently queries NEIGHBORS of the position it was given too, not just the position
-        // itself — e.g. DoorBlock.useWithoutItem clicking the UPPER half needs to find its own
-        // LOWER half at pos.below() to toggle/sound it. An exact-match-only swap left every such
-        // neighbor query un-translated, falling through to fallback()'s real-world read instead of
-        // the actual sibling piece sitting right there in fake-local space (found live: clicking a
-        // door's top half sometimes had no sound — the bottom-half lookup silently found nothing).
-        // Translating the WHOLE neighborhood by the same offset fixes this generically for any
-        // block doing a relative lookup during onUse, not just doors.
+        @Override
+        public BlockPos toWorld(BlockPos local) {
+            return local.offset(origin);
+        }
+
+        @Override
+        public BlockPos toLocal(BlockPos world) {
+            return world.subtract(origin);
+        }
+
         private BlockPos resolve(BlockPos pos) {
-            return FakeCellGetter.aliasOffset(aliasFrom, aliasTo, pos);
+            return toLocal(pos);
         }
 
         @Override
         public BlockPos resolveLocal(BlockPos pos) {
-            return resolve(pos);
+            return toLocal(pos);
         }
 
         @Override
@@ -658,7 +647,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 // Only the piece actually being operated on (its own tick/onUse — aliasTo is its
                 // anchor) may bind its phantom to this fake level; a sibling merely READING it must
                 // not re-point it (issue #57, see peekBlockEntity).
-                boolean own = aliasTo != null && resolved.equals(aliasTo);
+                boolean own = operatedCell != null && resolved.equals(operatedCell);
                 return own ? blockEntityFor(piece, be, attachedLevel) : peekBlockEntity(piece, be, attachedLevel);
             }
             // Out-of-bounds: resolved is still a grid-LOCAL coordinate (e.g. (4,-1,4)), NOT a
@@ -722,7 +711,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
         }
         BlockState state = stateOf(piece);
         if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return null;
-        BlockEntity created = entityBlock.newBlockEntity(be.getBlockPos(), state);
+        BlockEntity created = entityBlock.newBlockEntity(be.virtualPosOf(piece.anchor), state);
         if (created == null) return null;
         created.setLevel(level);
         if (piece.extraData.contains("be")) {
@@ -893,17 +882,28 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 // piece will still react normally to its own future onNeighborChanged calls, just
                 // not this exact tick.
                 if (withinBounds) {
-                    BlockAccess.onPlace(touchedState, (Level) fakeSpace, pos, Blocks.AIR.defaultBlockState(), false);
+                    BlockAccess.onPlace(touchedState, (Level) fakeSpace, fakeSpace.world(pos), Blocks.AIR.defaultBlockState(), false);
                 }
                 anyChanged = true;
             }
         }
-        for (FakeSpace.ScheduledEntry entry : fakeSpace.scheduledTicks()) {
-            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
-                    realLevel.getGameTime() + entry.delay());
+        if (!fakeSpace.scheduledTicks().isEmpty()) {
+            scheduleCaptured(be, fakeSpace, realLevel.getGameTime());
             anyChanged = true;
         }
         if (anyChanged) be.notifyUpdate();
+    }
+
+    /**
+     * Moves a fake space's captured scheduleTick requests into be's own queue. Vanilla supplied world-frame
+     * positions, the queue is keyed by local cell — convert (requests outside the grid are dropped by
+     * SubgridBlockEntity#scheduleTick).
+     */
+    public static void scheduleCaptured(SubgridBlockEntity be, FakeSpace space, long gameTime) {
+        for (FakeSpace.ScheduledEntry entry : space.scheduledTicks()) {
+            BlockPos local = space.cells().toLocal(entry.pos());
+            be.scheduleTick(local.getX(), local.getY(), local.getZ(), gameTime + entry.delay());
+        }
     }
 
     /**
