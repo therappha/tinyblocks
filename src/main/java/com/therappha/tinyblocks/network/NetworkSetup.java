@@ -23,6 +23,7 @@ public class NetworkSetup {
         registrar.playToClient(SubgridPieceRemovedPayload.TYPE, SubgridPieceRemovedPayload.STREAM_CODEC, NetworkSetup::handlePieceRemoved);
         registrar.playToClient(PistonAnimationPayload.TYPE, PistonAnimationPayload.STREAM_CODEC, NetworkSetup::handlePistonAnimation);
         registrar.playToClient(PieceBlockEventPayload.TYPE, PieceBlockEventPayload.STREAM_CODEC, NetworkSetup::handlePieceBlockEvent);
+        registrar.playToClient(PhantomDataPayload.TYPE, PhantomDataPayload.STREAM_CODEC, NetworkSetup::handlePhantomData);
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
     }
 
@@ -53,6 +54,17 @@ public class NetworkSetup {
             Level level = ctx.player().level();
             if (level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid) {
                 com.therappha.tinyblocks.v2.VanillaBlockPiece.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
+            }
+        });
+    }
+
+    private static void handlePhantomData(PhantomDataPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Level level = ctx.player().level();
+            if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
+            com.therappha.tinyblocks.v2.VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), level);
+            if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
+                com.therappha.tinyblocks.client.flywheel.FlywheelCompat.queueUpdate(subgrid);
             }
         });
     }

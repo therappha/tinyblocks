@@ -26,6 +26,11 @@ public final class FlywheelCompat {
                 .apply());
     }
 
+    /** Tells Flywheel the subgrid's visual (and through it every hosted child) should refresh. */
+    public static void queueUpdate(BlockEntity subgrid) {
+        dev.engine_room.flywheel.lib.visualization.VisualizationHelper.queueUpdate(subgrid);
+    }
+
     /**
      * True when a phantom piece block entity is drawn by a Flywheel visual hosted in a SubgridVisual,
      * so SubgridRenderer must not also run its vanilla BlockEntityRenderer (double render).

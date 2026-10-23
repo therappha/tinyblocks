@@ -146,7 +146,14 @@ public class FakeLevel extends Level implements FakeSpace {
     // --- Delegated to the real level ---
 
     @Override
-    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
+    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {
+        // A phantom BlockEntity asking its clients to resync (Create's sendData() lands here with the
+        // phantom's REAL position, so the piece can't be told apart — resync every phantom in the grid).
+        if (real instanceof net.minecraft.server.level.ServerLevel
+                && real.getBlockEntity(realPos) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity sub) {
+            sub.markPhantomDataDirty();
+        }
+    }
 
     // Substitutes the real position for whatever fake position a piece's own code played a sound
     // at — same reasoning as the light/sky queries below: a subgrid's pieces don't have their own
