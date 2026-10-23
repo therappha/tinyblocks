@@ -296,6 +296,18 @@ public final class VanillaBlockPiece extends PieceDefinition {
     }
 
     /**
+     * Client-side entry point for PhantomDataPayload: loads the server's current phantom data into this
+     * client's cached phantom for the piece at cell (building it first if needed).
+     */
+    public static void applyPhantomData(SubgridBlockEntity be, BlockPos cell, CompoundTag nbt, Level level) {
+        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+        if (piece == null || piece.definition != INSTANCE) return;
+        BlockEntity phantom = piece.runtimeBlockEntity instanceof BlockEntity cached ? cached : blockEntityFor(piece, be, level);
+        if (phantom == null) return;
+        phantom.loadCustomOnly(nbt, level.registryAccess());
+    }
+
+    /**
      * Client-side entry point for PistonAnimationPayload: builds a local, animation-only copy of
      * the real PistonMovingBlockEntity the server captured, purely for SubgridRenderer's BER
      * dispatch and clientTick's local progress advance above. Its finalize path (inside vanilla's

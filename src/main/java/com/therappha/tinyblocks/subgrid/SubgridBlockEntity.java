@@ -317,6 +317,30 @@ public class SubgridBlockEntity extends BlockEntity {
         return removed;
     }
 
+    /**
+     * Set when a fake level's sendBlockUpdated fires (a phantom BlockEntity asked to sync, e.g. Create's
+     * SmartBlockEntity#sendData); flushed once per tick in serverTick as PhantomDataPayloads.
+     */
+    private boolean phantomDataDirty = false;
+
+    public void markPhantomDataDirty() {
+        phantomDataDirty = true;
+    }
+
+    private void flushPhantomData(ServerLevel level) {
+        if (!phantomDataDirty) return;
+        phantomDataDirty = false;
+        for (PlacedPiece piece : pieces) {
+            if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) continue;
+            // A piston's moving-block BE has its own dedicated animation payload (see PistonAnimationPayload).
+            if (phantom instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) continue;
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(level,
+                    new net.minecraft.world.level.ChunkPos(worldPosition),
+                    new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition,
+                            new BlockPos(piece.anchor), phantom.saveCustomOnly(level.registryAccess())));
+        }
+    }
+
     public void serverTick(ServerLevel level) {
         boolean dirty = false;
         // A snapshot, not the live list: piece.definition.tick() can itself add/remove pieces (e.g.
@@ -341,6 +365,7 @@ public class SubgridBlockEntity extends BlockEntity {
         drainScheduledTicks(level);
         sampleRandomTicks(level);
         tickPendingDrops(level);
+        flushPhantomData(level);
     }
 
     /**

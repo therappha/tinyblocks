@@ -152,7 +152,9 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     public FluidState getFluidState(BlockPos pos) { return delegate.getFluidState(pos); }
 
     @Override
-    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
+    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {
+        delegate.sendBlockUpdated(pos, oldState, newState, flags);
+    }
 
     @Nullable
     @Override

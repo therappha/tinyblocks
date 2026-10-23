@@ -94,6 +94,11 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         if (lightSections != null && visual instanceof SectionTrackedVisual tracked) {
             tracked.setSectionCollector(lightSections);
         }
+        // Flywheel only calls updateLight on visuals IT created; a child built here would otherwise
+        // never get its first light pass and render black (light 0).
+        if (lightSections != null && visual instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+            lit.updateLight(partialTick);
+        }
         return new Child(state, embedding, visual);
     }
 
@@ -130,6 +135,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         super.setSectionCollector(collector);
         for (Child child : children.values()) {
             if (child.visual() instanceof SectionTrackedVisual tracked) tracked.setSectionCollector(collector);
+            if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) lit.updateLight(0f);
         }
     }
 
