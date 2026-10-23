@@ -137,7 +137,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
         // field transplant, populateCells over every sibling, a snapshot — was being built and
         // thrown away every single tick just to find that out. blockEntityFor caches the phantom
         // on the piece, so the call further down reuses it instead of building a second one.
-        BlockEntity candidate = blockEntityFor(piece, be, level);
+        //
+        // Must NOT re-point an already-cached phantom at the real level (blockEntityFor does that on
+        // every call): a menu opened earlier (chest, anvil, ...) validates itself through
+        // phantom.getLevel().getBlockEntity(phantom.getBlockPos()) == phantom, which only holds in
+        // a fake space — against the real level that position holds the SubgridBlockEntity, so the
+        // menu would close on the very next tick. Only a not-yet-built phantom goes through
+        // blockEntityFor (once); onUse/the full path below set the fake level when it matters.
+        BlockEntity candidate = piece.runtimeBlockEntity instanceof BlockEntity cached
+                ? cached : blockEntityFor(piece, be, level);
         if (candidate == null || !hasServerTicker(entityBlock, level, state, candidate)) return false;
 
         // Alias FROM whatever position the ticker will actually be invoked at, not always realPos.
