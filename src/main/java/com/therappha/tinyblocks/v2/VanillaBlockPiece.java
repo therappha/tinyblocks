@@ -618,7 +618,11 @@ public final class VanillaBlockPiece extends PieceDefinition {
             if (be.inBounds(resolved.getX(), resolved.getY(), resolved.getZ())) {
                 PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
                 if (piece == null || piece.definition != INSTANCE || attachedLevel == null) return null;
-                return blockEntityFor(piece, be, attachedLevel);
+                // Only the piece actually being operated on (its own tick/onUse — aliasTo is its
+                // anchor) may bind its phantom to this fake level; a sibling merely READING it must
+                // not re-point it (issue #57, see peekBlockEntity).
+                boolean own = aliasTo != null && resolved.equals(aliasTo);
+                return own ? blockEntityFor(piece, be, attachedLevel) : peekBlockEntity(piece, be, attachedLevel);
             }
             // Out-of-bounds: resolved is still a grid-LOCAL coordinate (e.g. (4,-1,4)), NOT a
             // real-world position — it has to go through be.resolve(...) exactly like fallback()'s
@@ -631,7 +635,7 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 case SubgridBlockEntity.CellRef.InAdjacentGrid a -> {
                     PlacedPiece other = a.grid().getPieceAt(a.x(), a.y(), a.z());
                     if (other == null || other.definition != INSTANCE || attachedLevel == null) yield null;
-                    yield blockEntityFor(other, a.grid(), attachedLevel);
+                    yield peekBlockEntity(other, a.grid(), attachedLevel);
                 }
                 case SubgridBlockEntity.CellRef.RealWorld r -> {
                     Level real = be.getLevel();
@@ -640,6 +644,21 @@ public final class VanillaBlockPiece extends PieceDefinition {
                 default -> null;
             };
         }
+    }
+
+    /**
+     * Like blockEntityFor, but for a piece that is only being READ by some other piece's operation
+     * (a hopper looking at the chest above it): returns the phantom without re-pointing an
+     * already-bound one at the reader's fake level. blockEntityFor's unconditional setLevel gave the
+     * chest the hopper-tick level, whose alias maps the chest's real position to the HOPPER's
+     * anchor — so the chest's open menu, which validates through phantom.getLevel().getBlockEntity(
+     * phantom.getBlockPos()) == phantom, failed and closed on every hopper cooldown (issue #57).
+     * An unbound phantom still gets the reader's level so it is usable at all until its own
+     * tick/onUse binds it properly.
+     */
+    private static BlockEntity peekBlockEntity(PlacedPiece piece, SubgridBlockEntity be, Level level) {
+        if (piece.runtimeBlockEntity instanceof BlockEntity cached && cached.getLevel() != null) return cached;
+        return blockEntityFor(piece, be, level);
     }
 
     /**

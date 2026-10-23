@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -118,6 +119,45 @@ public class SubgridHopperGameTest {
                     BlockEntity chestBE = level.getBlockEntity(helper.absolutePos(chestPos));
                     helper.assertTrue(chestBE instanceof Container container && !container.isEmpty(),
                             "real chest below the subgrid never received the item from the hopper piece");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Issue #57: a hopper piece directly below a chest piece reads the chest's block entity every
+     * cooldown (suckInItems), even when empty. That read must not re-point the chest's phantom at the
+     * hopper's own fake level — an open chest menu validates through
+     * phantom.getLevel().getBlockEntity(phantom.getBlockPos()) == phantom, which only holds in a space
+     * aliased to the chest's own cell.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void siblingHopperReadingAChestDoesNotInvalidateItsMenu(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+
+        BlockPos hopperAnchor = new BlockPos(4, 0, 4);
+        BlockPos chestAnchor = hopperAnchor.above();
+        SubgridTestSupport.placePiece(be, level, hopperAnchor,
+                Blocks.HOPPER.defaultBlockState().setValue(HopperBlock.FACING, Direction.DOWN));
+        PlacedPiece chestPiece = SubgridTestSupport.placePiece(be, level, chestAnchor, Blocks.CHEST.defaultBlockState());
+
+        helper.startSequence()
+                .thenExecute(() -> {
+                    // The chest's own onUse binds its phantom to a space aliased to its own cell.
+                    var player = helper.makeMockPlayer(GameType.CREATIVE);
+                    BlockPos real = be.getBlockPos();
+                    var hit = new net.minecraft.world.phys.BlockHitResult(
+                            net.minecraft.world.phys.Vec3.atCenterOf(real), Direction.UP, real, false);
+                    chestPiece.definition.onUse(chestPiece, level, real, be, player, hit);
+                })
+                .thenIdle(40) // several hopper cooldowns (8 ticks each), each one reading the chest
+                .thenExecute(() -> {
+                    // Read the cached phantom directly — blockEntityOf/blockEntityFor would itself
+                    // re-point it at `level` and defeat the very thing being checked.
+                    BlockEntity chestBE = chestPiece.runtimeBlockEntity instanceof BlockEntity b ? b : null;
+                    helper.assertTrue(chestBE != null && chestBE.getLevel() != null, "chest has no bound phantom");
+                    helper.assertTrue(chestBE.getLevel().getBlockEntity(chestBE.getBlockPos()) == chestBE,
+                            "a sibling hopper re-pointed the chest's phantom at its own level; an open menu would close");
                 })
                 .thenSucceed();
     }
