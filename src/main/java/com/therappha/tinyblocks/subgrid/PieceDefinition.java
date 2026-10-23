@@ -10,8 +10,10 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -67,6 +69,26 @@ public abstract class PieceDefinition {
      */
     public List<ItemStack> drops(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, ItemStack tool) {
         return drops(piece);
+    }
+
+    /**
+     * What pick block (middle click) gives for this piece, and what "looking at" overlays that read
+     * the pick-block stack show: the piece's own block, never the SubgridBlock hosting it (issue
+     * #58). Defaults to the render state's own getCloneItemStack so any modded block answers for
+     * itself; override to customise per piece. A block whose pick stack needs its real block entity
+     * (banner, skull, ...) can't find it through the host's position, so any failure there falls
+     * back to the plain block item rather than propagating.
+     */
+    public ItemStack cloneStack(PlacedPiece piece, HitResult target, LevelReader level, BlockPos subgridPos, Player player) {
+        BlockState state = renderState(piece);
+        if (state == null || state.isAir()) return ItemStack.EMPTY;
+        try {
+            ItemStack stack = state.getCloneItemStack(target, level, subgridPos, player);
+            if (!stack.isEmpty()) return stack;
+        } catch (RuntimeException ignored) {
+            // fall through to the plain block item below
+        }
+        return new ItemStack(state.getBlock());
     }
 
     /** Called after a piece is loaded from NBT. Initialize runtimeState here from extraData. */
