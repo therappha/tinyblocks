@@ -50,7 +50,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     private record Child(BlockState state, VisualEmbedding embedding, BlockEntityVisual<?> visual) {}
 
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-    private static int lightLogBudget = 12;
+    private static int lightLogBudget = 3;
 
     private final VisualizationContext context;
     private int frames = 0;
@@ -131,6 +131,13 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         reconcile(partialTick);
         for (Child child : children.values()) {
             child.visual().update(partialTick);
+            // The hosted visuals' own update() can reset an instance's light; Flywheel only re-runs
+            // updateLight when a light section changes, so redo it right away instead of leaving the
+            // piece dark until the periodic pass below.
+            if (lightSections != null
+                    && child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+                lit.updateLight(partialTick);
+            }
         }
     }
 
@@ -167,13 +174,12 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         reconcile(ctx.partialTick());
         // Safety net: re-run the children's first-light pass about once a second, in case anything
         // reset or skipped it. Cheap (one relight per hosted visual).
-        if (++frames % 60 == 0 && lightSections != null) {
+        if (++frames % 120 == 0 && lightSections != null) {
             for (Child child : children.values()) {
                 if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                     lit.updateLight(ctx.partialTick());
                 }
             }
-            logLight("periodic");
         }
         for (Child child : children.values()) {
             if (child.visual() instanceof DynamicVisual dynamic) {
