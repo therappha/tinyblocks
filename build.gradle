@@ -59,6 +59,11 @@ repositories {
     // block-entity visuals inside a subgrid. Dev-only; not part of the shipped dependency set.
     maven { url = 'https://maven.createmod.net' }
     maven { url = 'https://maven.ithundxr.dev/snapshots' } // Registrate
+    // Sable API (BlockSubLevelCollisionShape, ...). Compile-time only; the jar itself is run/mods in dev.
+    exclusiveContent {
+        forRepository { maven { url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
 }
 
 dependencies {
@@ -67,6 +72,7 @@ dependencies {
     compileOnly "dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
     implementation "com.tterrag.registrate:Registrate:${registrate_version}"
+    compileOnly "maven.modrinth:sable:2.0.6+mc1.21.1"
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
