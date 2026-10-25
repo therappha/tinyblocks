@@ -73,7 +73,7 @@ dependencies {
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
     implementation "com.tterrag.registrate:Registrate:${registrate_version}"
     compileOnly "maven.modrinth:sable:2.0.6+mc1.21.1"
-    testCompileOnly "maven.modrinth:sable:2.0.6+mc1.21.1"
+    testImplementation "maven.modrinth:sable:2.0.6+mc1.21.1"
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
