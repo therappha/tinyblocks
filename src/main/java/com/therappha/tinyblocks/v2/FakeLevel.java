@@ -67,6 +67,30 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public FakeCellGetter cells() { return cells; }
 
+    // The virtual frame scales real positions by the grid size (SubgridBlockEntity#virtualOrigin), so
+    // phantom Y values leave the real dimension's build height; keep the whole range BlockPos can pack
+    // (12 bits of Y) valid, or vanilla's isOutsideBuildHeight checks (pistons, fluids) reject every cell.
+    // Virtual positions no longer sit in the chunk of the real SubgridBlock, so vanilla's chunk-loaded checks
+    // (Create's propagation asks before touching a neighbour) would answer "unloaded"; the fake space is
+    // always resident.
+    @Override
+    public boolean hasChunkAt(BlockPos pos) { return true; }
+
+    @Override
+    public boolean hasChunkAt(int blockX, int blockZ) { return true; }
+
+    @Override
+    public boolean hasChunksAt(int minX, int minZ, int maxX, int maxZ) { return true; }
+
+    @Override
+    public boolean isLoaded(BlockPos pos) { return true; }
+
+    @Override
+    public int getMinBuildHeight() { return -65536; }
+
+    @Override
+    public int getHeight() { return 131072; }
+
     @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
 
@@ -153,6 +177,9 @@ public class FakeLevel extends Level implements FakeSpace {
                 && real.getBlockEntity(realPos) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity sub) {
             sub.markPhantomDataDirty();
         }
+        // The virtual frame is global, so the phantom may belong to a NEIGHBOURING grid (rotation propagated
+        // across the edge); that grid's clients need the resync, not just this one's.
+        cells.blockUpdatedAt(pos);
     }
 
     // Substitutes the real position for whatever fake position a piece's own code played a sound

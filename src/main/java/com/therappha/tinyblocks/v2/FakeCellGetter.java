@@ -85,6 +85,9 @@ public class FakeCellGetter implements BlockGetter {
         return local;
     }
 
+    /** A block entity at this vanilla-visible position asked its clients to resync; no-op without an owning grid. */
+    public void blockUpdatedAt(BlockPos world) {}
+
     /** Inverse of {@link #toWorld}. */
     public BlockPos toLocal(BlockPos world) {
         return world;

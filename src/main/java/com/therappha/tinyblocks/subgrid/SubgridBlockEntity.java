@@ -327,18 +327,45 @@ public class SubgridBlockEntity extends BlockEntity {
         phantomDataDirty = true;
     }
 
+    /** How many times phantom data was pushed to clients; lets GameTests observe the sync without a client. */
+    private int phantomDataFlushes = 0;
+
+    public int phantomDataFlushes() {
+        return phantomDataFlushes;
+    }
+
+    /** How often (ticks) phantom data is compared against what clients last received. */
+    private static final int PHANTOM_CHANGE_SCAN_INTERVAL = 20;
+
+    /**
+     * Pushes phantom block entity data to clients. Always when something marked it dirty (everything is
+     * resent), and otherwise every few ticks for just the phantoms whose saved data changed since the last
+     * push: block entities change on their own after the event that touched them (a kinetic block dropping
+     * to speed 0 a while after its motor was removed) and nothing reliably calls back for that (Create's
+     * sendData goes through ServerChunkCache#blockChanged, which the fake levels cannot intercept).
+     * Containers are left out of the periodic scan: serializing a full inventory every pass is wasteful and
+     * their menus already sync themselves.
+     */
     private void flushPhantomData(ServerLevel level) {
-        if (!phantomDataDirty) return;
+        boolean all = phantomDataDirty;
+        if (!all && level.getGameTime() % PHANTOM_CHANGE_SCAN_INTERVAL != 0) return;
         phantomDataDirty = false;
+        boolean sentAny = false;
         for (PlacedPiece piece : pieces) {
             if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) continue;
             // A piston's moving-block BE has its own dedicated animation payload (see PistonAnimationPayload).
             if (phantom instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) continue;
+            if (!all && phantom instanceof net.minecraft.world.Container) continue;
+            var tag = phantom.saveCustomOnly(level.registryAccess());
+            int hash = tag.hashCode();
+            if (!all && hash == piece.lastSyncedPhantomHash) continue;
+            piece.lastSyncedPhantomHash = hash;
+            sentAny = true;
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(level,
                     new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition,
-                            new BlockPos(piece.anchor), phantom.saveCustomOnly(level.registryAccess())));
+                    new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition, new BlockPos(piece.anchor), tag));
         }
+        if (sentAny) phantomDataFlushes++;
     }
 
     public void serverTick(ServerLevel level) {
@@ -784,6 +811,26 @@ public class SubgridBlockEntity extends BlockEntity {
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+            markNeighbouringPhantomsDirty();
+        }
+    }
+
+    /**
+     * A change in this grid can alter the phantom block entities of the grids next to it without anything
+     * telling THEM (Create's rotation propagating across the edge sets the neighbour's speed, but only this
+     * grid is re-synced); queue a phantom data push for each adjacent same-size grid. Skipped when this grid
+     * holds no phantom block entity of its own, so plain block grids (water, redstone) cause no extra traffic.
+     */
+    private void markNeighbouringPhantomsDirty() {
+        boolean anyPhantom = false;
+        for (PlacedPiece piece : pieces) {
+            if (piece.runtimeBlockEntity != null) { anyPhantom = true; break; }
+        }
+        if (!anyPhantom) return;
+        for (Direction dir : Direction.values()) {
+            if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other && other.gridSize == gridSize) {
+                other.markPhantomDataDirty();
+            }
         }
     }
 
@@ -873,13 +920,29 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
-     * World-frame position of local cell (0,0,0): the virtual cube a piece's vanilla code sees is
-     * centred on this SubgridBlock's real position, so it is both internally consistent (unique BlockPos
-     * per cell) and near the player (open menus validate by distance to their block entity's position).
+     * Virtual-frame position of local cell (0,0,0). The frame is global: every SubgridBlock sits at
+     * {@code worldPosition * gridSize}, so the cells of two neighbouring grids are adjacent in it exactly
+     * like the blocks are in the world. A lookup that steps across a grid edge therefore lands on the
+     * neighbour's own phantom block entity at a position consistent with the one asked for, which is what
+     * lookups that compare block entity positions (Create's rotation propagation) need.
      */
     public BlockPos virtualOrigin() {
-        int half = gridSize / 2;
-        return worldPosition.offset(-half, -half, -half);
+        return new BlockPos(
+                wrapHorizontal(worldPosition.getX()) * gridSize,
+                worldPosition.getY() * gridSize,
+                wrapHorizontal(worldPosition.getZ()) * gridSize);
+    }
+
+    /**
+     * Horizontal virtual coordinates are world coordinates times the grid size, which would leave the world
+     * border (+-30M) for any grid far from the origin and make vanilla reject every cell there. Folding the world
+     * position into a 1M-wide window first keeps them inside (1M * 16 = 16M); the only cost is that two grids
+     * facing each other across a window seam (every 1M blocks) are no longer adjacent in the frame.
+     */
+    private static final int HORIZONTAL_WINDOW = 1 << 20;
+
+    private static int wrapHorizontal(int coordinate) {
+        return Math.floorMod(coordinate + HORIZONTAL_WINDOW / 2, HORIZONTAL_WINDOW) - HORIZONTAL_WINDOW / 2;
     }
 
     /** World-frame position a phantom block entity for the piece at {@code cell} lives at. */
