@@ -5,7 +5,13 @@ import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.TinyBlocks;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import com.therappha.tinyblocks.subgrid.GridRay;
+import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Vec3i;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -40,18 +46,32 @@ public final class DevAssemblerCommand {
 
     private static final int SEARCH_RADIUS = 8;
 
-    /** The assembler under the crosshair if there is one, otherwise the closest one within reach of the player. */
+    /**
+     * The assembler under the crosshair: a real one, or a miniaturized one living as a piece inside the
+     * SubgridBlock being looked at (its phantom block entity, bound to a fake server level). Otherwise the
+     * closest real one within reach of the player.
+     */
     private static BlockEntity findAssembler(ServerPlayer player) {
-        if (player.pick(SEARCH_RADIUS, 1.0f, false) instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK
-                && isAssembler(player.level().getBlockEntity(hit.getBlockPos()))) {
-            return player.level().getBlockEntity(hit.getBlockPos());
+        ServerLevel level = player.serverLevel();
+        if (player.pick(SEARCH_RADIUS, 1.0f, false) instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+            BlockEntity looked = level.getBlockEntity(hit.getBlockPos());
+            if (isAssembler(looked)) return looked;
+            if (looked instanceof SubgridBlockEntity grid) {
+                Vec3i cell = GridRay.cellAt(hit.getBlockPos(), hit.getLocation(), hit.getDirection(), grid.getGridSize());
+                PlacedPiece piece = grid.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+                if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+                    BlockEntity phantom = VanillaBlockPiece.blockEntityFor(piece, grid, VanillaBlockPiece.buildFakeServerSpace(grid, level));
+                    LOGGER.info("[assemble] looking at piece {} in subgrid {}: phantom={}", cell, grid.getBlockPos(), phantom);
+                    if (isAssembler(phantom)) return phantom;
+                }
+            }
         }
         BlockPos center = player.blockPosition();
         BlockEntity best = null;
         double bestDistance = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(center.offset(-SEARCH_RADIUS, -SEARCH_RADIUS, -SEARCH_RADIUS),
                 center.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))) {
-            BlockEntity candidate = player.level().getBlockEntity(pos);
+            BlockEntity candidate = level.getBlockEntity(pos);
             if (!isAssembler(candidate)) continue;
             double distance = pos.distSqr(center);
             if (distance < bestDistance) {
@@ -74,7 +94,7 @@ public final class DevAssemblerCommand {
         }
         BlockEntity be = findAssembler(player);
         if (be == null) {
-            source.sendFailure(Component.literal("[TinyBlocks] no physics assembler within " + SEARCH_RADIUS + " blocks of you"));
+            source.sendFailure(Component.literal("[TinyBlocks] no physics assembler under the crosshair (checked pieces inside subgrids too) or within " + SEARCH_RADIUS + " blocks"));
             return 0;
         }
         try {
@@ -83,8 +103,9 @@ public final class DevAssemblerCommand {
             source.sendSuccess(() -> Component.literal("[TinyBlocks] assembleOrDisassemble() called"), false);
             return 1;
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("physics assembler command failed", e);
-            source.sendFailure(Component.literal("[TinyBlocks] assembler call failed: " + e));
+            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException && e.getCause() != null ? e.getCause() : e;
+            LOGGER.error("physics assembler command failed", cause);
+            source.sendFailure(Component.literal("[TinyBlocks] assembler call failed: " + cause));
             return 0;
         }
     }
