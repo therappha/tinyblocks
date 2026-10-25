@@ -13,6 +13,9 @@ TinyBlocks is a mod for NeoForge 1.21.1. Craft a Minimizer with a stick and an i
 Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drops, and behave like real blocks — redstone, pistons, and other interactions propagate between neighboring pieces just like in the full-size world.
 '''
 
+[[mixins]]
+config = "tinyblocks.mixins.json"
+
 [[dependencies.tinyblocks]]
     modId = "neoforge"
     type = "required"

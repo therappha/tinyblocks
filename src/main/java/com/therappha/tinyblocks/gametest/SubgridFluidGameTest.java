@@ -92,4 +92,43 @@ public class SubgridFluidGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** Water on the top layer of a subgrid must run downwards through the empty cells below it. */
+    @GameTest(template = PLATFORM, timeoutTicks = 200)
+    public void waterOnTheTopLayerFlowsDown(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+        assertWaterRunsDown(helper, be, level);
+    }
+
+    /**
+     * Same, but with the SubgridBlock itself at the very top of the world: the virtual frame must not
+     * run out of coordinate space (BlockPos packs Y into 12 bits) or build height up there.
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 200)
+    public void waterFlowsDownInASubgridAtMaxWorldHeight(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos top = helper.absolutePos(new BlockPos(2, 1, 2)).atY(level.getMaxBuildHeight() - 1);
+        level.setBlockAndUpdate(top, com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK.get().defaultBlockState());
+        helper.assertTrue(level.getBlockEntity(top) instanceof SubgridBlockEntity, "no SubgridBlockEntity at max height");
+        assertWaterRunsDown(helper, (SubgridBlockEntity) level.getBlockEntity(top), level);
+    }
+
+    private static void assertWaterRunsDown(GameTestHelper helper, SubgridBlockEntity be, ServerLevel level) {
+        int top = be.getGridSize() - 1;
+        BlockPos source = new BlockPos(4, top, 4);
+        SubgridTestSupport.placePiece(be, level, new BlockPos(4, 0, 4), Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(be, level, source, Blocks.WATER.defaultBlockState());
+
+        helper.startSequence()
+                .thenIdle(60)
+                .thenExecute(() -> {
+                    for (int y = top - 1; y >= 1; y--) {
+                        var state = SubgridTestSupport.stateOf(be, new BlockPos(4, y, 4));
+                        helper.assertTrue(state != null && !state.getFluidState().isEmpty(),
+                                "water never ran down to layer " + y + " (top layer is " + top + ")");
+                    }
+                })
+                .thenSucceed();
+    }
 }

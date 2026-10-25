@@ -125,6 +125,28 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     public FakeCellGetter cells() { return delegate.cells(); }
 
+    // See FakeLevel: the virtual frame leaves the real dimension's build height.
+    // Virtual positions no longer sit in the chunk of the real SubgridBlock, so vanilla's chunk-loaded checks
+    // (Create's propagation asks before touching a neighbour) would answer "unloaded"; the fake space is
+    // always resident.
+    @Override
+    public boolean hasChunkAt(BlockPos pos) { return true; }
+
+    @Override
+    public boolean hasChunkAt(int blockX, int blockZ) { return true; }
+
+    @Override
+    public boolean hasChunksAt(int minX, int minZ, int maxX, int maxZ) { return true; }
+
+    @Override
+    public boolean isLoaded(BlockPos pos) { return true; }
+
+    @Override
+    public int getMinBuildHeight() { return -65536; }
+
+    @Override
+    public int getHeight() { return 131072; }
+
     // --- Delegated to the FakeLevel wrapping the same fake cell space ---
 
     @Override

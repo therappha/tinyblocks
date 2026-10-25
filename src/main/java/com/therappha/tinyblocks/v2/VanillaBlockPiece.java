@@ -374,10 +374,11 @@ public final class VanillaBlockPiece extends PieceDefinition {
             return InteractionResult.SUCCESS;
         }
 
-        // The piece lives at its own unique virtual position inside a cube centred on the SubgridBlock's
-        // real position, so stillValid's distance check (player vs the phantom's stored position) is
-        // satisfied by proximity alone and every neighbour lookup lands on the real sibling layout.
+        // The piece lives at its own unique position in the global virtual frame, far from the player, so
+        // stillValid's distance check (player vs the phantom's stored position) is redirected to the real
+        // SubgridBlock by PlayerMixin; PhantomInteraction remembers which grid that is.
         BlockPos realPos = be.getBlockPos();
+        PhantomInteraction.remember(player, be.virtualOrigin(), be.getGridSize(), realPos);
         SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
         populateCells(cells, be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, realPos);
@@ -605,6 +606,15 @@ public final class VanillaBlockPiece extends PieceDefinition {
         @Override
         public BlockPos resolveLocal(BlockPos pos) {
             return toLocal(pos);
+        }
+
+        @Override
+        public void blockUpdatedAt(BlockPos world) {
+            BlockPos local = toLocal(world);
+            if (be.resolve(local.getX(), local.getY(), local.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a
+                    && a.grid() != be) {
+                a.grid().markPhantomDataDirty();
+            }
         }
 
         @Override
