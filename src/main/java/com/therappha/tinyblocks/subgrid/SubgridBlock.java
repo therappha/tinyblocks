@@ -41,7 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import javax.annotation.Nullable;
 import java.util.List;
 
-public class SubgridBlock extends BaseEntityBlock {
+public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape {
 
     /** Valid grid sizes: powers of 2 from 2 to 16. Each cell maps exactly to whole 1/16 pixels. */
     public static final List<Integer> VALID_SIZES = List.of(2, 4, 8, 16);
@@ -84,6 +84,16 @@ public class SubgridBlock extends BaseEntityBlock {
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
         return be.getCachedShape();
+    }
+
+    /**
+     * Collision inside a Sable sub-level. Sable asks for this from the block state alone (no position, so no
+     * block entity to read the pieces from); a full cube makes the box a solid body in a ship. Without it
+     * Sable falls back to getCollisionShape against a getter with no block entity, i.e. no collision at all.
+     */
+    @Override
+    public VoxelShape getSubLevelCollisionShape(BlockGetter level, BlockState state) {
+        return Shapes.block();
     }
 
     @Override
