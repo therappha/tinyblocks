@@ -125,6 +125,18 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     public FakeCellGetter cells() { return delegate.cells(); }
 
+    // Light queries go to the FakeLevel (which answers with the real SubgridBlock's light). Left to the
+    // defaults they reach whatever replaces the light storage (Sable), which has no data for a fake level
+    // and throws on the first grass/crop random tick.
+    @Override
+    public int getRawBrightness(BlockPos pos, int amount) { return delegate.getRawBrightness(pos, amount); }
+
+    @Override
+    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) { return delegate.getBrightness(layer, pos); }
+
+    @Override
+    public boolean canSeeSky(BlockPos pos) { return delegate.canSeeSky(pos); }
+
     // See FakeLevel: the virtual frame leaves the real dimension's build height.
     // Virtual positions no longer sit in the chunk of the real SubgridBlock, so vanilla's chunk-loaded checks
     // (Create's propagation asks before touching a neighbour) would answer "unloaded"; the fake space is
