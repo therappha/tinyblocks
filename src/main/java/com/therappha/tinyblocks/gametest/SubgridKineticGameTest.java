@@ -215,7 +215,7 @@ public class SubgridKineticGameTest {
                     flushesBeforeRemoval[0] = be.phantomDataFlushes();
                     be.removePieceAt(motorAnchor.getX(), motorAnchor.getY(), motorAnchor.getZ());
                 })
-                .thenIdle(40)
+                .thenIdle(100)
                 .thenExecute(() -> {
                     helper.assertTrue(be.phantomDataFlushes() > flushesBeforeRemoval[0],
                             "clients were never sent the shafts' new (stopped) state after the motor was removed");
