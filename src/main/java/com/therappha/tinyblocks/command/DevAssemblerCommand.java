@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.TinyBlocks;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -37,19 +38,43 @@ public final class DevAssemblerCommand {
                 .then(Commands.literal("assemble").executes(DevAssemblerCommand::assemble)));
     }
 
+    private static final int SEARCH_RADIUS = 8;
+
+    /** The assembler under the crosshair if there is one, otherwise the closest one within reach of the player. */
+    private static BlockEntity findAssembler(ServerPlayer player) {
+        if (player.pick(SEARCH_RADIUS, 1.0f, false) instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK
+                && isAssembler(player.level().getBlockEntity(hit.getBlockPos()))) {
+            return player.level().getBlockEntity(hit.getBlockPos());
+        }
+        BlockPos center = player.blockPosition();
+        BlockEntity best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-SEARCH_RADIUS, -SEARCH_RADIUS, -SEARCH_RADIUS),
+                center.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))) {
+            BlockEntity candidate = player.level().getBlockEntity(pos);
+            if (!isAssembler(candidate)) continue;
+            double distance = pos.distSqr(center);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    private static boolean isAssembler(BlockEntity be) {
+        return be != null && be.getClass().getSimpleName().equals(ASSEMBLER_BLOCK_ENTITY);
+    }
+
     private static int assemble(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         if (!(source.getEntity() instanceof ServerPlayer player)) {
             source.sendFailure(Component.literal("[TinyBlocks] run this as a player, looking at a physics assembler"));
             return 0;
         }
-        if (!(player.pick(8.0, 1.0f, false) instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) {
-            source.sendFailure(Component.literal("[TinyBlocks] look at a physics assembler"));
-            return 0;
-        }
-        BlockEntity be = player.level().getBlockEntity(hit.getBlockPos());
-        if (be == null || !be.getClass().getSimpleName().equals(ASSEMBLER_BLOCK_ENTITY)) {
-            source.sendFailure(Component.literal("[TinyBlocks] that is not a physics assembler"));
+        BlockEntity be = findAssembler(player);
+        if (be == null) {
+            source.sendFailure(Component.literal("[TinyBlocks] no physics assembler within " + SEARCH_RADIUS + " blocks of you"));
             return 0;
         }
         try {
