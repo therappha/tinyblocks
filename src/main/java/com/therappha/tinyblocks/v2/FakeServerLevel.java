@@ -46,7 +46,7 @@ import java.util.concurrent.Executor;
  * against the specific block ticks we actually exercise (redstone lamp delay, crop growth), not
  * by exhaustively reimplementing ServerLevel.
  */
-public class FakeServerLevel extends ServerLevel implements FakeSpace {
+public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder {
 
     private FakeLevel delegate;
     /** The real ServerLevel this fake space was built from — for ServerLevel-only state the transplant can't copy. */
@@ -124,6 +124,16 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     }
 
     public FakeCellGetter cells() { return delegate.cells(); }
+
+    /**
+     * Sable keeps its sub-level container in a field its mixin adds to ServerLevel, which the Level-field
+     * transplant in create() never fills (same gap as the light storage). Everything that asks the fake level
+     * for it (SubLevelAssemblyHelper, Containing.get...) gets the real level's container instead.
+     */
+    @Override
+    public dev.ryanhcode.sable.api.sublevel.SubLevelContainer sable$getPlotContainer() {
+        return ((dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder) realServer).sable$getPlotContainer();
+    }
 
     // Light queries go to the FakeLevel (which answers with the real SubgridBlock's light). Left to the
     // defaults they reach whatever replaces the light storage (Sable), which has no data for a fake level
