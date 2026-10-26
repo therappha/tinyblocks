@@ -45,6 +45,7 @@ public final class MinimizerBuild {
             CompoundTag tag = all.getCompound(KEY);
             tag.putInt("mode", next.ordinal());
             tag.remove("corner");
+            tag.remove("lift");
             all.put(KEY, tag);
         });
         return next;
@@ -62,6 +63,7 @@ public final class MinimizerBuild {
     public static void setCorner(ItemStack minimizer, @Nullable Corner corner) {
         CustomData.update(DataComponents.CUSTOM_DATA, minimizer, all -> {
             CompoundTag tag = all.getCompound(KEY);
+            tag.remove("lift");
             if (corner == null) {
                 tag.remove("corner");
             } else {
@@ -75,6 +77,30 @@ public final class MinimizerBuild {
             }
             all.put(KEY, tag);
         });
+    }
+
+    /** The most cells the second corner can be raised or lowered by. */
+    public static final int MAX_LIFT = 64;
+
+    /** How many cells above (below, if negative) the crosshair's cell the second corner is: Ctrl + scroll. */
+    public static int lift(ItemStack minimizer) {
+        return tag(minimizer).getInt("lift");
+    }
+
+    /** Raises (lowers) the second corner by {@code delta} cells, within MAX_LIFT; returns the new lift. */
+    public static int addLift(ItemStack minimizer, int delta) {
+        int lift = Math.max(-MAX_LIFT, Math.min(MAX_LIFT, lift(minimizer) + delta));
+        CustomData.update(DataComponents.CUSTOM_DATA, minimizer, all -> {
+            CompoundTag tag = all.getCompound(KEY);
+            tag.putInt("lift", lift);
+            all.put(KEY, tag);
+        });
+        return lift;
+    }
+
+    /** The second corner a click on {@code target} picks: the crosshair's cell, raised by the lift. */
+    public static BlockPos secondCorner(ItemStack minimizer, Target target) {
+        return target.cell().above(lift(minimizer));
     }
 
     private static CompoundTag tag(ItemStack minimizer) {

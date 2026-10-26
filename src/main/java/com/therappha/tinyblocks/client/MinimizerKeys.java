@@ -16,7 +16,10 @@ import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
-/** Shift+G (rebindable) switches a held Minimizer's build mode. */
+/**
+ * Shift+G (rebindable) switches a held Minimizer's build mode; with a shape's first corner held, Ctrl + scroll
+ * raises or lowers the second corner (as Simulated's honey glue grows its box), instead of changing hotbar slot.
+ */
 public final class MinimizerKeys {
 
     public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.minimizer_mode",
@@ -49,6 +52,18 @@ public final class MinimizerKeys {
                     PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
                 }
             }
+        }
+
+        @SubscribeEvent
+        public static void onScroll(net.neoforged.neoforge.client.event.InputEvent.MouseScrollingEvent event) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.screen != null || !net.minecraft.client.gui.screens.Screen.hasControlDown()) return;
+            var minimizer = mc.player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof MinimizerItem)
+                    || com.therappha.tinyblocks.items.MinimizerBuild.corner(minimizer) == null
+                    || event.getScrollDeltaY() == 0) return;
+            event.setCanceled(true);
+            PacketDistributor.sendToServer(new com.therappha.tinyblocks.network.MinimizerLiftPayload(event.getScrollDeltaY() > 0 ? 1 : -1));
         }
     }
 }

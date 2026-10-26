@@ -93,4 +93,26 @@ public class MinimizerShapesGameTest {
         helper.assertTrue(be.getPieces().size() == 2, "a sneaking click built something");
         helper.succeed();
     }
+
+    /** Ctrl + scroll's lift raises the second corner: corners at layer 1, lifted by 2, fill layers 1 to 3. */
+    @GameTest(template = "empty_platform")
+    public void liftRaisesTheSecondCorner(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(0, 0, 0), Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 0, 3), Blocks.STONE.defaultBlockState());
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT));
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        MinimizerBuild.cycle(minimizer); // FILL
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.topHit(be, new BlockPos(0, 0, 0)));
+        MinimizerBuild.addLift(player.getOffhandItem(), 2);
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.topHit(be, new BlockPos(3, 0, 3)));
+
+        helper.assertTrue(be.getPieces().size() == 2 + 48, "placed " + (be.getPieces().size() - 2) + ", not 4x3x4");
+        helper.assertTrue(SubgridTestSupport.stateOf(be, new BlockPos(3, 3, 3)) != null, "nothing at the lifted corner");
+        helper.assertTrue(MinimizerBuild.lift(player.getOffhandItem()) == 0, "the lift was kept after building");
+        helper.succeed();
+    }
 }

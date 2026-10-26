@@ -57,7 +57,7 @@ public final class MinimizerShapes {
             return;
         }
 
-        List<BlockPos> cells = mode.cells(corner.cell(), target.cell(), corner.faceAxis(), MAX_CELLS);
+        List<BlockPos> cells = mode.cells(corner.cell(), MinimizerBuild.secondCorner(minimizer, target), corner.faceAxis(), MAX_CELLS);
         if (cells.size() > MAX_CELLS) {
             player.displayClientMessage(Component.translatable("tinyblocks.build.too_big", MAX_CELLS), true);
             return;

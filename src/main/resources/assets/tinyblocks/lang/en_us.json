@@ -26,10 +26,11 @@
   "tinyblocks.build_mode.walls": "Walls",
   "tinyblocks.build_mode.plane": "Plane",
   "tinyblocks.build.mode": "Build mode: %s",
-  "tinyblocks.build.corner_set": "%s: first corner set — click the second corner (sneak-click to cancel)",
+  "tinyblocks.build.corner_set": "%s: first corner set — click the second corner, Ctrl + scroll for height (sneak-click to cancel)",
   "tinyblocks.build.corner_cleared": "Corner cleared",
   "tinyblocks.build.too_big": "Too big: at most %s cells",
   "tinyblocks.build.placed": "Placed %s pieces",
   "block.tinyblocks.subgrid_block_9": "Subgrid Block (1/9)",
-  "item.tinyblocks.minimizer_9": "Minimizer (1/9, centred)"
+  "item.tinyblocks.minimizer_9": "Minimizer (1/9, centred)",
+  "tinyblocks.build.lift": "Height: %s cells (Ctrl + scroll)"
 }

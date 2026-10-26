@@ -26,6 +26,19 @@ public class NetworkSetup {
         registrar.playToClient(PhantomDataPayload.TYPE, PhantomDataPayload.STREAM_CODEC, NetworkSetup::handlePhantomData);
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
+        registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
+    }
+
+    private static void handleMinimizerLift(MinimizerLiftPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
+                    || com.therappha.tinyblocks.items.MinimizerBuild.corner(minimizer) == null) return;
+            int lift = com.therappha.tinyblocks.items.MinimizerBuild.addLift(minimizer, Integer.signum(payload.delta()));
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.lift",
+                    (lift > 0 ? "+" : "") + lift), true);
+        });
     }
 
     private static void handleMinimizerMode(MinimizerModePayload payload, IPayloadContext ctx) {
