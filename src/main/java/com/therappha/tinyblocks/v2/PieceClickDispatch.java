@@ -40,9 +40,7 @@ public final class PieceClickDispatch {
     /** True if a listener took the click (cancelled the event). */
     public static boolean dispatch(SubgridBlockEntity be, PlacedPiece piece, FakeServerLevel space, Player player,
                                    InteractionHand hand, BlockHitResult hit) {
-        int size = be.getGridSize();
-        Vec3 local = hit.getLocation().subtract(Vec3.atLowerCornerOf(be.getBlockPos())).scale(size);
-        Vec3 virtualHit = Vec3.atLowerCornerOf(be.virtualOrigin()).add(local);
+        Vec3 virtualHit = VirtualHit.toVirtual(hit.getLocation(), be.getBlockPos(), be.virtualOrigin(), be.getGridSize());
         BlockPos virtualPos = be.virtualPosOf(piece.anchor);
 
         FakePlayer proxy;

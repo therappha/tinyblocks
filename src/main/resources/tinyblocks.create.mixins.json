@@ -12,6 +12,9 @@
     "RotationPropagatorMixin",
     "TorquePropagatorMixin"
   ],
+  "client": [
+    "PlacementClientMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

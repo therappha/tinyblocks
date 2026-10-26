@@ -401,11 +401,16 @@ public class VanillaBlockPiece extends PieceDefinition {
         Map<BlockPos, BlockState> before = snapshot(be);
 
         BlockPos at = cells.toWorld(piece.anchor);
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), hit.getDirection(), at, hit.isInside());
-        // Vanilla's order: the block's use with the held item first, then its use without one. A block item is
-        // left out — placing goes through SubgridEventHandler's own placement, not through the clicked block.
+        // The real hit point, scaled into the piece's virtual block: blocks read where on them the click landed.
+        BlockHitResult fakeHit = new BlockHitResult(
+                VirtualHit.toVirtual(hit.getLocation(), realPos, be.virtualOrigin(), be.getGridSize()),
+                hit.getDirection(), at, hit.isInside());
+        // Vanilla's order: the block's use with the held item first, then its use without one. A block item gets
+        // its turn too: Create's blocks place a held block of their own through their placement helpers (a shaft
+        // extends a shaft), or encase themselves with a casing. Whatever such a use writes into the fake space
+        // becomes a piece in applyChanges; a plain block's use passes, and SubgridEventHandler places it.
         net.minecraft.world.item.ItemStack held = player.getMainHandItem();
-        if (!held.isEmpty() && !(held.getItem() instanceof net.minecraft.world.item.BlockItem)) {
+        if (!held.isEmpty()) {
             net.minecraft.world.ItemInteractionResult itemResult = cells.getBlockState(at).useItemOn(
                     held, fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, fakeHit);
             if (itemResult != net.minecraft.world.ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {

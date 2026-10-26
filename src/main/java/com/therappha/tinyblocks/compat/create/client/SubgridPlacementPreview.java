@@ -1,0 +1,127 @@
+package com.therappha.tinyblocks.compat.create.client;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.client.GhostVertexConsumer;
+import com.therappha.tinyblocks.compat.create.ShaftConnectorBlock;
+import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.FakeLevel;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
+import com.therappha.tinyblocks.v2.VirtualHit;
+import net.createmod.catnip.ghostblock.GhostBlocks;
+import net.createmod.catnip.placement.IPlacementHelper;
+import net.createmod.catnip.placement.PlacementClient;
+import net.createmod.catnip.placement.PlacementHelpers;
+import net.createmod.catnip.placement.PlacementOffset;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.model.data.ModelData;
+
+import javax.annotation.Nullable;
+
+/**
+ * Create's placement assist inside a subgrid: holding a Create block over a piece shows, cell-sized, the ghost of
+ * where and how the piece's placement helper would put it (a shaft at the end of a shaft line), as Create shows it
+ * for full-size blocks.
+ *
+ * Create's own pass (PlacementClient#checkHelpers) asks about the block under the crosshair, which is the
+ * SubgridBlock; PlacementClientMixin runs this one after it. The helper is run against the grid's fake space with
+ * the hit in the virtual frame — what the server does on the click (VanillaBlockPiece#onUse hands the held block
+ * to the clicked piece's own use, which runs the same helper), so the ghost shows where the block will go.
+ */
+@EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT)
+public final class SubgridPlacementPreview {
+
+    /** The ghost to draw: a block state, with the real-level corner and size of the cell it goes in. */
+    public record Ghost(Vec3 corner, double cellSize, BlockState state) {}
+
+    @Nullable private static Ghost ghost;
+
+    private SubgridPlacementPreview() {}
+
+    /** This tick's ghost, or null. */
+    @Nullable
+    public static Ghost current() {
+        return ghost;
+    }
+
+    /**
+     * Works out this tick's ghost, if a piece's placement helper takes the block in hand. Returns the real block
+     * the ghost is in, for Create's on-screen arrow pointing at it, or null when there is none.
+     */
+    @Nullable
+    public static BlockPos tick() {
+        ghost = null;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null || mc.player.isShiftKeyDown()) return null;
+        if (!(mc.hitResult instanceof BlockHitResult ray) || ray.getType() == HitResult.Type.MISS) return null;
+        if (!(mc.level.getBlockEntity(ray.getBlockPos()) instanceof SubgridBlockEntity grid)) return null;
+
+        // Only the main hand: that's the hand VanillaBlockPiece#onUse hands to the piece.
+        ItemStack held = mc.player.getMainHandItem();
+        // The shaft connector clicked onto a tiny shaft goes on the grid face (ConnectorPlacement#placeFrom),
+        // not where the shaft helper it also matches would put it.
+        if (!(held.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof ShaftConnectorBlock) return null;
+
+        VirtualHit hit = VirtualHit.of(grid, ray);
+        PlacedPiece piece = grid.getPieceAt(hit.cell().getX(), hit.cell().getY(), hit.cell().getZ());
+        if (piece == null || !(piece.definition instanceof VanillaBlockPiece)
+                || !(piece.runtimeState instanceof BlockState state)) return null;
+
+        FakeLevel space = null;
+        for (IPlacementHelper helper : PlacementHelpers.getHelpersView()) {
+            if (!helper.matchesItem(held) || !helper.matchesState(state)) continue;
+            if (space == null) space = VanillaBlockPiece.buildClientFakeSpace(grid, mc.level);
+            PlacementOffset offset = helper.getOffset(mc.player, space, state, hit.hit().getBlockPos(), hit.hit(), held);
+            if (!offset.isSuccessful() || !offset.hasGhostState()) continue;
+
+            double cellSize = 1.0 / grid.getGridSize();
+            Vec3 corner = hit.realCornerOf(offset.getBlockPos());
+            ghost = new Ghost(corner, cellSize, offset.getTransform().apply(offset.getGhostState()));
+            return BlockPos.containing(corner.add(cellSize / 2, cellSize / 2, cellSize / 2));
+        }
+        return null;
+    }
+
+    @SubscribeEvent
+    public static void onRenderLevel(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+        Ghost current = ghost;
+        if (current == null) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        Vec3 camera = event.getCamera().getPosition();
+        PoseStack poseStack = event.getPoseStack();
+        MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
+        // Create's transparent ghost: breathing, fading in with the placement indicator, a little smaller than the cell.
+        float alpha = (float) GhostBlocks.getBreathingAlpha() * 0.75f * PlacementClient.getCurrentAlpha();
+        GhostVertexConsumer consumer = new GhostVertexConsumer(buffers.getBuffer(RenderType.translucent()), (int) (alpha * 255));
+
+        poseStack.pushPose();
+        poseStack.translate(current.corner().x - camera.x, current.corner().y - camera.y, current.corner().z - camera.z);
+        poseStack.scale((float) current.cellSize(), (float) current.cellSize(), (float) current.cellSize());
+        poseStack.translate(0.5, 0.5, 0.5);
+        poseStack.scale(0.85f, 0.85f, 0.85f);
+        poseStack.translate(-0.5, -0.5, -0.5);
+        mc.getBlockRenderer().getModelRenderer().renderModel(poseStack.last(), consumer, current.state(),
+                mc.getBlockRenderer().getBlockModel(current.state()), 1f, 1f, 1f,
+                LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.translucent());
+        poseStack.popPose();
+        buffers.endBatch(RenderType.translucent());
+    }
+}

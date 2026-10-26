@@ -5,14 +5,21 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
 @OnlyIn(Dist.CLIENT)
-class GhostVertexConsumer implements VertexConsumer {
+public class GhostVertexConsumer implements VertexConsumer {
 
     private static final int ALPHA = 100; // ~40% opacity
 
     private final VertexConsumer delegate;
+    private final int alpha;
 
     GhostVertexConsumer(VertexConsumer delegate) {
+        this(delegate, ALPHA);
+    }
+
+    /** {@code alpha} in 0..255 caps every vertex's opacity; draw into a translucent buffer for it to show. */
+    public GhostVertexConsumer(VertexConsumer delegate, int alpha) {
         this.delegate = delegate;
+        this.alpha = alpha;
     }
 
     @Override
@@ -23,7 +30,7 @@ class GhostVertexConsumer implements VertexConsumer {
 
     @Override
     public VertexConsumer setColor(int r, int g, int b, int a) {
-        delegate.setColor(r, g, b, Math.min(a, ALPHA));
+        delegate.setColor(r, g, b, Math.min(a, alpha));
         return this;
     }
 

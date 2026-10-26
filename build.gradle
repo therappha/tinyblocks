@@ -38,7 +38,7 @@ neoForge {
         // com.therappha.tinyblocks.client.ClientSelfTest, logs PASS/FAIL and quits.
         clientSelfTest {
             client()
-            systemProperty 'tinyblocks.selftest', 'mining'
+            systemProperty 'tinyblocks.selftest', 'all'
             programArguments.addAll '--quickPlaySingleplayer', 'New World'
         }
     }

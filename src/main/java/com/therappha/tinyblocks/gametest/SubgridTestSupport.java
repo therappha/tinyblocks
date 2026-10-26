@@ -84,12 +84,32 @@ final class SubgridTestSupport {
         return result != net.minecraft.world.InteractionResult.PASS;
     }
 
-    /** Simulates a right-click on an existing piece (lever toggle, etc.) via its own onUse. */
+    /** Simulates a right-click on an existing piece (lever toggle, etc.) via its own onUse, on the middle of its top face. */
     static net.minecraft.world.InteractionResult useOnPiece(SubgridBlockEntity be, ServerLevel level,
                                                               PlacedPiece piece, net.minecraft.world.entity.player.Player player) {
-        net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
-                net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()), Direction.UP, be.getBlockPos(), false);
-        return piece.definition.onUse(piece, level, be.getBlockPos(), be, player, hit);
+        return piece.definition.onUse(piece, level, be.getBlockPos(), be, player, topHit(be, piece.anchor));
+    }
+
+    /** A real-level hit on the middle of the top face of {@code cell}. */
+    static net.minecraft.world.phys.BlockHitResult topHit(SubgridBlockEntity be, BlockPos cell) {
+        return faceHit(be, cell, Direction.UP);
+    }
+
+    /** A real-level hit on the middle of {@code face} of {@code cell}, as a player's click on it would be. */
+    static net.minecraft.world.phys.BlockHitResult faceHit(SubgridBlockEntity be, BlockPos cell, Direction face) {
+        double size = be.getGridSize();
+        net.minecraft.world.phys.Vec3 point = net.minecraft.world.phys.Vec3.atCenterOf(cell)
+                .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(face.getNormal()).scale(0.5))
+                .scale(1 / size)
+                .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(be.getBlockPos()));
+        return new net.minecraft.world.phys.BlockHitResult(point, face, be.getBlockPos(), false);
+    }
+
+    /** A player's right click on the SubgridBlock at {@code hit}, posted as the event SubgridEventHandler listens to. */
+    static void rightClick(SubgridBlockEntity be, net.minecraft.world.entity.player.Player player,
+                           net.minecraft.world.phys.BlockHitResult hit) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(new net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock(
+                player, net.minecraft.world.InteractionHand.MAIN_HAND, be.getBlockPos(), hit));
     }
 
     static BlockState stateOf(SubgridBlockEntity be, BlockPos anchor) {
