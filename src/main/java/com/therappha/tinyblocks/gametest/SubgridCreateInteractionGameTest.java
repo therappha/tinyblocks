@@ -188,4 +188,31 @@ public class SubgridCreateInteractionGameTest {
                                 + " -> " + describe(helper.getBlockEntity(transmitter))))
                 .thenSucceed();
     }
+
+    /**
+     * Create's value settings packet, as the client sends it once a player picked a speed on a tiny creative
+     * motor's value box: it names the motor by its phantom's virtual position.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void valueSettingsSetATinyCreativeMotorsSpeed(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos anchor = new BlockPos(4, 4, 4);
+        PlacedPiece motor = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor,
+                AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
+        // A stand-in that drops whatever is sent to it (a mock player's missing connection refused other mods' packets).
+        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
+        player.moveTo(Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    var phantom = (com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity)
+                            SubgridTestSupport.blockEntityOf(be, motor, helper.getLevel());
+                    new com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsPacket(be.virtualPosOf(anchor),
+                            1, 64, null, null, Direction.UP, false, phantom.generatedSpeed.netId()).handle(player);
+                    helper.assertTrue(phantom.generatedSpeed.getValue() == 64,
+                            "the tiny motor's speed is " + phantom.generatedSpeed.getValue() + ", not 64");
+                })
+                .thenSucceed();
+    }
 }

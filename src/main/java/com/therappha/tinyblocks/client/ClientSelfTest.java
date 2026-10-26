@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * and the placement assist all run as in play), logs "[selftest] ... PASS/FAIL" and quits. Inert without the property.
  *
  * mining: two pieces in a row, broken with one click; only the front one may go.
+ * valuebox: a tiny creative motor's speed slot: outlined when looked at, a click starts Create's hold-to-edit, and
+ * the value the board would send reaches the motor and comes back to the client.
  * placement: Create's placement assist on a tiny shaft; the ghost shown and the block the click places must agree.
  */
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT)
@@ -43,6 +45,7 @@ public final class ClientSelfTest {
     private static final boolean ENABLED = !SELFTEST.isEmpty();
     private static final boolean MINING = SELFTEST.equals("mining") || SELFTEST.equals("all");
     private static final boolean PLACEMENT = SELFTEST.equals("placement") || SELFTEST.equals("all");
+    private static final boolean VALUE_BOX = SELFTEST.equals("valuebox") || SELFTEST.equals("all");
 
     private static final BlockPos FRONT = new BlockPos(4, 4, 7);
     private static final BlockPos BEHIND = new BlockPos(4, 4, 6);
@@ -65,6 +68,7 @@ public final class ClientSelfTest {
     private static final AtomicReference<String> CHECKED = new AtomicReference<>();
     private static int scenario = MINING ? 0 : Integer.MAX_VALUE;
     private static boolean placementDone = !PLACEMENT;
+    private static boolean valueBoxDone = !VALUE_BOX;
     private static int phase = 0;
     private static int wait = 100; // let the world finish loading
     private static volatile BlockPos grid; // written on the server thread, read on the client's
@@ -82,6 +86,10 @@ public final class ClientSelfTest {
         if (finished) return;
         if (scenario >= SCENARIOS.size() && !placementDone) {
             placementStep(mc, server);
+            return;
+        }
+        if (scenario >= SCENARIOS.size() && !valueBoxDone) {
+            valueBoxStep(mc, server);
             return;
         }
         if (scenario >= SCENARIOS.size()) {
@@ -261,5 +269,85 @@ public final class ClientSelfTest {
             return "FAIL: the ghost showed " + ghost.state() + " but the click placed " + placed.runtimeState;
         }
         return "PASS: the ghost showed " + ghost.state() + " at " + cell + " and the click placed it there";
+    }
+
+    // --- Create value boxes: a tiny creative motor's speed ---
+
+    private static int valueBoxPhase = 0;
+    private static volatile int speedNetId;
+    private static final List<String> VALUE_BOX_PROBLEMS = new ArrayList<>();
+
+    private static void valueBoxStep(Minecraft mc, MinecraftServer server) {
+        switch (valueBoxPhase) {
+            case 0 -> {
+                server.execute(() -> {
+                    setUp(server, GameType.CREATIVE, ItemStack.EMPTY, com.simibubi.create.AllBlocks.CREATIVE_MOTOR.getDefaultState()
+                            .setValue(net.minecraft.world.level.block.DirectionalBlock.FACING, Direction.UP), List.of(FRONT));
+                    ServerLevel level = server.getPlayerList().getPlayers().get(0).serverLevel();
+                    if (level.getBlockEntity(grid) instanceof SubgridBlockEntity be
+                            && VanillaBlockPiece.boundPhantom(be.getPieceAt(FRONT.getX(), FRONT.getY(), FRONT.getZ()), be, level)
+                            instanceof com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity motor) {
+                        speedNetId = motor.generatedSpeed.netId();
+                    }
+                });
+                valueBoxPhase = 1;
+                wait = 20;
+            }
+            case 1 -> {
+                // The speed slot on the motor's south side (MotorValueBox: 8, 8, 12.5 px, 1 px down for a motor facing up).
+                lookAt(mc, Vec3.atLowerCornerOf(grid).add(new Vec3(FRONT.getX() + 0.5, FRONT.getY() + 7 / 16.0,
+                        FRONT.getZ() + 12.5 / 16).scale(1 / 8.0)));
+                valueBoxPhase = 2;
+                wait = 5;
+            }
+            case 2 -> {
+                if (com.therappha.tinyblocks.compat.create.client.VirtualView.outliner().getOutlines().isEmpty()) {
+                    VALUE_BOX_PROBLEMS.add("no value box outline while looking at the slot");
+                }
+                if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit) {
+                    mc.gameMode.useItemOn(mc.player, net.minecraft.world.InteractionHand.MAIN_HAND, hit);
+                }
+                var handler = com.simibubi.create.CreateClient.VALUE_SETTINGS_HANDLER;
+                BlockPos expected = new BlockPos(grid.getX() * 8, grid.getY() * 8, grid.getZ() * 8).offset(FRONT);
+                if (handler.interactHeldTicks == -1 || !expected.equals(handler.interactHeldPos)) {
+                    VALUE_BOX_PROBLEMS.add("the click did not start editing the motor's value (held "
+                            + handler.interactHeldTicks + " at " + handler.interactHeldPos + ", motor at " + expected + ")");
+                }
+                // What the value board sends once a speed is picked: row 1 is clockwise, 100 rpm.
+                net.createmod.catnip.platform.CatnipServices.NETWORK.sendToServer(
+                        new com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsPacket(expected, 1, 100,
+                                null, null, Direction.UP, false, speedNetId));
+                valueBoxPhase = 3;
+                wait = 20;
+            }
+            case 3 -> {
+                CHECKED.set(null);
+                server.execute(() -> {
+                    ServerLevel level = server.getPlayerList().getPlayers().get(0).serverLevel();
+                    int speed = level.getBlockEntity(grid) instanceof SubgridBlockEntity be
+                            && be.getPieceAt(FRONT.getX(), FRONT.getY(), FRONT.getZ()).runtimeBlockEntity
+                            instanceof com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity motor
+                            ? motor.generatedSpeed.getValue() : Integer.MIN_VALUE;
+                    CHECKED.set(String.valueOf(speed));
+                });
+                valueBoxPhase = 4;
+                wait = 5;
+            }
+            case 4 -> {
+                String serverSpeed = CHECKED.get();
+                if (serverSpeed == null) return;
+                if (!"100".equals(serverSpeed)) VALUE_BOX_PROBLEMS.add("the server motor's speed is " + serverSpeed + ", not 100");
+                int clientSpeed = mc.level.getBlockEntity(grid) instanceof SubgridBlockEntity be
+                        && be.getPieceAt(FRONT.getX(), FRONT.getY(), FRONT.getZ()) != null
+                        && be.getPieceAt(FRONT.getX(), FRONT.getY(), FRONT.getZ()).runtimeBlockEntity
+                        instanceof com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity motor
+                        ? motor.generatedSpeed.getValue() : Integer.MIN_VALUE;
+                if (clientSpeed != 100) VALUE_BOX_PROBLEMS.add("the client still shows speed " + clientSpeed);
+                RESULTS.add((VALUE_BOX_PROBLEMS.isEmpty() ? "PASS: outlined, click started editing, speed 100 on both sides"
+                        : "FAIL: " + String.join("; ", VALUE_BOX_PROBLEMS)) + " — tiny creative motor value box");
+                valueBoxDone = true;
+            }
+            default -> { }
+        }
     }
 }

@@ -4,6 +4,7 @@
   "package": "com.therappha.tinyblocks.mixin.create",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BlockEntityConfigurationPacketMixin",
     "KineticBlockEntityMixin",
     "KineticNetworkMixin",
     "LinkBehaviourMixin",
@@ -13,7 +14,12 @@
     "TorquePropagatorMixin"
   ],
   "client": [
-    "PlacementClientMixin"
+    "LevelVirtualViewMixin",
+    "OutlineParamsAccessor",
+    "OutlinerMixin",
+    "PlacementClientMixin",
+    "ValueBoxTickMixin",
+    "ValueSettingsClientMixin"
   ],
   "injectors": {
     "defaultRequire": 1

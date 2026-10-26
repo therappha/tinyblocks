@@ -962,7 +962,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * position into a 1M-wide window first keeps them inside (1M * 16 = 16M); the only cost is that two grids
      * facing each other across a window seam (every 1M blocks) are no longer adjacent in the frame.
      */
-    private static final int HORIZONTAL_WINDOW = 1 << 20;
+    public static final int HORIZONTAL_WINDOW = 1 << 20;
 
     private static int wrapHorizontal(int coordinate) {
         return Math.floorMod(coordinate + HORIZONTAL_WINDOW / 2, HORIZONTAL_WINDOW) - HORIZONTAL_WINDOW / 2;
