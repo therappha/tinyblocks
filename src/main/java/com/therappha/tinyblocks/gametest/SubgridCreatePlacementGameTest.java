@@ -100,6 +100,10 @@ public class SubgridCreatePlacementGameTest {
                 "the shaft was not encased: " + after);
         helper.assertTrue(SubgridTestSupport.stateOf(be, shaft.above()) == null,
                 "the casing was placed as a block on top instead");
+        var phantom = SubgridTestSupport.blockEntityOf(be, be.getPieceAt(shaft.getX(), shaft.getY(), shaft.getZ()), helper.getLevel());
+        helper.assertTrue(phantom != null && phantom.getType() == com.simibubi.create.AllBlockEntityTypes.ENCASED_SHAFT.get()
+                        && phantom.getBlockState().equals(after),
+                "the encased shaft kept the shaft's block entity: " + phantom + " " + (phantom == null ? "" : phantom.getBlockState()));
         helper.succeed();
     }
 

@@ -861,6 +861,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                     }
                     p.runtimeState = now;
                     syncBlockEntity(be, p, p.anchor, p.anchor, cells, (Level) fakeSpace, realLevel);
+                    followStateChange(be, p, before.get(p.anchor), now, cells);
                     be.notifyNeighbors(p);
                     // This piece's new state might be the delayed arrival of a block that vacated
                     // some OTHER cell several ticks ago (see the deferred-drop comment below) — a
@@ -1054,6 +1055,31 @@ public class VanillaBlockPiece extends PieceDefinition {
                     new net.minecraft.world.level.ChunkPos(owner.getBlockPos()),
                     new com.therappha.tinyblocks.network.PistonAnimationPayload(owner.getBlockPos(), ownerLocalPos, beNbt));
         }
+    }
+
+    /**
+     * What a real chunk does to the block entity when its block's state changes (LevelChunk#setBlockState): the
+     * same block keeps its block entity and hands it the new state; a different block removes it (the old block's
+     * onRemove), and the new block gets a fresh one. A fake space's setBlock only records the state, so without
+     * this a phantom kept its old state: a tiny redstone link switched to receiver still saw itself a transmitter
+     * (Create rebuilds its link from getBlockState), and a tiny shaft encased by a casing kept the shaft's entity.
+     * A block entity vanilla code handed over itself this call (a piston's) is syncBlockEntity's business instead.
+     */
+    private static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @javax.annotation.Nullable BlockState was,
+                                          BlockState now, FakeCellGetter cells) {
+        if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) return;
+        if (cells.touchedBlockEntities().containsKey(piece.anchor) || cells.removedBlockEntityPositions().contains(piece.anchor)) return;
+        if (was != null && now.is(was.getBlock()) && phantom.getType().isValid(now)) {
+            phantom.setBlockState(now);
+            return;
+        }
+        try {
+            phantom.setRemoved();
+        } catch (RuntimeException e) {
+            LOGGER.warn("Removing the block entity of a piece at {} (cell {}) failed", be.getBlockPos(), piece.anchor, e);
+        }
+        piece.runtimeBlockEntity = null;
+        piece.extraData.remove("be"); // the old block's data, not the new one's
     }
 
     /** Which face of piece the already-placed changedNeighbor touches, or null if it can't be found. */

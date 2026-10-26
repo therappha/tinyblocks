@@ -53,7 +53,8 @@ public class SubgridCreateInteractionGameTest {
     @GameTest(template = "empty_platform", timeoutTicks = 100)
     public void clickSetsATinyRedstoneLinkFrequency(GameTestHelper helper) {
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
-        BlockPos anchor = new BlockPos(4, 0, 4);
+        BlockPos anchor = new BlockPos(4, 1, 4);
+        standOn(be, helper, anchor);
         PlacedPiece link = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor,
                 AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
         Player player = helper.makeMockPlayer(GameType.SURVIVAL);
@@ -79,6 +80,12 @@ public class SubgridCreateInteractionGameTest {
                             "no frequency was set by the click: " + key.getFirst().getStack() + " / " + key.getSecond().getStack());
                 })
                 .thenSucceed();
+    }
+
+    /** A link facing up only stays where the block under it is solid, like a full-size one. */
+    private static void standOn(SubgridBlockEntity be, GameTestHelper helper, BlockPos link) {
+        SubgridTestSupport.placePiece(be, helper.getLevel(), link.below(),
+                net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
     }
 
     private static BlockState link(boolean receiver) {
@@ -110,7 +117,12 @@ public class SubgridCreateInteractionGameTest {
         return "[" + linkEntity.getBlockPos() + " level=" + linkEntity.getLevel().getClass().getSimpleName()
                 + " listening=" + behaviour.isListening() + " alive=" + behaviour.isAlive()
                 + " transmits=" + behaviour.getTransmittedStrength()
-                + " network=" + (network == null ? "none" : network.size() + (network.contains(behaviour) ? " incl. self" : " NOT incl. self"))
+                + " received=" + (linkEntity instanceof com.simibubi.create.content.redstone.link.RedstoneLinkBlockEntity l ? l.getReceivedSignal() : -1)
+                + " key=" + behaviour.getNetworkKey().getFirst().getStack().getItem() + "/" + behaviour.getNetworkKey().getSecond().getStack().getItem()
+                + " behaviour@" + Integer.toHexString(System.identityHashCode(behaviour))
+                + " network=" + (network == null ? "none" : network.size() + (network.contains(behaviour) ? " incl. self" : " NOT incl. self")
+                        + network.stream().map(o -> o instanceof LinkBehaviour lb ? lb.blockEntity.getBlockPos() + "@" + Integer.toHexString(System.identityHashCode(lb))
+                                + (lb.isListening() ? "R" : "T") + lb.getTransmittedStrength() : String.valueOf(o)).toList())
                 + " state=" + linkEntity.getBlockState() + "]";
     }
 
@@ -118,10 +130,12 @@ public class SubgridCreateInteractionGameTest {
     @GameTest(template = "empty_platform", timeoutTicks = 100)
     public void tinyTransmitterPowersARealReceiver(GameTestHelper helper) {
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
-        PlacedPiece transmitter = SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(4, 0, 4), link(false));
-        SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(5, 0, 4),
+        standOn(be, helper, new BlockPos(4, 1, 4));
+        PlacedPiece transmitter = SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(4, 1, 4), link(false));
+        SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(5, 1, 4),
                 net.minecraft.world.level.block.Blocks.REDSTONE_BLOCK.defaultBlockState());
         BlockPos receiver = new BlockPos(4, 1, 2);
+        helper.setBlock(receiver.below(), net.minecraft.world.level.block.Blocks.STONE);
         helper.setBlock(receiver, link(false));
 
         helper.startSequence()
@@ -136,7 +150,11 @@ public class SubgridCreateInteractionGameTest {
                 .thenExecute(() -> helper.assertTrue(powered(helper.getBlockState(receiver)),
                         "the real receiver is not powered by the tiny transmitter: "
                                 + describe(SubgridTestSupport.blockEntityOf(be, transmitter, helper.getLevel()))
-                                + " -> " + describe(helper.getBlockEntity(receiver))))
+                                + " -> " + describe(helper.getBlockEntity(receiver))
+                                + " inRange=" + com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler.withinRange(
+                                        BlockEntityBehaviour.get(SubgridTestSupport.blockEntityOf(be, transmitter, helper.getLevel()), LinkBehaviour.TYPE),
+                                        BlockEntityBehaviour.get(helper.getBlockEntity(receiver), LinkBehaviour.TYPE))
+                                + " realPos=" + com.therappha.tinyblocks.v2.PhantomOwners.realPosOf(SubgridTestSupport.blockEntityOf(be, transmitter, helper.getLevel()))))
                 .thenSucceed();
     }
 
@@ -144,24 +162,30 @@ public class SubgridCreateInteractionGameTest {
     @GameTest(template = "empty_platform", timeoutTicks = 100)
     public void realTransmitterPowersATinyReceiver(GameTestHelper helper) {
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
-        BlockPos tinyAnchor = new BlockPos(4, 0, 4);
+        BlockPos tinyAnchor = new BlockPos(4, 1, 4);
+        standOn(be, helper, tinyAnchor);
         PlacedPiece receiver = SubgridTestSupport.placePiece(be, helper.getLevel(), tinyAnchor, link(false));
         BlockPos transmitter = new BlockPos(4, 1, 2);
+        helper.setBlock(transmitter.below(), net.minecraft.world.level.block.Blocks.STONE);
         helper.setBlock(transmitter, link(false));
         helper.setBlock(new BlockPos(5, 1, 2), net.minecraft.world.level.block.Blocks.REDSTONE_BLOCK);
 
         helper.startSequence()
                 .thenIdle(3)
                 .thenExecute(() -> {
-                    receiver.runtimeState = link(true);
-                    be.notifyUpdate();
+                    // Into a receiver the way a player does it: a sneaking click with an empty hand.
+                    Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+                    player.setShiftKeyDown(true);
+                    SubgridTestSupport.useOnPiece(be, helper.getLevel(), receiver, player);
                     tune(helper.getBlockEntity(transmitter));
                 })
                 .thenIdle(3)
                 .thenExecute(() -> tune(SubgridTestSupport.blockEntityOf(be, receiver, helper.getLevel())))
                 .thenIdle(20)
                 .thenExecute(() -> helper.assertTrue(powered(SubgridTestSupport.stateOf(be, tinyAnchor)),
-                        "the tiny receiver is not powered by the real transmitter: " + SubgridTestSupport.stateOf(be, tinyAnchor)))
+                        "the tiny receiver is not powered by the real transmitter: " + SubgridTestSupport.stateOf(be, tinyAnchor)
+                                + " " + describe(SubgridTestSupport.blockEntityOf(be, receiver, helper.getLevel()))
+                                + " -> " + describe(helper.getBlockEntity(transmitter))))
                 .thenSucceed();
     }
 }
