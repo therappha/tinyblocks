@@ -61,13 +61,8 @@ public class SubgridMiningInterceptor {
     private static float accumulated;
     private static long lastTick = Long.MIN_VALUE;
 
-    /**
-     * At most one mine request may be in-flight — nothing new is sent until the server's removal
-     * delta confirms the previous one via onMineConfirmed, with a short timeout as a failsafe.
-     */
-    private static boolean requestInFlight = false;
-    private static long requestSentTick = Long.MIN_VALUE;
-    private static final long REQUEST_TIMEOUT_TICKS = 10;
+    /** One request in flight at a time, and a pause between pieces (see MineRequestGate). */
+    private static final MineRequestGate GATE = new MineRequestGate();
 
     @SubscribeEvent
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
@@ -99,21 +94,32 @@ public class SubgridMiningInterceptor {
             if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START) return;
             if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) == null) return;
             event.setCanceled(true);
-            if (requestInFlight) return;
+            if (!GATE.canSend(level.getGameTime())) return;
             LOGGER.info("[mining-diag] creative mine request sent for cell={}", cell, new Exception("stack trace"));
             sendMineRequest(level, pos, cell);
             return;
         }
 
+        long now = level.getGameTime();
+        if (event.getAction() == PlayerInteractEvent.LeftClickBlock.Action.START) {
+            // A piece that breaks instantly goes on the click itself, like creative. Left to vanilla, the
+            // client would destroy the whole block locally and the server would pick its own piece — then
+            // the hold below would mine the next piece right away: two at once.
+            if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) != null
+                    && SubgridBlock.pieceDestroyProgress(be, cell.getX(), cell.getY(), cell.getZ(), player) >= 1f) {
+                event.setCanceled(true);
+                event.setUseItem(TriState.FALSE);
+                if (GATE.canSend(now)) sendMineRequest(level, pos, cell);
+            }
+            return;
+        }
         if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.CLIENT_HOLD) return;
 
         // Every tick targeting a SubgridBlock is ours from here on — see class doc for why
         // vanilla's own completion must never be allowed to run again once we start intercepting.
         event.setUseItem(TriState.FALSE);
 
-        long now = level.getGameTime();
-        if (requestInFlight && now - requestSentTick > REQUEST_TIMEOUT_TICKS) requestInFlight = false;
-        if (requestInFlight) return;
+        if (!GATE.canSend(now)) return;
 
         if (!pos.equals(trackedPos) || now - lastTick > 1) {
             trackedPos = pos;
@@ -148,7 +154,7 @@ public class SubgridMiningInterceptor {
 
     /** Called from NetworkSetup once the server's removal delta lands, releasing the guard above. */
     public static void onMineConfirmed() {
-        requestInFlight = false;
+        GATE.confirmed();
     }
 
     private static void reset() {
@@ -159,8 +165,7 @@ public class SubgridMiningInterceptor {
     }
 
     private static void sendMineRequest(Level level, BlockPos pos, Vec3i cell) {
-        requestInFlight = true;
-        requestSentTick = level.getGameTime();
+        GATE.sent(level.getGameTime());
         PacketDistributor.sendToServer(
                 new SubgridMinePiecePayload(pos, new BlockPos(cell.getX(), cell.getY(), cell.getZ())));
     }

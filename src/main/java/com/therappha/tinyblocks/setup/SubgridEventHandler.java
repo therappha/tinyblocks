@@ -50,6 +50,16 @@ public class SubgridEventHandler {
         ServerLevel level = (ServerLevel) event.getLevel();
         BlockPos pos = event.getPos();
         Player player = event.getPlayer();
+        // A real player's client mines a piece itself and has the server remove exactly that cell
+        // (SubgridMiningInterceptor -> handleMinePiece). Vanilla still sends its own "destroy the block" action
+        // on the same click, which lands here: re-tracing the crosshair now — after the mined piece is already
+        // gone — hits the piece behind it, and one click broke two pieces. For a real player this only stops
+        // the whole SubgridBlock from going; machines breaking blocks (fake players) have no client and still
+        // remove the piece under their aim here.
+        if (!(player instanceof net.neoforged.neoforge.common.util.FakePlayer)) {
+            level.getBlockTicks().schedule(new ScheduledTick<>(event.getState().getBlock(), pos, level.getGameTime() + 2, 0L));
+            return;
+        }
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
@@ -479,6 +489,9 @@ public class SubgridEventHandler {
 
         Player player = event.getEntity();
         if (!(player.getMainHandItem().getItem() instanceof BlockItem)) return;
+        // In creative the client already mines the clicked piece (SubgridMiningInterceptor); removing here as
+        // well took the piece behind it on the same click.
+        if (player.isCreative()) return;
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
 
         HitResult hit = player.pick(5.0, 0f, false);
