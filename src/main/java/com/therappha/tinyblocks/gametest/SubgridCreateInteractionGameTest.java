@@ -199,9 +199,7 @@ public class SubgridCreateInteractionGameTest {
         BlockPos anchor = new BlockPos(4, 4, 4);
         PlacedPiece motor = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor,
                 AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
-        // A stand-in that drops whatever is sent to it (a mock player's missing connection refused other mods' packets).
-        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
-        player.moveTo(Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
 
         helper.startSequence()
                 .thenIdle(3)

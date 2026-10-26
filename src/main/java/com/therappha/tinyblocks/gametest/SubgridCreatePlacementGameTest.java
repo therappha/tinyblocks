@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.gametest;
 
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllItems;
 import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
@@ -128,8 +129,7 @@ public class SubgridCreatePlacementGameTest {
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
         BlockPos clicked = new BlockPos(3, 4, 4);
         SubgridTestSupport.placePiece(be, helper.getLevel(), clicked, SHAFT_X);
-        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
-        player.moveTo(Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
         player.setItemInHand(InteractionHand.MAIN_HAND, AllBlocks.SHAFT.asStack(4));
 
         SubgridTestSupport.rightClick(be, player, topNearEastEdge(be, clicked));
@@ -160,5 +160,38 @@ public class SubgridCreatePlacementGameTest {
         helper.assertTrue(placed.size() == 1 && placed.get(0).contains("create:cogwheel"),
                 "expected one cogwheel placed diagonally, got " + placed);
         helper.succeed();
+    }
+
+    /** Create's belt connector clicked on one tiny shaft, then on another in line: a belt runs between them. */
+    @GameTest(template = "empty_platform", timeoutTicks = 60)
+    public void aBeltConnectsTwoTinyShafts(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos first = new BlockPos(1, 3, 4);
+        BlockPos second = new BlockPos(5, 3, 4);
+        BlockState shaftZ = AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.Z);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), first, shaftZ);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), second, shaftZ);
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.BELT_CONNECTOR.asStack(4));
+
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.faceHit(be, first, Direction.SOUTH));
+        helper.startSequence()
+                .thenIdle(6) // the connector's cooldown after the first shaft
+                .thenExecute(() -> {
+                    player.getCooldowns().removeCooldown(AllItems.BELT_CONNECTOR.get());
+                    SubgridTestSupport.rightClick(be, player, SubgridTestSupport.faceHit(be, second, Direction.SOUTH));
+                    java.util.List<String> cells = new java.util.ArrayList<>();
+                    for (int x = first.getX(); x <= second.getX(); x++) {
+                        BlockState state = SubgridTestSupport.stateOf(be, new BlockPos(x, 3, 4));
+                        cells.add(x + "=" + (state == null ? "empty" : state.getBlock() + (state.is(AllBlocks.BELT.get())
+                                ? "[" + state.getValue(com.simibubi.create.content.kinetics.belt.BeltBlock.PART) + "]" : "")));
+                    }
+                    for (int x = first.getX(); x <= second.getX(); x++) {
+                        BlockState state = SubgridTestSupport.stateOf(be, new BlockPos(x, 3, 4));
+                        helper.assertTrue(state != null && state.is(AllBlocks.BELT.get()), "no belt all along: " + cells
+                                + ", hand " + player.getMainHandItem());
+                    }
+                })
+                .thenSucceed();
     }
 }

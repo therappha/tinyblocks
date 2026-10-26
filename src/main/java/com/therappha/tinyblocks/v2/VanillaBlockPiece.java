@@ -429,9 +429,35 @@ public class VanillaBlockPiece extends PieceDefinition {
             }
         }
         InteractionResult result = cells.getBlockState(at).useWithoutItem(fakeLevel, player, fakeHit);
+        // Last, as vanilla: the item's own use on the clicked block. Only for a block item that brings its own (a
+        // Create belt connector: first shaft, then second, then the belt between them) — a plain block item's use
+        // is placing itself, which SubgridEventHandler does.
+        if (result == InteractionResult.PASS && OwnUseOn.of(held)) {
+            result = held.useOn(new net.minecraft.world.item.context.UseOnContext(
+                    fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
+        }
 
         applyChanges(be, fakeLevel, before, serverLevel);
         return result;
+    }
+
+    /** Whether a held block item overrides BlockItem#useOn, i.e. does something on a block other than placing itself. */
+    private static final class OwnUseOn {
+        private static final ClassValue<Boolean> OVERRIDES = new ClassValue<>() {
+            @Override
+            protected Boolean computeValue(Class<?> type) {
+                try {
+                    return type.getMethod("useOn", net.minecraft.world.item.context.UseOnContext.class).getDeclaringClass()
+                            != net.minecraft.world.item.BlockItem.class;
+                } catch (NoSuchMethodException e) {
+                    return false;
+                }
+            }
+        };
+
+        static boolean of(net.minecraft.world.item.ItemStack stack) {
+            return stack.getItem() instanceof net.minecraft.world.item.BlockItem && OVERRIDES.get(stack.getItem().getClass());
+        }
     }
 
     @Override

@@ -112,6 +112,19 @@ final class SubgridTestSupport {
                 player, net.minecraft.world.InteractionHand.MAIN_HAND, be.getBlockPos(), hit));
     }
 
+    /**
+     * A server player of this test's own, standing by the grid. NeoForge's shared FakePlayerFactory#getMinecraft is
+     * one player for all tests, and tests run side by side: one moving it took another's out of reach. A fake
+     * player drops what other mods send it, where a mock player's missing connection refused it.
+     */
+    static net.minecraft.server.level.ServerPlayer serverPlayer(net.minecraft.gametest.framework.GameTestHelper helper,
+                                                                 SubgridBlockEntity be) {
+        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.getLevel(),
+                new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "tinyblocks-test"));
+        player.moveTo(net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+        return player;
+    }
+
     static BlockState stateOf(SubgridBlockEntity be, BlockPos anchor) {
         PlacedPiece piece = be.getPieceAt(anchor.getX(), anchor.getY(), anchor.getZ());
         return piece == null ? null : (BlockState) piece.runtimeState;
