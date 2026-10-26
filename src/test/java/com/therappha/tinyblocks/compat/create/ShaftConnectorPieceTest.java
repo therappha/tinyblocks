@@ -75,4 +75,16 @@ class ShaftConnectorPieceTest {
             assertEquals(true, socket.getX() >= 0 && socket.getX() < size, "1/" + size + ": socket " + socket + " outside");
         }
     }
+
+    /** Across to a grid of the same size: the cell right across. To another size: the one the socket line meets. */
+    @Test
+    void thePartnerCellIsWhereTheSocketLineMeetsTheNeighbour() {
+        assertEquals(3, ShaftConnectorPiece.partnerIndex(7, 7));
+        assertEquals(4, ShaftConnectorPiece.partnerIndex(8, 8));
+        assertEquals(2, ShaftConnectorPiece.partnerIndex(9, 5)); // both odd: the middle of each
+        assertEquals(4, ShaftConnectorPiece.partnerIndex(5, 9));
+        assertEquals(2, ShaftConnectorPiece.partnerIndex(8, 5)); // 4.5/8 of the face falls in 5-grid cell 2
+        assertEquals(new BlockPos(0, 2, 2), ShaftConnectorPiece.partnerCell(Direction.EAST, 9, 5));
+        assertEquals(new BlockPos(4, 8, 4), ShaftConnectorPiece.partnerCell(Direction.DOWN, 5, 9));
+    }
 }

@@ -25,6 +25,7 @@ public abstract class RotationPropagatorMixin {
     private static void tinyblocks$connectorBehindSubgrid(KineticBlockEntity currentTE, BlockPos neighbourPos,
                                                           CallbackInfoReturnable<KineticBlockEntity> cir) {
         KineticBlockEntity connector = KineticBridge.connectorBehind(currentTE, neighbourPos);
+        if (connector == null) connector = KineticBridge.acrossGrids(currentTE, neighbourPos);
         if (connector != null && (RotationPropagator.isConnected(currentTE, connector)
                 || RotationPropagator.isConnected(connector, currentTE))) {
             cir.setReturnValue(connector);

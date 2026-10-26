@@ -58,6 +58,8 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     private int frames = 0;
     /** One child per slice of the piece's model (PieceTransforms): one for most pieces, several for a funnel. */
     private final Map<PlacedPiece, List<Child>> children = new IdentityHashMap<>();
+    /** For a shaft connector's children, the grid size across its face they were built for (its funnel's start). */
+    private final Map<PlacedPiece, Integer> builtAcross = new IdentityHashMap<>();
 
     private List<Child> allChildren() {
         List<Child> all = new ArrayList<>();
@@ -78,8 +80,13 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         List<PlacedPiece> live = new ArrayList<>(blockEntity.getPieces());
         children.entrySet().removeIf(e -> {
             PlacedPiece piece = e.getKey();
-            if (live.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()) return false;
+            // A connector whose neighbour across changed (a grid placed or broken there) is rebuilt to match it.
+            if (live.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()
+                    && builtAcross.getOrDefault(piece, 0) == com.therappha.tinyblocks.client.SubgridRenderer.acrossOf(blockEntity, piece)) {
+                return false;
+            }
             e.getValue().forEach(SubgridVisual::destroy);
+            builtAcross.remove(piece);
             return true;
         });
         for (PlacedPiece piece : live) {
@@ -102,8 +109,10 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         if (visualizer == null) return List.of();
 
         List<Child> slices = new ArrayList<>();
+        int across = com.therappha.tinyblocks.client.SubgridRenderer.acrossOf(blockEntity, piece);
+        builtAcross.put(piece, across);
         for (com.therappha.tinyblocks.client.PieceTransforms.Slice slice
-                : com.therappha.tinyblocks.client.PieceTransforms.slices(piece, blockEntity.gridSize)) {
+                : com.therappha.tinyblocks.client.PieceTransforms.slices(piece, blockEntity.gridSize, across)) {
             slices.add(createChild(visualizer, phantom, state, slice, partialTick));
         }
         return slices;
@@ -232,5 +241,6 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     protected void _delete() {
         allChildren().forEach(SubgridVisual::destroy);
         children.clear();
+        builtAcross.clear();
     }
 }

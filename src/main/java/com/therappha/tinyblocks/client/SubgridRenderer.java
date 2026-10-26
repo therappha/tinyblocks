@@ -65,7 +65,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
-            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, be.getGridSize())) {
+            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece))) {
                 poseStack.pushPose();
                 poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                 poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
@@ -117,6 +117,12 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      * told it is near; the SubgridBlock itself was already culled by distance like any block entity.
      */
     public static boolean drawingPhantom;
+
+    /** For a shaft connector, the grid size across its face (its funnel is drawn from that); 0 otherwise. */
+    public static int acrossOf(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
+        net.minecraft.core.Direction face = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece);
+        return face == null ? 0 : com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.sizeAcross(be, face);
+    }
 
     @Override
     public boolean shouldRenderOffScreen(SubgridBlockEntity be) {

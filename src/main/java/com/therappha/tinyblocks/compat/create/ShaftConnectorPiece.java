@@ -118,6 +118,34 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
         };
     }
 
+    /**
+     * Across the face, the cell of a neighbouring grid of {@code otherSize} that meets this one's socket line: the
+     * one whose square on the shared face holds the socket line's centre. The same index for the same size; for
+     * odd sizes both are the face's centre.
+     */
+    public static int partnerIndex(int gridSize, int otherSize) {
+        double centre = (gridSize / 2 + 0.5) / gridSize;
+        return Math.min(otherSize - 1, (int) Math.floor(centre * otherSize));
+    }
+
+    /** That cell, in the neighbouring grid of {@code otherSize} across {@code face} (on its side of the face). */
+    public static BlockPos partnerCell(Direction face, int gridSize, int otherSize) {
+        int across = partnerIndex(gridSize, otherSize);
+        int along = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 0 : otherSize - 1;
+        return switch (face.getAxis()) {
+            case X -> new BlockPos(along, across, across);
+            case Y -> new BlockPos(across, along, across);
+            case Z -> new BlockPos(across, across, along);
+        };
+    }
+
+    /** The grid size of the SubgridBlock across {@code face} of {@code grid}, or 0 when it is anything else. */
+    public static int sizeAcross(SubgridBlockEntity grid, Direction face) {
+        net.minecraft.world.level.Level level = grid.getLevel();
+        return level != null && level.getBlockEntity(grid.getBlockPos().relative(face)) instanceof SubgridBlockEntity other
+                ? other.getGridSize() : 0;
+    }
+
     /** True if local {@code cell} is the plate's socket. */
     public static boolean isSocket(PlacedPiece plate, BlockPos cell, int gridSize) {
         return socket(plate.facing, gridSize).equals(cell);
