@@ -133,6 +133,8 @@ public class SubgridEventHandler {
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         Level level = event.getLevel();
         Player player = event.getEntity();
+        // A click PieceClickDispatch re-posts inside a piece's fake space is for the piece's own listeners.
+        if (level instanceof com.therappha.tinyblocks.v2.FakeSpace) return;
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
@@ -194,11 +196,34 @@ public class SubgridEventHandler {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
 
+            if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+                // Before the clicked piece's own use: a tiny shaft would otherwise run Create's shaft placement
+                // helper and extend itself with a one-cell connector. Clicking a shaft puts the plate at the end
+                // of the shaft's own axis, so it meets the shaft.
+                PlacedPiece clickedPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
+                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeFrom(existing, serverLevel, clickedPiece,
+                        face.getAxis(), new BlockPos(clickedCell)) && !player.isCreative()) {
+                    stack.shrink(1);
+                }
+                return;
+            }
+
+            PlacedPiece clickedPlate = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
+            if (blockItem != null && clickedPlate != null
+                    && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                // A block clicked onto a plate goes into its socket, the one cell the plate connects to.
+                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeInSocket(existing, serverLevel,
+                        clickedPlate, blockItem.getBlock()) && !player.isCreative()) {
+                    stack.shrink(1);
+                }
+                return;
+            }
+
             // Try interacting with whatever's at the exact clicked cell first — same priority
             // vanilla gives "interact with what you clicked" over "place a new block" — but only
             // defer to it if it actually did something (a lever flips); a non-interactive piece
             // (stone, wire) falls through to placement, same as vanilla blocks with no
-            // useWithoutItem override do. Sneaking always skips straight to placement.
+            // useWithoutItem override do. Sneaking skips the piece's own use (see the item-only branch below).
             PlacedPiece existingPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
             if (existingPiece != null && !player.isShiftKeyDown()) {
                 InteractionResult result = existingPiece.definition.onUse(existingPiece, serverLevel, pos, existing, player, hit);
@@ -213,6 +238,13 @@ public class SubgridEventHandler {
                 // placing anything, since BlockItem placement already has its own correct
                 // offset/overflow-aware path just below.
                 if (blockItem == null && runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
+                        clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
+                    return;
+                }
+            } else if (existingPiece != null && blockItem == null) {
+                // Sneaking with an item skips the block's own use, as in vanilla, but not the item's: a wrench
+                // still dismantles, for instance.
+                if (runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
                         clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
                     return;
                 }
@@ -250,6 +282,15 @@ public class SubgridEventHandler {
             be = created;
             int[] cell = TinyPieceItem.computeGridCell(pos, face, hit.getLocation(), be.gridSize);
             nx = cell[0]; ny = cell[1]; nz = cell[2];
+        }
+
+        if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+            // Not a one-cell piece: a plate centred on the grid face nearest the target cell, along the clicked axis.
+            if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.place(be, serverLevel, face.getAxis(), new BlockPos(nx, ny, nz))
+                    && !player.isCreative()) {
+                stack.shrink(1);
+            }
+            return;
         }
 
         if (be.getPieceAt(nx, ny, nz) != null) return;
@@ -387,7 +428,7 @@ public class SubgridEventHandler {
             if (touchedState.equals(wasState)) continue;
 
             PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
-            if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                 if (touchedState.isAir()) {
                     // #TODO remove before release — water-placement investigation. A piece that
                     // became air here (e.g. BucketPickup emptying a water piece back into a

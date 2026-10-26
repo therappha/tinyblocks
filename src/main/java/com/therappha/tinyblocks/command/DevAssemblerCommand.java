@@ -59,7 +59,7 @@ public final class DevAssemblerCommand {
             if (looked instanceof SubgridBlockEntity grid) {
                 Vec3i cell = GridRay.cellAt(hit.getBlockPos(), hit.getLocation(), hit.getDirection(), grid.getGridSize());
                 PlacedPiece piece = grid.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
-                if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+                if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                     BlockEntity phantom = VanillaBlockPiece.blockEntityFor(piece, grid, VanillaBlockPiece.buildFakeServerSpace(grid, level));
                     LOGGER.info("[assemble] looking at piece {} in subgrid {}: phantom={}", cell, grid.getBlockPos(), phantom);
                     if (isAssembler(phantom)) return phantom;

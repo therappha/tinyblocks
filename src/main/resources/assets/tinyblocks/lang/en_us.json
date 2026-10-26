@@ -16,5 +16,6 @@
   "item.tinyblocks.minimizer": "Minimizer (1/8)",
   "item.tinyblocks.minimizer_16": "Minimizer (1/16)",
   "item.tinyblocks.minimizer.tooltip": "Hold in your off-hand, then place any block to shrink it into a subgrid",
-  "itemGroup.tinyblocks.main": "TinyBlocks"
+  "itemGroup.tinyblocks.main": "TinyBlocks",
+  "block.tinyblocks.shaft_connector": "Shaft Connector"
 }

@@ -19,6 +19,7 @@ public class TinyBlocks {
         PieceDefinitions.init();
         VanillaBlockPiece.init();
         Registration.register(modEventBus);
+        com.therappha.tinyblocks.compat.create.CreateConnectorSetup.register(modEventBus);
         TinyBlocksTabs.register(modEventBus);
         LOGGER.info("TinyBlocks loading...");
     }

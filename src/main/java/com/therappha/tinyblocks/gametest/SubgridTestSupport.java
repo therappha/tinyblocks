@@ -75,7 +75,7 @@ final class SubgridTestSupport {
             BlockState newState = touched.getValue();
             if (newState.equals(before.get(pos))) continue;
             PlacedPiece piece = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
-            if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                 piece.runtimeState = newState;
                 be.notifyNeighbors(piece);
                 be.notifyUpdate();

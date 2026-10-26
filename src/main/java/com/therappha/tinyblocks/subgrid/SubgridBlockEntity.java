@@ -312,6 +312,7 @@ public class SubgridBlockEntity extends BlockEntity {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
                     new net.minecraft.world.level.ChunkPos(worldPosition),
                     new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+            removed.definition.onRemoved(removed, serverLevel, this);
         }
         notifyNeighbors(removed);
         return removed;
@@ -366,6 +367,28 @@ public class SubgridBlockEntity extends BlockEntity {
                     new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition, new BlockPos(piece.anchor), tag));
         }
         if (sentAny) phantomDataFlushes++;
+    }
+
+    private boolean chunkUnloaded = false;
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        chunkUnloaded = true;
+    }
+
+    /**
+     * The SubgridBlock itself was removed: every piece goes with it, so each gets the same onRemoved a single
+     * broken piece gets (a Create shaft inside lets the network around it know at once). Not on a chunk
+     * unload, which only stops the pieces running.
+     */
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (chunkUnloaded || !(level instanceof ServerLevel serverLevel)) return;
+        for (PlacedPiece piece : List.copyOf(pieces)) {
+            piece.definition.onRemoved(piece, serverLevel, this);
+        }
     }
 
     public void serverTick(ServerLevel level) {

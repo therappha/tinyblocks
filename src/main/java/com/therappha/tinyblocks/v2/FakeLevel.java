@@ -67,6 +67,9 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public FakeCellGetter cells() { return cells; }
 
+    @Override
+    public Level realLevel() { return real; }
+
     // The virtual frame scales real positions by the grid size (SubgridBlockEntity#virtualOrigin), so
     // phantom Y values leave the real dimension's build height; keep the whole range BlockPos can pack
     // (12 bits of Y) valid, or vanilla's isOutsideBuildHeight checks (pistons, fluids) reject every cell.
