@@ -28,8 +28,14 @@ public class MinimizerItem extends Item {
     }
 
     /** The grid size this Minimizer starts at, before one is picked. */
+    public static final int DEFAULT_GRID_SIZE = 7;
+
+    /**
+     * The grid this Minimizer starts at: 1/7 — odd, so it has a middle cell, where a tiny shaft lines up with a
+     * full-size one (the shaft connector's socket), and still a handy cell size.
+     */
     public SubgridBlock preferredSubgrid() {
-        return Registration.SUBGRID_BLOCK.get();
+        return Registration.subgridBlock(DEFAULT_GRID_SIZE);
     }
 
     /** The grid size {@code stack} makes and places into. */

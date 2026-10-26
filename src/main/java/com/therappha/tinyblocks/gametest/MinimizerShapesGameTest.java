@@ -125,6 +125,7 @@ public class MinimizerShapesGameTest {
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT));
         ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        helper.assertTrue(Registration.MINIMIZER.get().gridSize(minimizer) == 7, "a new Minimizer does not start at 1/7");
         com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, 5);
         player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
 
