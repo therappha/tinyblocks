@@ -40,7 +40,7 @@ public final class MinimizerPreview {
         BuildMode mode = MinimizerBuild.mode(minimizer);
         if (mode == BuildMode.PLACE) return;
         if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
-        MinimizerBuild.Target target = MinimizerBuild.target(mc.level, hit, item);
+        MinimizerBuild.Target target = MinimizerBuild.target(mc.level, hit, minimizer);
         if (target == null) return;
 
         int size = target.gridSize();

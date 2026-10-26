@@ -55,9 +55,7 @@ public class ClientSetup {
 
     @SubscribeEvent
     public static void onRegisterClientExtensions(RegisterClientExtensionsEvent event) {
-        event.registerBlock(SubgridClientExtensions.INSTANCE,
-            Registration.SUBGRID_BLOCK_2.get(), Registration.SUBGRID_BLOCK_4.get(),
-            Registration.SUBGRID_BLOCK.get(), Registration.SUBGRID_BLOCK_16.get(), Registration.SUBGRID_BLOCK_9.get());
+        event.registerBlock(SubgridClientExtensions.INSTANCE, Registration.allSubgridBlocks());
     }
 }
 
@@ -106,7 +104,7 @@ class SubgridClientHandler {
             // outline with a preview grid showing where its cells would land on this face.
             if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem minimizer) {
                 event.setCanceled(true);
-                renderMinimizerFaceGrid(event, pos, hit.getDirection(), minimizer.preferredSubgrid().gridSize);
+                renderMinimizerFaceGrid(event, pos, hit.getDirection(), minimizer.gridSize(mc.player.getOffhandItem()));
             }
             return;
         }

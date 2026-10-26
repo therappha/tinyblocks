@@ -115,4 +115,29 @@ public class MinimizerShapesGameTest {
         helper.assertTrue(MinimizerBuild.lift(player.getOffhandItem()) == 0, "the lift was kept after building");
         helper.succeed();
     }
+
+    /** One Minimizer for every size: set to 1/5, a block placed against a real one goes into a new 5-grid. */
+    @GameTest(template = "empty_platform")
+    public void aMinimizerSetTo5MakesA5Grid(GameTestHelper helper) {
+        BlockPos floor = new BlockPos(2, 1, 2);
+        helper.setBlock(floor, Blocks.STONE);
+        helper.setBlock(floor.above(), Blocks.AIR);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT));
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, 5);
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+
+        BlockPos real = helper.absolutePos(floor);
+        net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
+                net.minecraft.world.phys.Vec3.atCenterOf(real).add(0, 0.5, 0), Direction.UP, real, false);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+                new net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock(player, InteractionHand.MAIN_HAND, real, hit));
+
+        helper.assertTrue(helper.getLevel().getBlockEntity(real.above()) instanceof SubgridBlockEntity grid
+                        && grid.getGridSize() == 5 && grid.getPieces().size() == 1
+                        && helper.getLevel().getBlockState(real.above()).is(Registration.subgridBlock(5)),
+                "no 5-grid with the dirt in it above the stone: " + helper.getLevel().getBlockState(real.above()));
+        helper.succeed();
+    }
 }

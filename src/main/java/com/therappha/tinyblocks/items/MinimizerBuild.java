@@ -112,7 +112,7 @@ public final class MinimizerBuild {
      * a real block, in a new grid of the Minimizer's size against it — or null where nothing would be placed.
      */
     @Nullable
-    public static Target target(Level level, BlockHitResult hit, MinimizerItem minimizer) {
+    public static Target target(Level level, BlockHitResult hit, ItemStack minimizer) {
         BlockPos pos = hit.getBlockPos();
         Direction face = hit.getDirection();
         BlockState clicked = level.getBlockState(pos);
@@ -127,7 +127,7 @@ public final class MinimizerBuild {
         if (there.getBlock() instanceof SubgridBlock block) {
             size = level.getBlockEntity(into) instanceof SubgridBlockEntity be ? be.getGridSize() : block.gridSize;
         } else if (there.isAir()) {
-            size = minimizer.preferredSubgrid().gridSize;
+            size = minimizer.getItem() instanceof MinimizerItem item ? item.gridSize(minimizer) : 8;
         } else {
             return null;
         }

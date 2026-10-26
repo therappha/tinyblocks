@@ -294,7 +294,7 @@ public class SubgridEventHandler {
             }
         } else {
             BlockPos targetPos = pos.relative(face);
-            SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.preferredSubgrid().gridSize);
+            SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.gridSize(player.getOffhandItem()));
             if (created == null) return;
             be = created;
             int[] cell = TinyPieceItem.computeGridCell(pos, face, hit.getLocation(), be.gridSize);

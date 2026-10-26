@@ -27,6 +27,20 @@ public class NetworkSetup {
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
+        registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+    }
+
+    private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getMainHandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+                    ? player.getMainHandItem() : player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem item)) return;
+            com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, payload.size());
+            com.therappha.tinyblocks.items.MinimizerBuild.setCorner(minimizer, null); // a corner of the old size
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("item.tinyblocks.minimizer.sized",
+                    item.gridSize(minimizer)), true);
+        });
     }
 
     private static void handleMinimizerLift(MinimizerLiftPayload payload, IPayloadContext ctx) {

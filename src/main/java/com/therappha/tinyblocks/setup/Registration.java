@@ -49,12 +49,44 @@ public class Registration {
             BLOCKS.register("subgrid_block_9", () -> new SubgridBlock(
                     Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 9));
 
+    /** Smallest and largest grid size: cells of 1/2 to 1/16 of a block. */
+    public static final int MIN_GRID_SIZE = 2, MAX_GRID_SIZE = 16;
+
+    /** Every other size in that range: the SubgridBlock's size is its block's, so each size is a block of its own. */
+    private static final java.util.Map<Integer, DeferredHolder<Block, SubgridBlock>> OTHER_SUBGRID_BLOCKS = new java.util.TreeMap<>();
+
+    static {
+        for (int size = MIN_GRID_SIZE; size <= MAX_GRID_SIZE; size++) {
+            if (size == 2 || size == 4 || size == 8 || size == 9 || size == 16) continue;
+            int gridSize = size;
+            OTHER_SUBGRID_BLOCKS.put(size, BLOCKS.register("subgrid_block_" + size, () -> new SubgridBlock(
+                    Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), gridSize)));
+        }
+    }
+
+    /** The SubgridBlock of grid size {@code size} (MIN_GRID_SIZE..MAX_GRID_SIZE; anything else gets 8). */
+    public static SubgridBlock subgridBlock(int size) {
+        return switch (size) {
+            case 2 -> SUBGRID_BLOCK_2.get();
+            case 4 -> SUBGRID_BLOCK_4.get();
+            case 9 -> SUBGRID_BLOCK_9.get();
+            case 16 -> SUBGRID_BLOCK_16.get();
+            default -> OTHER_SUBGRID_BLOCKS.containsKey(size) ? OTHER_SUBGRID_BLOCKS.get(size).get() : SUBGRID_BLOCK.get();
+        };
+    }
+
+    /** Every SubgridBlock, one per grid size. */
+    public static Block[] allSubgridBlocks() {
+        Block[] all = new Block[MAX_GRID_SIZE - MIN_GRID_SIZE + 1];
+        for (int size = MIN_GRID_SIZE; size <= MAX_GRID_SIZE; size++) all[size - MIN_GRID_SIZE] = subgridBlock(size);
+        return all;
+    }
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SubgridBlockEntity>> SUBGRID_BLOCK_ENTITY =
             BLOCK_ENTITIES.register("subgrid_block", () ->
                     BlockEntityType.Builder.of(
                             (pos, state) -> new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state),
-                            SUBGRID_BLOCK_2.get(), SUBGRID_BLOCK_4.get(),
-                            SUBGRID_BLOCK.get(), SUBGRID_BLOCK_16.get(), SUBGRID_BLOCK_9.get()).build(null));
+                            allSubgridBlocks()).build(null));
 
     // Subgrid block items — only obtainable via /give, not in any creative tab
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_2_ITEM =

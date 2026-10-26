@@ -18,11 +18,8 @@ public class TinyBlocksTabs {
                     .title(Component.translatable("itemGroup.tinyblocks.main"))
                     .icon(() -> new ItemStack(Registration.MINIMIZER.get()))
                     .displayItems((params, output) -> {
-                        output.accept(Registration.MINIMIZER_2.get());
-                        output.accept(Registration.MINIMIZER_4.get());
+                        // One Minimizer: its size is picked on it (the fixed-size ones stay registered for old worlds).
                         output.accept(Registration.MINIMIZER.get());
-                        output.accept(Registration.MINIMIZER_16.get());
-                        output.accept(Registration.MINIMIZER_9.get());
                         output.accept(com.therappha.tinyblocks.compat.create.CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
                     })
                     .build());

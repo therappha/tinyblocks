@@ -270,13 +270,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
-        return switch (gridSize) {
-            case 2 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_2.get();
-            case 4 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_4.get();
-            case 16 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_16.get();
-            case 9 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_9.get();
-            default -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK.get();
-        };
+        return com.therappha.tinyblocks.setup.Registration.subgridBlock(gridSize);
     }
 
     /**

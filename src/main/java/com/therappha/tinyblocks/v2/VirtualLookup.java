@@ -19,8 +19,6 @@ import java.util.List;
  */
 public final class VirtualLookup {
 
-    /** Grid sizes a SubgridBlock can have. */
-    private static final int[] SIZES = {2, 4, 8, 9, 16};
     /** How far from {@code near} a SubgridBlock may be: well past any interaction range. */
     private static final double MAX_DISTANCE = 64;
 
@@ -30,7 +28,8 @@ public final class VirtualLookup {
 
     @Nullable
     public static Found find(Level level, BlockPos virtual, Vec3 near) {
-        for (int size : SIZES) {
+        for (int size = com.therappha.tinyblocks.setup.Registration.MIN_GRID_SIZE;
+             size <= com.therappha.tinyblocks.setup.Registration.MAX_GRID_SIZE; size++) {
             for (BlockPos real : realCandidates(virtual, size, near)) {
                 if (!level.isLoaded(real) || !(level.getBlockEntity(real) instanceof SubgridBlockEntity grid)) continue;
                 if (grid.getGridSize() != size) continue;

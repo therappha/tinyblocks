@@ -47,7 +47,7 @@ public final class MinimizerShapes {
             player.displayClientMessage(Component.translatable("tinyblocks.build.corner_cleared"), true);
             return;
         }
-        MinimizerBuild.Target target = MinimizerBuild.target(level, hit, minimizerItem);
+        MinimizerBuild.Target target = MinimizerBuild.target(level, hit, minimizer);
         if (target == null) return;
         MinimizerBuild.Corner corner = MinimizerBuild.corner(minimizer);
         if (corner == null || corner.gridSize() != target.gridSize()) {
