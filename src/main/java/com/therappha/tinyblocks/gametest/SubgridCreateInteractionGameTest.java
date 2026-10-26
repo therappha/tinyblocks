@@ -271,4 +271,38 @@ public class SubgridCreateInteractionGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** The controller's button lights a tiny lamp next to the tiny receiver it powers. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void linkedControllerLightsATinyLampThroughATinyReceiver(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos anchor = new BlockPos(4, 1, 4);
+        BlockPos lamp = anchor.east();
+        standOn(be, helper, anchor);
+        PlacedPiece receiver = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor, link(false));
+        SubgridTestSupport.placePiece(be, helper.getLevel(), lamp, net.minecraft.world.level.block.Blocks.REDSTONE_LAMP.defaultBlockState());
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    Player sneaking = helper.makeMockPlayer(GameType.SURVIVAL);
+                    sneaking.setShiftKeyDown(true);
+                    SubgridTestSupport.useOnPiece(be, helper.getLevel(), receiver, sneaking);
+                })
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    tune(com.therappha.tinyblocks.v2.VanillaBlockPiece.boundPhantom(receiver, be, helper.getLevel()));
+                    var diamond = com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler.Frequency.of(new ItemStack(Items.DIAMOND));
+                    com.simibubi.create.content.redstone.link.controller.LinkedControllerServerHandler.receivePressed(
+                            helper.getLevel(), player.blockPosition(), player.getUUID(),
+                            java.util.List.of(net.createmod.catnip.data.Couple.create(diamond, diamond)), true);
+                })
+                .thenIdle(5)
+                .thenExecute(() -> helper.assertTrue(
+                        SubgridTestSupport.stateOf(be, lamp).getValue(net.minecraft.world.level.block.RedstoneLampBlock.LIT),
+                        "the tiny lamp is dark; receiver " + SubgridTestSupport.stateOf(be, anchor)
+                                + " " + describe(SubgridTestSupport.blockEntityOf(be, receiver, helper.getLevel()))))
+                .thenSucceed();
+    }
 }

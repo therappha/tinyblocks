@@ -27,7 +27,8 @@ public class Registration {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
             DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, TinyBlocks.MOD_ID);
 
-    // Subgrid blocks — 1/2, 1/4, 1/8, 1/16
+    // Subgrid blocks — 1/2, 1/4, 1/8, 1/16, and 1/9: an odd size has a middle cell, so a piece can sit centred on the
+    // block (a tiny shaft in line with a full-size one)
     public static final DeferredHolder<Block, SubgridBlock> SUBGRID_BLOCK_2 =
             BLOCKS.register("subgrid_block_2", () -> new SubgridBlock(
                     Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 2));
@@ -44,12 +45,16 @@ public class Registration {
             BLOCKS.register("subgrid_block_16", () -> new SubgridBlock(
                     Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 16));
 
+    public static final DeferredHolder<Block, SubgridBlock> SUBGRID_BLOCK_9 =
+            BLOCKS.register("subgrid_block_9", () -> new SubgridBlock(
+                    Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 9));
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SubgridBlockEntity>> SUBGRID_BLOCK_ENTITY =
             BLOCK_ENTITIES.register("subgrid_block", () ->
                     BlockEntityType.Builder.of(
                             (pos, state) -> new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state),
                             SUBGRID_BLOCK_2.get(), SUBGRID_BLOCK_4.get(),
-                            SUBGRID_BLOCK.get(), SUBGRID_BLOCK_16.get()).build(null));
+                            SUBGRID_BLOCK.get(), SUBGRID_BLOCK_16.get(), SUBGRID_BLOCK_9.get()).build(null));
 
     // Subgrid block items — only obtainable via /give, not in any creative tab
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_2_ITEM =
@@ -63,6 +68,9 @@ public class Registration {
 
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_16_ITEM =
             ITEMS.register("subgrid_block_16", () -> new BlockItem(SUBGRID_BLOCK_16.get(), new Item.Properties()));
+
+    public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_9_ITEM =
+            ITEMS.register("subgrid_block_9", () -> new BlockItem(SUBGRID_BLOCK_9.get(), new Item.Properties()));
 
     // Piece debug items — only obtainable via /give, not in any creative tab
     public static final DeferredHolder<Item, TinyStoneBlockItem> TINY_STONE_BLOCK_2 =
@@ -111,6 +119,11 @@ public class Registration {
     public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_16 =
             ITEMS.register("minimizer_16", () -> new MinimizerItem(minimizerProperties()) {
                 @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_16.get(); }
+            });
+
+    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_9 =
+            ITEMS.register("minimizer_9", () -> new MinimizerItem(minimizerProperties()) {
+                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_9.get(); }
             });
 
     // Debug pieces for testing neighbor propagation — 1/8 grid, only obtainable via /give

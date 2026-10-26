@@ -194,4 +194,20 @@ public class SubgridCreatePlacementGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** A 1/9 Minimizer makes 9-grids: its middle cell is the block's centre, where a shaft lines up with a real one. */
+    @GameTest(template = "empty_platform")
+    public void aNineGridHoldsACentredShaft(GameTestHelper helper) {
+        BlockPos real = helper.absolutePos(new BlockPos(2, 2, 2));
+        helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR);
+        SubgridBlockEntity be = SubgridBlockEntity.createAt(helper.getLevel(), real, 9);
+        helper.assertTrue(be != null && be.getGridSize() == 9
+                        && helper.getLevel().getBlockState(real).is(com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_9.get()),
+                "no 9-grid was made: " + helper.getLevel().getBlockState(real));
+        BlockPos middle = new BlockPos(4, 4, 4);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), middle, SHAFT_X);
+        helper.assertTrue(be.realPositionOf(middle).equals(Vec3.atCenterOf(real)),
+                "the middle cell's centre " + be.realPositionOf(middle) + " is not the block's " + Vec3.atCenterOf(real));
+        helper.succeed();
+    }
 }

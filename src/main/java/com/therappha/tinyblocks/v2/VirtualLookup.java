@@ -20,7 +20,7 @@ import java.util.List;
 public final class VirtualLookup {
 
     /** Grid sizes a SubgridBlock can have. */
-    private static final int[] SIZES = {2, 4, 8, 16};
+    private static final int[] SIZES = {2, 4, 8, 9, 16};
     /** How far from {@code near} a SubgridBlock may be: well past any interaction range. */
     private static final double MAX_DISTANCE = 64;
 

@@ -54,4 +54,13 @@ class ShaftConnectorPieceTest {
             }
         }
     }
+
+    /** In a 9-grid the socket is the middle cell, in line with a full-size shaft's centre, and the funnel around it. */
+    @Test
+    void anOddGridCentresTheSocketOnTheBlock() {
+        assertEquals(5, ShaftConnectorPiece.width(9));
+        assertEquals(2, ShaftConnectorPiece.depth(9));
+        assertEquals(new BlockPos(6, 4, 4), ShaftConnectorPiece.socket(Direction.EAST, 9));
+        assertEquals(new BlockPos(7, 2, 2), ShaftConnectorPiece.anchorOn(Direction.EAST, 9));
+    }
 }
