@@ -227,7 +227,8 @@ public class SubgridEventHandler {
 
             PlacedPiece clickedPlate = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
             if (blockItem != null && clickedPlate != null
-                    && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                    && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null
+                    && !com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(existing.getGridSize())) {
                 // A block clicked onto a plate goes into its socket, the one cell the plate connects to.
                 if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeInSocket(existing, serverLevel,
                         clickedPlate, blockItem.getBlock()) && !player.isCreative()) {

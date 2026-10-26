@@ -48,7 +48,7 @@ public final class ConnectorPlacement {
      */
     public static boolean placeInSocket(SubgridBlockEntity be, ServerLevel level, PlacedPiece plate, Block block) {
         BlockPos socket = ShaftConnectorPiece.socket(plate.facing, be.getGridSize());
-        if (be.getPieceAt(socket.getX(), socket.getY(), socket.getZ()) != null) return false;
+        if (socket == null || be.getPieceAt(socket.getX(), socket.getY(), socket.getZ()) != null) return false;
         net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
         if (state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
             state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
@@ -72,7 +72,7 @@ public final class ConnectorPlacement {
         if (piece == null || !be.placePiece(piece)) return false;
         // Same as a one-cell placement: tell the block it was placed, so Create attaches it to the network.
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(ShaftConnectorPiece.stateFor(face), fakeLevel, fakeLevel.world(piece.anchor),
+        BlockAccess.onPlace(ShaftConnectorPiece.stateFor(face, be.getGridSize()), fakeLevel, fakeLevel.world(piece.anchor),
                 Blocks.AIR.defaultBlockState(), false);
         VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         BlockPos subgridPos = be.getBlockPos();

@@ -246,7 +246,8 @@ public final class KineticBridge {
         }
         SubgridBlockEntity grid = connector.grid();
         BlockPos socket = ShaftConnectorPiece.socket(connector.face(), grid.getGridSize());
-        BlockPos outside = socket;
+        // A gear has no socket: it reaches out from its own cells, and in to the cogwheels it meshes with.
+        BlockPos outside = socket != null ? socket : connector.piece().anchor;
         while (grid.inBounds(outside.getX(), outside.getY(), outside.getZ())) outside = outside.relative(connector.face());
         BlockPos far = grid.virtualPosOf(outside);
         if (otherSizeAcross(connector) != null) {
@@ -255,7 +256,16 @@ public final class KineticBridge {
             far = partner == null ? null : partner.getBlockPos();
         }
         locations = new java.util.ArrayList<>(locations);
-        for (BlockPos end : java.util.Arrays.asList(grid.virtualPosOf(socket), far)) {
+        List<BlockPos> ends = new java.util.ArrayList<>();
+        ends.add(far);
+        if (socket != null) {
+            ends.add(grid.virtualPosOf(socket));
+        } else {
+            ShaftConnectorPiece.Mesh mesh = ShaftConnectorPiece.meshCells(connector.face(), grid.getGridSize());
+            mesh.sides().forEach(cell -> ends.add(grid.virtualPosOf(cell)));
+            mesh.diagonals().forEach(cell -> ends.add(grid.virtualPosOf(cell)));
+        }
+        for (BlockPos end : ends) {
             if (end != null && !locations.contains(end)) locations.add(end);
         }
         return locations;
@@ -299,11 +309,34 @@ public final class KineticBridge {
         Connector plate = fromPlate != null ? fromPlate : toPlate;
         KineticBlockEntity inner = fromPlate != null ? to : from;
         PhantomOwners.Owner innerOwner = PhantomOwners.of(inner);
-        if (innerOwner == null || innerOwner.grid() != plate.grid()
-                || !ShaftConnectorPiece.isSocket(plate.piece(), innerOwner.cell(), plate.grid().getGridSize())) {
+        if (innerOwner == null || innerOwner.grid() != plate.grid()) return 0f;
+        if (ShaftConnectorPiece.isGear(plate.grid().getGridSize())) {
+            return meshRatio(plate, innerOwner.cell(), inner, fromPlate != null);
+        }
+        if (!ShaftConnectorPiece.isSocket(plate.piece(), innerOwner.cell(), plate.grid().getGridSize())) return 0f;
+        return axisRatio(from, to, fromPlate != null ? plate.face().getOpposite() : plate.face());
+    }
+
+    /**
+     * Speed ratio between a gear connector and a tiny cogwheel in {@code cell}, turning on the gear's axis: a small
+     * one on its sides turns twice as fast, a large one on its diagonals as fast, both the other way — Create's
+     * large-to-small ratio, and gear to gear. 0 for anything else, a tiny shaft against it included.
+     */
+    private static float meshRatio(Connector gear, BlockPos cell, KineticBlockEntity cog, boolean fromGear) {
+        BlockState state = cog.getBlockState();
+        if (!(state.getBlock() instanceof com.simibubi.create.content.kinetics.simpleRelays.ICogWheel)
+                || !(state.getBlock() instanceof IRotate rotate)
+                || rotate.getRotationAxis(state) != gear.face().getAxis()) {
             return 0f;
         }
-        return axisRatio(from, to, fromPlate != null ? plate.face().getOpposite() : plate.face());
+        ShaftConnectorPiece.Mesh mesh = ShaftConnectorPiece.meshCells(gear.face(), gear.grid().getGridSize());
+        if (com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state) && mesh.sides().contains(cell)) {
+            return fromGear ? -2f : -0.5f;
+        }
+        if (com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isLargeCog(state) && mesh.diagonals().contains(cell)) {
+            return -1f;
+        }
+        return 0f;
     }
 
     // --- KineticBlockEntity source lookups -----------------------------------------------------------------

@@ -46,6 +46,16 @@ public final class PieceTransforms {
         Direction face = piece.facing;
         Direction.Axis axis = face.getAxis();
         boolean positive = face.getAxisDirection() == Direction.AxisDirection.POSITIVE;
+        if (ShaftConnectorPiece.isGear(gridSize)) {
+            // The large cogwheel model, a block across (its teeth reach ~15/16 out), shrunk to a cell: two cells
+            // across, centred on the point between the four middle cells, in the layer against the face.
+            float along = (positive ? gridSize - 0.5f : 0.5f) * cell;
+            float centre = 0.5f;
+            Vector3f middle = new Vector3f(axis == Direction.Axis.X ? along : centre,
+                                           axis == Direction.Axis.Y ? along : centre,
+                                           axis == Direction.Axis.Z ? along : centre);
+            return List.of(new Slice(middle.sub(cell / 2, cell / 2, cell / 2), new Vector3f(cell, cell, cell)));
+        }
         int count = ShaftConnectorPiece.depth(gridSize) * SLICES_PER_CELL;
         float thickness = cell / SLICES_PER_CELL;
         float socketCentre = (gridSize / 2 + 0.5f) * cell;

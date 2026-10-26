@@ -20,7 +20,7 @@ import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /**
- * A shaft connector plate on the east face of a subgrid joins the Create kinetic network of the real block
+ * A shaft connector plate (the funnel, in an odd grid) on the east face of a subgrid joins the Create kinetic network of the real block
  * touching that face with the tiny shafts right behind the plate.
  */
 @GameTestHolder(TinyBlocks.MOD_ID)
@@ -28,6 +28,14 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 public class SubgridConnectorGameTest {
 
     private static final String PLATFORM = "empty_platform";
+
+    /** A 1/7 grid: odd, so its connector is the funnel these tests are about (an even grid's is a gear). */
+    private static SubgridBlockEntity funnelGrid(GameTestHelper helper, BlockPos at) {
+        helper.setBlock(at, net.minecraft.world.level.block.Blocks.AIR);
+        SubgridBlockEntity be = SubgridBlockEntity.createAt(helper.getLevel(), helper.absolutePos(at), 7);
+        if (be == null) throw new IllegalStateException("no grid at " + at);
+        return be;
+    }
 
     private static BlockState shaftAlong(Direction.Axis axis) {
         return AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, axis);
@@ -50,7 +58,7 @@ public class SubgridConnectorGameTest {
     /** A real motor touching the east face drives the plate and the tiny shafts behind it. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void realMotorDrivesTheShaftsInsideThroughAPlate(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
@@ -80,7 +88,7 @@ public class SubgridConnectorGameTest {
     /** The other way round: a motor inside, behind the plate, drives a real shaft touching the east face. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void motorInsideDrivesARealShaftThroughAPlate(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         plateOn(be, level, Direction.EAST);
@@ -104,7 +112,7 @@ public class SubgridConnectorGameTest {
      */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void breakingTheMotorInsideStopsBothSides(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
@@ -145,7 +153,7 @@ public class SubgridConnectorGameTest {
     /** Breaking the real motor outside stops the plate and the shaft behind it at once. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void breakingTheRealMotorStopsTheInside(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
@@ -173,7 +181,7 @@ public class SubgridConnectorGameTest {
     /** Breaking the plate cuts the connection at once: a real motor outside no longer drives the shaft inside. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void breakingThePlateStopsTheInside(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
@@ -201,7 +209,7 @@ public class SubgridConnectorGameTest {
     /** Breaking the plate also stops the real shaft a motor inside was driving through it. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void breakingThePlateStopsTheRealSide(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
@@ -225,7 +233,7 @@ public class SubgridConnectorGameTest {
     /** Breaking the whole SubgridBlock stops the real shaft the motor inside it was driving. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void breakingTheSubgridStopsTheRealSide(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         plateOn(be, level, Direction.EAST);
@@ -252,7 +260,7 @@ public class SubgridConnectorGameTest {
      */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void rotationPassesThroughAGridAtTheSameSpeed(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
 
         PlacedPiece east = plateOn(be, level, Direction.EAST);
@@ -285,7 +293,7 @@ public class SubgridConnectorGameTest {
     /** The plate placed last, after the motor outside and the shaft inside exist, still joins them. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void plateBuiltLastStillConnects(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
         int last = be.getGridSize() - 1;
 
@@ -308,7 +316,7 @@ public class SubgridConnectorGameTest {
      */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
     public void onlyTheSocketConnects(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
         int last = be.getGridSize() - 1;
 
@@ -339,7 +347,7 @@ public class SubgridConnectorGameTest {
     /** Without a plate, a plain tiny shaft at the centre of the face must not connect. */
     @GameTest(template = PLATFORM, timeoutTicks = 200)
     public void plainTinyShaftOnTheFaceDoesNotConnect(GameTestHelper helper) {
-        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
         ServerLevel level = helper.getLevel();
         int last = be.getGridSize() - 1;
         int mid = be.getGridSize() / 2;
