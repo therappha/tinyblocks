@@ -498,6 +498,12 @@ public class SubgridEventHandler {
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
 
         Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
+        // A piece that breaks instantly is the client's to mine on the click (SubgridMiningInterceptor), and
+        // holding the button sends this event every tick: removing here too took the pieces behind it.
+        if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) != null
+                && SubgridBlock.pieceDestroyProgress(be, cell.getX(), cell.getY(), cell.getZ(), player) >= 1f) {
+            return;
+        }
         PlacedPiece removed = be.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return;
 

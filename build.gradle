@@ -34,6 +34,13 @@ neoForge {
             type = "gameTestServer"
             systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
+        // A real client that joins the dev world on its own, runs the client-side checks in
+        // com.therappha.tinyblocks.client.ClientSelfTest, logs PASS/FAIL and quits.
+        clientSelfTest {
+            client()
+            systemProperty 'tinyblocks.selftest', 'mining'
+            programArguments.addAll '--quickPlaySingleplayer', 'New World'
+        }
     }
 
     mods {
