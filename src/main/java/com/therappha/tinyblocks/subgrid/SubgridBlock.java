@@ -109,6 +109,35 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
         return be.getCachedShape();
     }
 
+    // Redstone through the faces: see SubgridBlockEntity#faceSignal.
+
+    @Override
+    protected boolean isSignalSource(BlockState state) {
+        return true;
+    }
+
+    /** {@code direction} points from the block asking into this one, so the face it asks through is its opposite. */
+    @Override
+    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+        return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), false) : 0;
+    }
+
+    @Override
+    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+        return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), true) : 0;
+    }
+
+    /** A block next to this one changed: the pieces against that face look again. */
+    @Override
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, net.minecraft.world.level.block.Block block,
+                                   BlockPos fromPos, boolean movedByPiston) {
+        super.neighborChanged(state, level, pos, block, fromPos, movedByPiston);
+        if (level.isClientSide || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
+        BlockPos diff = fromPos.subtract(pos);
+        if (diff.distManhattan(BlockPos.ZERO) != 1) return;
+        be.notifyFace(net.minecraft.core.Direction.getNearest(diff.getX(), diff.getY(), diff.getZ()));
+    }
+
     @Override
     protected boolean canBeReplaced(BlockState state, Fluid fluid) {
         // getShape/getCollisionShape are sparse — only occupied cells have geometry, so a subgrid

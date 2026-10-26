@@ -675,6 +675,28 @@ public class VanillaBlockPiece extends PieceDefinition {
             return toLocal(pos);
         }
 
+        /**
+         * A piece against a face asking the signal from the block across it: the real world's answer there (a
+         * powered solid block's strong power included, which the cells can't see), or, across a SubgridBlock of
+         * another size, the strongest of its pieces whose cells overlap the asking one's. A grid of the same size
+         * runs on cell by cell (null). {@code direction} points from the asking cell to {@code world}.
+         */
+        @Override
+        public Integer outsideSignal(BlockPos world, Direction direction, boolean strong) {
+            BlockPos local = toLocal(world);
+            if (be.inBounds(local.getX(), local.getY(), local.getZ())) return null;
+            BlockPos asking = local.relative(direction.getOpposite());
+            Level real = be.getLevel();
+            if (real == null || !be.inBounds(asking.getX(), asking.getY(), asking.getZ())) return null;
+            BlockPos across = be.getBlockPos().relative(direction);
+            if (real.getBlockEntity(across) instanceof SubgridBlockEntity other) {
+                if (other.getGridSize() == be.getGridSize()) return null;
+                int[] uv = SubgridBlockEntity.acrossFace(direction.getAxis(), asking.getX(), asking.getY(), asking.getZ());
+                return other.overlapSignal(direction.getOpposite(), be.getGridSize(), uv[0], uv[1], strong);
+            }
+            return strong ? real.getDirectSignal(across, direction) : real.getSignal(across, direction);
+        }
+
         @Override
         public void blockUpdatedAt(BlockPos world) {
             BlockPos local = toLocal(world);

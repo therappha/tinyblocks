@@ -138,6 +138,19 @@ public class FakeLevel extends Level implements FakeSpace {
         return cells.getBlockState(pos);
     }
 
+    /** Past the grid's faces a signal comes from the world around it (FakeCellGetter#outsideSignal). */
+    @Override
+    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells.outsideSignal(pos, direction, false);
+        return outside != null ? outside : super.getSignal(pos, direction);
+    }
+
+    @Override
+    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells.outsideSignal(pos, direction, true);
+        return outside != null ? outside : super.getDirectSignal(pos, direction);
+    }
+
     @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
         cells.set(pos, state);

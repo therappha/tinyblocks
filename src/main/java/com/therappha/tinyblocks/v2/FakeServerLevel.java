@@ -178,6 +178,18 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public BlockState getBlockState(BlockPos pos) { return delegate.getBlockState(pos); }
 
     @Override
+    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells().outsideSignal(pos, direction, false);
+        return outside != null ? outside : super.getSignal(pos, direction);
+    }
+
+    @Override
+    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells().outsideSignal(pos, direction, true);
+        return outside != null ? outside : super.getDirectSignal(pos, direction);
+    }
+
+    @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
         return delegate.setBlock(pos, state, flags, recursionLeft);
     }
