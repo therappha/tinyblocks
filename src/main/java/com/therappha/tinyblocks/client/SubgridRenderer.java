@@ -89,7 +89,12 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                     BlockEntityRenderer<BlockEntity> ber =
                             Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
                     if (ber != null) {
-                        ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                        drawingPhantom = true;
+                        try {
+                            ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                        } finally {
+                            drawingPhantom = false;
+                        }
                     }
                 }
 
@@ -105,6 +110,13 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             }
         }
     }
+
+    /**
+     * True while a piece's block entity renderer runs. Its block entity sits at a virtual position far from the
+     * camera, so renderers that skip what is far away by that position (Create's frequency and filter items) are
+     * told it is near; the SubgridBlock itself was already culled by distance like any block entity.
+     */
+    public static boolean drawingPhantom;
 
     @Override
     public boolean shouldRenderOffScreen(SubgridBlockEntity be) {

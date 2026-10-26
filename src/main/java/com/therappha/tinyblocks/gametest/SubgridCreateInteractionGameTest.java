@@ -213,4 +213,62 @@ public class SubgridCreateInteractionGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** A linked controller's button on a tiny receiver's frequency powers it, as with a full-size receiver. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void linkedControllerPowersATinyReceiver(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos anchor = new BlockPos(4, 1, 4);
+        standOn(be, helper, anchor);
+        PlacedPiece receiver = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor, link(false));
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    Player sneaking = helper.makeMockPlayer(GameType.SURVIVAL);
+                    sneaking.setShiftKeyDown(true);
+                    SubgridTestSupport.useOnPiece(be, helper.getLevel(), receiver, sneaking);
+                })
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    // What /tinyblocks frequency does.
+                    LinkBehaviour link = BlockEntityBehaviour.get(
+                            com.therappha.tinyblocks.v2.VanillaBlockPiece.boundPhantom(receiver, be, helper.getLevel()), LinkBehaviour.TYPE);
+                    link.setFrequency(true, new ItemStack(Items.DIAMOND));
+                    link.setFrequency(false, new ItemStack(Items.DIAMOND));
+                    var diamond = com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler.Frequency.of(new ItemStack(Items.DIAMOND));
+                    com.simibubi.create.content.redstone.link.controller.LinkedControllerServerHandler.receivePressed(
+                            helper.getLevel(), player.blockPosition(), player.getUUID(),
+                            java.util.List.of(net.createmod.catnip.data.Couple.create(diamond, diamond)), true);
+                })
+                .thenIdle(5)
+                .thenExecute(() -> helper.assertTrue(powered(SubgridTestSupport.stateOf(be, anchor)),
+                        "the tiny receiver is not powered by the controller: " + SubgridTestSupport.stateOf(be, anchor)
+                                + " " + describe(SubgridTestSupport.blockEntityOf(be, receiver, helper.getLevel()))))
+                .thenSucceed();
+    }
+
+    /** Binding a linked controller's button to a tiny link copies the link's frequencies, as the bind packet does. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void linkedControllerBindsToATinyLink(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos anchor = new BlockPos(4, 1, 4);
+        standOn(be, helper, anchor);
+        PlacedPiece link = SubgridTestSupport.placePiece(be, helper.getLevel(), anchor, link(false));
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.LINKED_CONTROLLER.asStack());
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    tune(SubgridTestSupport.blockEntityOf(be, link, helper.getLevel()));
+                    new com.simibubi.create.content.redstone.link.controller.LinkedControllerBindPacket(0, be.virtualPosOf(anchor))
+                            .handle(player);
+                    ItemStack bound = com.simibubi.create.content.redstone.link.controller.LinkedControllerItem
+                            .getFrequencyItems(player.getMainHandItem()).getStackInSlot(0);
+                    helper.assertTrue(bound.is(Items.DIAMOND), "the controller's first button got " + bound + ", not the link's diamond");
+                })
+                .thenSucceed();
+    }
 }

@@ -83,7 +83,7 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
-        return be.getCachedShape();
+        return be.getOutlineShape();
     }
 
     /**

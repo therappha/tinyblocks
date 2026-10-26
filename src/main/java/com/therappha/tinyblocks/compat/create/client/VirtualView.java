@@ -84,6 +84,28 @@ public final class VirtualView {
         lookup = null;
     }
 
+    /**
+     * Lets the client level answer the grid holding {@code virtual} from its fake space, whatever the crosshair is
+     * on — for Create code that keeps working on a block it was pointed at earlier (a linked controller binding to
+     * the tiny link it was clicked on). Returns whether it did; pair a true with {@link #stopLookingAt}. Never
+     * replaces a view already open.
+     */
+    public static boolean lookAt(BlockPos virtual) {
+        Minecraft mc = Minecraft.getInstance();
+        if (lookup != null || mc.level == null || mc.player == null) return false;
+        com.therappha.tinyblocks.v2.VirtualLookup.Found found =
+                com.therappha.tinyblocks.v2.VirtualLookup.find(mc.level, virtual, mc.player.position());
+        if (found == null) return false;
+        SubgridBlockEntity grid = found.grid();
+        lookup = new View(mc.level, VanillaBlockPiece.buildClientFakeSpace(grid, mc.level), grid.getBlockPos(),
+                grid.virtualOrigin(), grid.getGridSize());
+        return true;
+    }
+
+    public static void stopLookingAt() {
+        if (realHit == null) lookup = null;
+    }
+
     /** True while the crosshair points into a grid. */
     public static boolean active() {
         return realHit != null;

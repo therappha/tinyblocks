@@ -921,6 +921,76 @@ public class SubgridBlockEntity extends BlockEntity {
         cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
     }
 
+    private VoxelShape outlineShape = Shapes.empty();
+    private int outlineKey;
+    private boolean outlineBuilt = false;
+
+    /**
+     * What a crosshair or a click hits: each piece's own shape, shrunk into its cell — a redstone link is its thin
+     * plate, so a click lands on the plate where its frequency slots are, not on the face of a whole cell. (Collision
+     * stays whole cells: getCachedShape.) Rebuilt only when a piece or its state changed; states are interned, so
+     * their identities say whether one did.
+     */
+    public VoxelShape getOutlineShape() {
+        int key = gridSize;
+        for (PlacedPiece p : pieces) {
+            key = 31 * key + p.anchor.hashCode();
+            key = 31 * key + System.identityHashCode(p.runtimeState);
+        }
+        if (!outlineBuilt || key != outlineKey) {
+            outlineShape = buildOutlineShape();
+            outlineKey = key;
+            outlineBuilt = true;
+        }
+        return outlineShape;
+    }
+
+    /** The shape of {@code piece} in its own block space (0..1), or null where it fills its cells whole. */
+    @javax.annotation.Nullable
+    public static VoxelShape pieceShape(PlacedPiece piece) {
+        if (!(piece.runtimeState instanceof net.minecraft.world.level.block.state.BlockState state)) return null;
+        if (piece.footprint.getX() != 1 || piece.footprint.getY() != 1 || piece.footprint.getZ() != 1) return null;
+        VoxelShape shape;
+        try {
+            shape = state.getShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        } catch (RuntimeException e) {
+            return null; // a shape that needs a real world around it
+        }
+        // An empty shape (light, structure void) would leave the piece impossible to aim at, so to break.
+        if (shape.isEmpty() || net.minecraft.world.level.block.Block.isShapeFullBlock(shape)) return null;
+        return shape;
+    }
+
+    private VoxelShape buildOutlineShape() {
+        var whole = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
+        boolean anyWhole = false;
+        VoxelShape partial = Shapes.empty();
+        double cell = 1.0 / gridSize;
+        for (PlacedPiece p : pieces) {
+            VoxelShape shape = pieceShape(p);
+            if (shape == null) {
+                for (int x = 0; x < p.footprint.getX(); x++)
+                    for (int y = 0; y < p.footprint.getY(); y++)
+                        for (int z = 0; z < p.footprint.getZ(); z++) {
+                            int cx = p.anchor.getX() + x, cy = p.anchor.getY() + y, cz = p.anchor.getZ() + z;
+                            if (!outOfBounds(cx, cy, cz)) {
+                                whole.fill(cx, cy, cz);
+                                anyWhole = true;
+                            }
+                        }
+                continue;
+            }
+            for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
+                partial = Shapes.joinUnoptimized(partial, Shapes.create(
+                        (p.anchor.getX() + box.minX) * cell, (p.anchor.getY() + box.minY) * cell, (p.anchor.getZ() + box.minZ) * cell,
+                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell),
+                        net.minecraft.world.phys.shapes.BooleanOp.OR);
+            }
+        }
+        VoxelShape out = anyWhole ? ShapeAccess.wrap(whole) : Shapes.empty();
+        return partial.isEmpty() ? out : Shapes.joinUnoptimized(out, partial, net.minecraft.world.phys.shapes.BooleanOp.OR).optimize();
+    }
+
     public int indexOf(int x, int y, int z) {
         return y * gridSize * gridSize + z * gridSize + x;
     }

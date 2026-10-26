@@ -13,9 +13,9 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 /**
  * A right click on a piece's value box starts Create's hold-to-edit on the client (ValueSettingsInputHandler), as
- * on a full-size block: the click is handed to Create's listener again, seen through VirtualView. Taking it here
- * keeps it from SubgridEventHandler, which would treat it as a click to place or use; the server still gets the
- * click and runs the piece's use as usual.
+ * on a full-size block: the click is handed to Create's listener again, seen through VirtualView; failing that, the
+ * held item's onItemUseFirst gets it the same way. Taking it here keeps it from SubgridEventHandler, which would
+ * treat it as a click to place or use; the server still gets the click and runs the piece's use as usual.
  */
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT)
 public final class VirtualClick {
@@ -34,6 +34,17 @@ public final class VirtualClick {
             if (inside.isCanceled()) {
                 event.setCanceled(true);
                 event.setCancellationResult(inside.getCancellationResult());
+                return;
+            }
+            // Then the held item's first say, as the client's own use gives it (MultiPlayerGameMode): a linked
+            // controller clicked on a tiny link starts binding to it.
+            var held = event.getItemStack();
+            if (held.isEmpty()) return;
+            net.minecraft.world.InteractionResult first = held.onItemUseFirst(
+                    new net.minecraft.world.item.context.UseOnContext(event.getEntity(), event.getHand(), hit));
+            if (first != net.minecraft.world.InteractionResult.PASS) {
+                event.setCanceled(true);
+                event.setCancellationResult(first);
             }
         } finally {
             VirtualView.end();

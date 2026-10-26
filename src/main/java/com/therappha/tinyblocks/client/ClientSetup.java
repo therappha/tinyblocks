@@ -127,7 +127,7 @@ class SubgridClientHandler {
         Vec3 hitLoc = hit.getLocation();
         float cell = 1f / gs;
 
-        double nudge = 0.5 / gs;
+        double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
         int gx = Mth.clamp((int)(((hitLoc.x - pos.getX()) - face.getStepX() * nudge) * gs), 0, max);
         int gy = Mth.clamp((int)(((hitLoc.y - pos.getY()) - face.getStepY() * nudge) * gs), 0, max);
         int gz = Mth.clamp((int)(((hitLoc.z - pos.getZ()) - face.getStepZ() * nudge) * gs), 0, max);
@@ -141,12 +141,23 @@ class SubgridClientHandler {
             double x1 = p.anchor.getX() * cell;
             double y1 = p.anchor.getY() * cell;
             double z1 = p.anchor.getZ() * cell;
-            LevelRenderer.renderLineBox(poseStack, lines,
-                x1, y1, z1,
-                x1 + p.footprint.getX() * cell,
-                y1 + p.footprint.getY() * cell,
-                z1 + p.footprint.getZ() * cell,
-                1f, 1f, 0f, 1f);
+            net.minecraft.world.phys.shapes.VoxelShape shape = SubgridBlockEntity.pieceShape(p);
+            if (shape != null) {
+                // The piece's own outline, as vanilla draws a block's, shrunk into its cell.
+                for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
+                    LevelRenderer.renderLineBox(poseStack, lines,
+                        x1 + box.minX * cell, y1 + box.minY * cell, z1 + box.minZ * cell,
+                        x1 + box.maxX * cell, y1 + box.maxY * cell, z1 + box.maxZ * cell,
+                        0f, 0f, 0f, 0.4f);
+                }
+            } else {
+                LevelRenderer.renderLineBox(poseStack, lines,
+                    x1, y1, z1,
+                    x1 + p.footprint.getX() * cell,
+                    y1 + p.footprint.getY() * cell,
+                    z1 + p.footprint.getZ() * cell,
+                    0f, 0f, 0f, 0.4f);
+            }
         } else {
             LevelRenderer.renderLineBox(poseStack, lines,
                 gx * cell, gy * cell, gz * cell,
@@ -236,7 +247,7 @@ class SubgridClientHandler {
             gs = mc.level.getBlockEntity(clickedPos) instanceof SubgridBlockEntity cbe
                 ? cbe.gridSize : csb.gridSize;
             int max = gs - 1;
-            double nudge = 0.5 / gs;
+            double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
             int hx = (int)(((hitLoc.x - clickedPos.getX()) - face.getStepX() * nudge) * gs);
             int hy = (int)(((hitLoc.y - clickedPos.getY()) - face.getStepY() * nudge) * gs);
             int hz = (int)(((hitLoc.z - clickedPos.getZ()) - face.getStepZ() * nudge) * gs);
