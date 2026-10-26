@@ -61,45 +61,48 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 blockRenderer.renderLiquid(piece.anchor, fluidView, fluidBuffer, state, fluidState);
             }
 
-            poseStack.pushPose();
-            poseStack.translate(piece.anchor.getX() * cell, piece.anchor.getY() * cell, piece.anchor.getZ() * cell);
-            poseStack.scale(cell, cell, cell);
-
-            blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
-
-            // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
-            // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
-            // static baked model — renderSingleBlock above already no-ops for these
-            // (RenderShape.INVISIBLE, or just has nothing interesting to show statically). A piston
-            // gets its runtimeBlockEntity from the dedicated animation payload (see syncBlockEntity/
-            // applyClientAnimation) for smooth per-tick progress; for everything else, lazily build
-            // the SAME phantom BlockEntity blockEntityFor already builds server-side, straight from
-            // this piece's synced extraData "be" NBT — no piston-specific plumbing needed, exactly
-            // how vanilla's own BlockEntityRenderDispatcher works generically off whatever
-            // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
-            // itself caches onto piece.runtimeBlockEntity).
-            if (piece.runtimeBlockEntity == null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
-            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
-                    && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
-                            && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
-                BlockEntityRenderer<BlockEntity> ber =
-                        Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
-                if (ber != null) {
-                    ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+            // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
+            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, be.getGridSize())) {
+                poseStack.pushPose();
+                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+
+                blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+
+                // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
+                // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
+                // static baked model — renderSingleBlock above already no-ops for these
+                // (RenderShape.INVISIBLE, or just has nothing interesting to show statically). A piston
+                // gets its runtimeBlockEntity from the dedicated animation payload (see syncBlockEntity/
+                // applyClientAnimation) for smooth per-tick progress; for everything else, lazily build
+                // the SAME phantom BlockEntity blockEntityFor already builds server-side, straight from
+                // this piece's synced extraData "be" NBT — no piston-specific plumbing needed, exactly
+                // how vanilla's own BlockEntityRenderDispatcher works generically off whatever
+                // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
+                // itself caches onto piece.runtimeBlockEntity).
+                if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
+                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
+                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
+                    BlockEntityRenderer<BlockEntity> ber =
+                            Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
+                    if (ber != null) {
+                        ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                    }
                 }
-            }
 
-            if (piece == crackedPiece) {
-                ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
-                    "textures/block/destroy_stage_" + crackStage + ".png");
-                RenderType crumbleType = RenderType.crumbling(crackTex);
-                MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
-                blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
-            }
+                if (piece == crackedPiece) {
+                    ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
+                        "textures/block/destroy_stage_" + crackStage + ".png");
+                    RenderType crumbleType = RenderType.crumbling(crackTex);
+                    MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
+                    blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
+                }
 
-            poseStack.popPose();
+                poseStack.popPose();
+            }
         }
     }
 

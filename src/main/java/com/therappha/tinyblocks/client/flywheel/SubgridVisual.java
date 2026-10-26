@@ -56,7 +56,14 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     /** Level the hosted phantoms are bound to; answers light at this SubgridBlock's real position. */
     private final net.minecraft.world.level.Level hostLevel;
     private int frames = 0;
-    private final Map<PlacedPiece, Child> children = new IdentityHashMap<>();
+    /** One child per slice of the piece's model (PieceTransforms): one for most pieces, several for a funnel. */
+    private final Map<PlacedPiece, List<Child>> children = new IdentityHashMap<>();
+
+    private List<Child> allChildren() {
+        List<Child> all = new ArrayList<>();
+        children.values().forEach(all::addAll);
+        return all;
+    }
 
     public SubgridVisual(VisualizationContext context, SubgridBlockEntity blockEntity, float partialTick) {
         super(context, blockEntity, partialTick);
@@ -71,34 +78,45 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         List<PlacedPiece> live = new ArrayList<>(blockEntity.getPieces());
         children.entrySet().removeIf(e -> {
             PlacedPiece piece = e.getKey();
-            if (live.contains(piece) && piece.definition.renderState(piece) == e.getValue().state()) return false;
-            destroy(e.getValue());
+            if (live.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()) return false;
+            e.getValue().forEach(SubgridVisual::destroy);
             return true;
         });
         for (PlacedPiece piece : live) {
             if (!children.containsKey(piece)) {
-                Child child = createChild(piece, partialTick);
-                if (child != null) children.put(piece, child);
+                List<Child> slices = createChildren(piece, partialTick);
+                if (!slices.isEmpty()) children.put(piece, slices);
             }
         }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private Child createChild(PlacedPiece piece, float partialTick) {
-        if (piece.definition != VanillaBlockPiece.INSTANCE) return null;
+    private List<Child> createChildren(PlacedPiece piece, float partialTick) {
+        if (!(piece.definition instanceof VanillaBlockPiece)) return List.of();
         BlockState state = piece.definition.renderState(piece);
-        if (state == null || !(state.getBlock() instanceof EntityBlock)) return null;
+        if (state == null || !(state.getBlock() instanceof EntityBlock)) return List.of();
 
         BlockEntity phantom = VanillaBlockPiece.blockEntityFor(piece, blockEntity, hostLevel);
-        if (phantom == null) return null;
+        if (phantom == null) return List.of();
         BlockEntityVisualizer visualizer = VisualizerRegistry.getVisualizer(phantom.getType());
-        if (visualizer == null) return null;
+        if (visualizer == null) return List.of();
 
+        List<Child> slices = new ArrayList<>();
+        for (com.therappha.tinyblocks.client.PieceTransforms.Slice slice
+                : com.therappha.tinyblocks.client.PieceTransforms.slices(piece, blockEntity.gridSize)) {
+            slices.add(createChild(visualizer, phantom, state, slice, partialTick));
+        }
+        return slices;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Child createChild(BlockEntityVisualizer visualizer, BlockEntity phantom, BlockState state,
+                              com.therappha.tinyblocks.client.PieceTransforms.Slice slice, float partialTick) {
         // Anchor the embedding at the phantom's OWN position so the hosted visual (which places itself at
-        // blockEntity.getBlockPos() - renderOrigin) sits at the embedding's origin; cellTransform then
-        // carries it to the cell's real-world place.
+        // blockEntity.getBlockPos() - renderOrigin) sits at the embedding's origin; sliceTransform then
+        // carries it to the slice's real-world place.
         VisualEmbedding embedding = context.createEmbedding(phantom.getBlockPos());
-        embedding.transforms(cellTransform(piece), new Matrix3f());
+        embedding.transforms(sliceTransform(slice), new Matrix3f());
         BlockEntityVisual<?> visual = visualizer.createVisual(embedding, phantom, partialTick);
         if (lightSections != null && visual instanceof SectionTrackedVisual tracked) {
             tracked.setSectionCollector(lightSections);
@@ -111,16 +129,15 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         return new Child(state, embedding, visual);
     }
 
-    /** Embedded space -> world (relative to the parent's render origin): cell translate, then 1/gridSize scale. */
-    private Matrix4f cellTransform(PlacedPiece piece) {
-        float cell = 1f / blockEntity.gridSize;
+    /** Embedded space -> world (relative to the parent's render origin): the slice's translate, then its scale. */
+    private Matrix4f sliceTransform(com.therappha.tinyblocks.client.PieceTransforms.Slice slice) {
         Vec3i origin = context.renderOrigin();
         BlockPos pos = blockEntity.getBlockPos();
         return new Matrix4f()
-                .translate(pos.getX() - origin.getX() + piece.anchor.getX() * cell,
-                           pos.getY() - origin.getY() + piece.anchor.getY() * cell,
-                           pos.getZ() - origin.getZ() + piece.anchor.getZ() * cell)
-                .scale(cell);
+                .translate(pos.getX() - origin.getX() + slice.translation().x,
+                           pos.getY() - origin.getY() + slice.translation().y,
+                           pos.getZ() - origin.getZ() + slice.translation().z)
+                .scale(slice.scale());
     }
 
     private static void destroy(Child child) {
@@ -134,7 +151,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     public void update(float partialTick) {
         super.update(partialTick);
         reconcile(partialTick);
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             child.visual().update(partialTick);
             // The hosted visuals' own update() can reset an instance's light; Flywheel only re-runs
             // updateLight when a light section changes, so redo it right away instead of leaving the
@@ -149,7 +166,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     @Override
     public void setSectionCollector(SectionTrackedVisual.SectionCollector collector) {
         super.setSectionCollector(collector);
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             if (child.visual() instanceof SectionTrackedVisual tracked) tracked.setSectionCollector(collector);
             if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) lit.updateLight(0f);
         }
@@ -158,7 +175,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     @Override
     public void updateLight(float partialTick) {
         logLight("updateLight");
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
             }
@@ -180,13 +197,13 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         // Safety net: re-run the children's first-light pass about once a second, in case anything
         // reset or skipped it. Cheap (one relight per hosted visual).
         if (++frames % 120 == 0 && lightSections != null) {
-            for (Child child : children.values()) {
+            for (Child child : allChildren()) {
                 if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                     lit.updateLight(ctx.partialTick());
                 }
             }
         }
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             if (child.visual() instanceof DynamicVisual dynamic) {
                 Plan<DynamicVisual.Context> plan = dynamic.planFrame();
                 plan.execute(INLINE, ctx);
@@ -196,7 +213,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void tick(TickableVisual.Context ctx) {
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             if (child.visual() instanceof TickableVisual tickable) {
                 Plan<TickableVisual.Context> plan = tickable.planTick();
                 plan.execute(INLINE, ctx);
@@ -206,14 +223,14 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void collectCrumblingInstances(java.util.function.Consumer<dev.engine_room.flywheel.api.instance.Instance> consumer) {
-        for (Child child : children.values()) {
+        for (Child child : allChildren()) {
             child.visual().collectCrumblingInstances(consumer);
         }
     }
 
     @Override
     protected void _delete() {
-        children.values().forEach(SubgridVisual::destroy);
+        allChildren().forEach(SubgridVisual::destroy);
         children.clear();
     }
 }

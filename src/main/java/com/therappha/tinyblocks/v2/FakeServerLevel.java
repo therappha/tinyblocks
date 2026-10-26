@@ -125,6 +125,9 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
     public FakeCellGetter cells() { return delegate.cells(); }
 
+    @Override
+    public net.minecraft.world.level.Level realLevel() { return delegate.realLevel(); }
+
     /**
      * Sable keeps its sub-level container in a field its mixin adds to ServerLevel, which the Level-field
      * transplant in create() never fills (same gap as the light storage). Everything that asks the fake level
