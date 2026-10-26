@@ -210,4 +210,23 @@ public class SubgridCreatePlacementGameTest {
                 "the middle cell's centre " + be.realPositionOf(middle) + " is not the block's " + Vec3.atCenterOf(real));
         helper.succeed();
     }
+
+    /** In an odd grid (1/5, 1/7, 1/9) the connector goes on, and its socket is the middle cell, on the real shaft's axis. */
+    @GameTest(template = "empty_platform")
+    public void aConnectorFitsOddGridsWithItsSocketOnTheAxis(GameTestHelper helper) {
+        int[] sizes = {5, 7, 9};
+        for (int i = 0; i < sizes.length; i++) {
+            int size = sizes[i];
+            BlockPos at = new BlockPos(1 + 2 * i, 2, 2);
+            helper.setBlock(at, Blocks.AIR);
+            SubgridBlockEntity be = SubgridBlockEntity.createAt(helper.getLevel(), helper.absolutePos(at), size);
+            boolean placed = com.therappha.tinyblocks.compat.create.ConnectorPlacement.place(be, helper.getLevel(), Direction.EAST);
+            BlockPos socket = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.socket(Direction.EAST, size);
+            int middle = size / 2;
+            helper.assertTrue(placed, "no connector went on a 1/" + size + " grid");
+            helper.assertTrue(socket.getY() == middle && socket.getZ() == middle && middle * 2 + 1 == size,
+                    "1/" + size + ": socket " + socket + " is not on the middle line");
+        }
+        helper.succeed();
+    }
 }

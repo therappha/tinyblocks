@@ -25,11 +25,15 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
     /** Width of a Create shaft, in sixteenths of a block (AllShapes.SIX_VOXEL_POLE). */
     private static final int SHAFT_WIDTH_SIXTEENTHS = 6;
 
-    private static final Map<Integer, ShaftConnectorPiece> BY_GRID_SIZE = Map.of(
-            2, new ShaftConnectorPiece(2),
-            4, new ShaftConnectorPiece(4),
-            8, new ShaftConnectorPiece(8),
-            16, new ShaftConnectorPiece(16));
+    /** One per grid size a SubgridBlock can have. */
+    private static final Map<Integer, ShaftConnectorPiece> BY_GRID_SIZE = new java.util.HashMap<>();
+
+    static {
+        for (int size = com.therappha.tinyblocks.setup.Registration.MIN_GRID_SIZE;
+             size <= com.therappha.tinyblocks.setup.Registration.MAX_GRID_SIZE; size++) {
+            BY_GRID_SIZE.put(size, new ShaftConnectorPiece(size));
+        }
+    }
 
     private ShaftConnectorPiece(int gridSize) {
         super(ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "shaft_connector_" + gridSize),

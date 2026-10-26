@@ -63,4 +63,16 @@ class ShaftConnectorPieceTest {
         assertEquals(new BlockPos(6, 4, 4), ShaftConnectorPiece.socket(Direction.EAST, 9));
         assertEquals(new BlockPos(7, 2, 2), ShaftConnectorPiece.anchorOn(Direction.EAST, 9));
     }
+
+    /** Every grid size has a connector, and its funnel fits on the face with its socket inside the grid. */
+    @Test
+    void everyGridSizeHasAConnectorThatFits() {
+        for (int size = 2; size <= 16; size++) {
+            assertEquals(true, ShaftConnectorPiece.forGrid(size) != null, "no connector for 1/" + size);
+            int width = ShaftConnectorPiece.width(size);
+            assertEquals(true, width <= size && (size - width) % 2 == 0, "1/" + size + ": width " + width + " is not centred");
+            BlockPos socket = ShaftConnectorPiece.socket(Direction.EAST, size);
+            assertEquals(true, socket.getX() >= 0 && socket.getX() < size, "1/" + size + ": socket " + socket + " outside");
+        }
+    }
 }
