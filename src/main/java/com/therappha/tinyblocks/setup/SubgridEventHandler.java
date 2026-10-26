@@ -198,6 +198,13 @@ public class SubgridEventHandler {
         event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
 
+        // A Minimizer in a shape mode builds between two corners instead of placing one piece.
+        if (minimizer != null && blockItem != null
+                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) != com.therappha.tinyblocks.items.BuildMode.PLACE) {
+            MinimizerShapes.click(serverLevel, player, player.getOffhandItem(), minimizer, blockItem, stack, event.getHitVec());
+            return;
+        }
+
         // --- Everything below is server-authoritative; recompute against live state. ---
         SubgridBlockEntity be;
         int nx, ny, nz;

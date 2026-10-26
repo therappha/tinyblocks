@@ -17,5 +17,17 @@
   "item.tinyblocks.minimizer_16": "Minimizer (1/16)",
   "item.tinyblocks.minimizer.tooltip": "Hold in your off-hand, then place any block to shrink it into a subgrid",
   "itemGroup.tinyblocks.main": "TinyBlocks",
-  "block.tinyblocks.shaft_connector": "Shaft Connector"
+  "block.tinyblocks.shaft_connector": "Shaft Connector",
+  "key.categories.tinyblocks": "TinyBlocks",
+  "key.tinyblocks.minimizer_mode": "Minimizer build mode",
+  "tinyblocks.build_mode.place": "Normal",
+  "tinyblocks.build_mode.fill": "Fill",
+  "tinyblocks.build_mode.hollow": "Hollow",
+  "tinyblocks.build_mode.walls": "Walls",
+  "tinyblocks.build_mode.plane": "Plane",
+  "tinyblocks.build.mode": "Build mode: %s",
+  "tinyblocks.build.corner_set": "%s: first corner set — click the second corner (sneak-click to cancel)",
+  "tinyblocks.build.corner_cleared": "Corner cleared",
+  "tinyblocks.build.too_big": "Too big: at most %s cells",
+  "tinyblocks.build.placed": "Placed %s pieces"
 }

@@ -25,6 +25,19 @@ public class NetworkSetup {
         registrar.playToClient(PieceBlockEventPayload.TYPE, PieceBlockEventPayload.STREAM_CODEC, NetworkSetup::handlePieceBlockEvent);
         registrar.playToClient(PhantomDataPayload.TYPE, PhantomDataPayload.STREAM_CODEC, NetworkSetup::handlePhantomData);
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
+        registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
+    }
+
+    private static void handleMinimizerMode(MinimizerModePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+                    ? player.getOffhandItem() : player.getMainHandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) return;
+            var mode = com.therappha.tinyblocks.items.MinimizerBuild.cycle(minimizer);
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.mode",
+                    net.minecraft.network.chat.Component.translatable(mode.translationKey())), true);
+        });
     }
 
     private static void handlePieceAdded(SubgridPieceAddedPayload payload, IPayloadContext ctx) {
