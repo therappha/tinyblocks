@@ -14,12 +14,14 @@ import net.createmod.catnip.placement.IPlacementHelper;
 import net.createmod.catnip.placement.PlacementClient;
 import net.createmod.catnip.placement.PlacementHelpers;
 import net.createmod.catnip.placement.PlacementOffset;
+import net.createmod.ponder.render.VirtualRenderHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
@@ -118,10 +120,17 @@ public final class SubgridPlacementPreview {
         poseStack.translate(0.5, 0.5, 0.5);
         poseStack.scale(0.85f, 0.85f, 0.85f);
         poseStack.translate(-0.5, -0.5, -0.5);
-        mc.getBlockRenderer().getModelRenderer().renderModel(poseStack.last(), consumer, current.state(),
-                mc.getBlockRenderer().getBlockModel(current.state()), 1f, 1f, 1f,
-                LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.translucent());
+        // A model hands out its quads per render type (a shaft's are all solid): ask for each of its own types,
+        // and draw them all see-through. Virtual model data, as Create's own ghosts and Ponder scenes use: a model
+        // that dresses the block from the world around it (a shaft's bracket) otherwise draws nothing without it.
+        var model = mc.getBlockRenderer().getBlockModel(current.state());
+        ModelData data = VirtualRenderHelper.VIRTUAL_DATA;
+        for (RenderType layer : model.getRenderTypes(current.state(), RandomSource.create(42L), data)) {
+            mc.getBlockRenderer().getModelRenderer().renderModel(poseStack.last(), consumer, current.state(), model,
+                    1f, 1f, 1f, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, data, layer);
+        }
         poseStack.popPose();
         buffers.endBatch(RenderType.translucent());
     }
+
 }

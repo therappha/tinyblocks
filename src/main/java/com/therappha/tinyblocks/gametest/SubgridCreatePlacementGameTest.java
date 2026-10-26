@@ -121,4 +121,44 @@ public class SubgridCreatePlacementGameTest {
         helper.assertTrue(above != null && above.is(Blocks.DIRT), "no dirt on top of the stone: " + above);
         helper.succeed();
     }
+
+    /** The same click by a real (server) player, which other mods' place listeners treat differently from a mock one. */
+    @GameTest(template = "empty_platform")
+    public void aServerPlayersShaftExtendsTheLine(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos clicked = new BlockPos(3, 4, 4);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), clicked, SHAFT_X);
+        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
+        player.moveTo(Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllBlocks.SHAFT.asStack(4));
+
+        SubgridTestSupport.rightClick(be, player, topNearEastEdge(be, clicked));
+
+        BlockState end = SubgridTestSupport.stateOf(be, clicked.east());
+        helper.assertTrue(end != null && end.is(AllBlocks.SHAFT.get()),
+                "no shaft at the end of the line: " + end + "; on top: " + SubgridTestSupport.stateOf(be, clicked.above()));
+        helper.succeed();
+    }
+
+    /**
+     * A cogwheel clicked onto a large cogwheel goes diagonal to it, where the two mesh — Create's cogwheel item
+     * does that in its onItemUseFirst, before the clicked block's own use.
+     */
+    @GameTest(template = "empty_platform")
+    public void aCogwheelOnALargeCogwheelGoesWhereTheyMesh(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos large = new BlockPos(4, 4, 4);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), large,
+                AllBlocks.LARGE_COGWHEEL.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.Y));
+        Player player = holding(helper, AllBlocks.COGWHEEL.asStack(4));
+
+        SubgridTestSupport.rightClick(be, player, topNearEastEdge(be, large));
+
+        helper.assertTrue(SubgridTestSupport.stateOf(be, large.above()) == null,
+                "the cogwheel went straight on top: " + SubgridTestSupport.stateOf(be, large.above()));
+        var placed = be.getPieces().stream().filter(p -> !p.anchor.equals(large)).map(p -> p.anchor + "=" + p.runtimeState).toList();
+        helper.assertTrue(placed.size() == 1 && placed.get(0).contains("create:cogwheel"),
+                "expected one cogwheel placed diagonally, got " + placed);
+        helper.succeed();
+    }
 }

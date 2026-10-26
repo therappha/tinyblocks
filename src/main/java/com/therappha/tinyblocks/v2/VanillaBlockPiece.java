@@ -411,6 +411,15 @@ public class VanillaBlockPiece extends PieceDefinition {
         // becomes a piece in applyChanges; a plain block's use passes, and SubgridEventHandler places it.
         net.minecraft.world.item.ItemStack held = player.getMainHandItem();
         if (!held.isEmpty()) {
+            // First the item's own say before the block's (NeoForge's onItemUseFirst, as ServerPlayerGameMode asks
+            // it): a Create cogwheel places itself through its placement helper there, diagonal to a cog of the
+            // other size.
+            InteractionResult first = held.onItemUseFirst(new net.minecraft.world.item.context.UseOnContext(
+                    fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
+            if (first != InteractionResult.PASS) {
+                applyChanges(be, fakeLevel, before, serverLevel);
+                return first;
+            }
             net.minecraft.world.ItemInteractionResult itemResult = cells.getBlockState(at).useItemOn(
                     held, fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, fakeHit);
             if (itemResult != net.minecraft.world.ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
