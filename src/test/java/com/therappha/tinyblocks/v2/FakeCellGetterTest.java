@@ -85,4 +85,48 @@ class FakeCellGetterTest {
         BlockPos otherPieceAnchor = new BlockPos(6, 2, 3);
         assertNotEquals(otherPieceAnchor, FakeCellGetter.aliasOffset(realPos, anchor, otherPieceAnchor));
     }
+
+    /** Without an owning grid, positions are their own: no mapping, no signal from outside, nothing to resync. */
+    @Test
+    void aBareCellSpaceMapsPositionsToThemselves() {
+        FakeCellGetter cells = new FakeCellGetter();
+        BlockPos pos = new BlockPos(3, -2, 7);
+        assertEquals(pos, cells.toWorld(pos));
+        assertEquals(pos, cells.toLocal(pos));
+        assertEquals(pos, cells.resolveLocal(pos));
+        assertEquals(null, cells.outsideSignal(pos, net.minecraft.core.Direction.UP, false));
+        cells.blockUpdatedAt(pos); // no grid to tell
+        assertEquals(16, cells.getHeight());
+        assertEquals(0, cells.getMinBuildHeight());
+    }
+
+    /** Block entities written and removed during a call are captured, for the call's caller to apply. */
+    @Test
+    void blockEntitiesSetAndRemovedAreCaptured() {
+        FakeCellGetter cells = new FakeCellGetter();
+        BlockPos at = new BlockPos(1, 1, 1);
+        var chest = new net.minecraft.world.level.block.entity.ChestBlockEntity(at, Blocks.CHEST.defaultBlockState());
+
+        cells.setBlockEntity(at, chest);
+        assertEquals(chest, cells.getBlockEntity(at));
+        assertEquals(chest, cells.touchedBlockEntities().get(at));
+
+        cells.removeBlockEntityAt(at);
+        assertEquals(null, cells.getBlockEntity(at));
+        assertEquals(true, cells.removedBlockEntityPositions().contains(at));
+
+        cells.setBlockEntity(at, chest); // set again: no longer counted as removed
+        assertEquals(false, cells.removedBlockEntityPositions().contains(at));
+    }
+
+    /** A cell's fluid is its block state's, and every write shows in touchedCells. */
+    @Test
+    void fluidComesFromTheStateAndWritesAreTracked() {
+        FakeCellGetter cells = new FakeCellGetter();
+        BlockPos at = new BlockPos(2, 0, 2);
+        cells.set(at, Blocks.WATER.defaultBlockState());
+        assertEquals(net.minecraft.world.level.material.Fluids.WATER, cells.getFluidState(at).getType()); // not by tag: no tags without a datapack
+        assertEquals(true, cells.getFluidState(new BlockPos(5, 5, 5)).isEmpty());
+        assertEquals(Blocks.WATER.defaultBlockState(), cells.touchedCells().get(at));
+    }
 }
