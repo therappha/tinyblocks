@@ -54,8 +54,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public class SubgridMiningInterceptor {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-
     private static BlockPos trackedPos;
     private static Vec3i trackedCell;
     private static float accumulated;
@@ -83,19 +81,11 @@ public class SubgridMiningInterceptor {
         Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
 
         if (player.isCreative()) {
-            // Unconditional diagnostic (issue #41's live investigation): a creative-mode click
-            // instantly destroys whatever's under the crosshair with zero accumulation — no
-            // progress bar, no hold needed, matching real vanilla creative-mode breaking. If a
-            // piece is vanishing the instant it's placed with no deliberate click, this is the
-            // path that would explain it: something firing a spurious LeftClickBlock(START) right
-            // after placement, not a mining-progress bug at all.
-            LOGGER.info("[mining-diag] creative LeftClickBlock action={} cell={} pieceThere={}",
-                    event.getAction(), cell, be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) != null);
+            // Creative breaks the piece under the crosshair on the click itself, like vanilla.
             if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START) return;
             if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) == null) return;
             event.setCanceled(true);
             if (!GATE.canSend(level.getGameTime())) return;
-            LOGGER.info("[mining-diag] creative mine request sent for cell={}", cell, new Exception("stack trace"));
             sendMineRequest(level, pos, cell);
             return;
         }
