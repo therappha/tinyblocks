@@ -15,13 +15,16 @@ import java.util.List;
 
 /**
  * Held in the offhand: makes any BlockItem in the main hand create/place into a subgrid instead of placing
- * normally. Its grid size (1/2 to 1/16) is kept on the stack and picked on Create's value board, opened by a right
- * click in the air with it in the main hand (client MinimizerSizeMenu); the older fixed-size Minimizers start at
- * theirs.
+ * normally. Its grid size (1/2 to 1/16, or 1/1 for normal blocks) is kept on the stack and picked on Create's value
+ * board, opened by a right click in the air with it in the main hand (client MinimizerSizeMenu); the older
+ * fixed-size Minimizers start at theirs.
  */
 public class MinimizerItem extends Item {
 
     private static final String SIZE_KEY = "tinyblocks_size";
+
+    /** The normal size, 1/1: placing normal blocks (in a shape mode, building with them). No SubgridBlock has it. */
+    public static final int NORMAL_SIZE = 1;
 
     public MinimizerItem(Properties properties) {
         super(properties);
@@ -41,7 +44,7 @@ public class MinimizerItem extends Item {
     /** The grid size {@code stack} makes and places into. */
     public int gridSize(ItemStack stack) {
         int size = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().getInt(SIZE_KEY);
-        return size >= Registration.MIN_GRID_SIZE && size <= Registration.MAX_GRID_SIZE ? size : preferredSubgrid().gridSize;
+        return size >= NORMAL_SIZE && size <= Registration.MAX_GRID_SIZE ? size : preferredSubgrid().gridSize;
     }
 
     /** Which SubgridBlock {@code stack} creates when auto-creating a new subgrid. */
@@ -50,7 +53,7 @@ public class MinimizerItem extends Item {
     }
 
     public static void setGridSize(ItemStack stack, int size) {
-        int clamped = Mth.clamp(size, Registration.MIN_GRID_SIZE, Registration.MAX_GRID_SIZE);
+        int clamped = Mth.clamp(size, NORMAL_SIZE, Registration.MAX_GRID_SIZE);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(SIZE_KEY, clamped));
     }
 

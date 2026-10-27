@@ -116,6 +116,11 @@ public final class MinimizerBuild {
         BlockPos pos = hit.getBlockPos();
         Direction face = hit.getDirection();
         BlockState clicked = level.getBlockState(pos);
+        if (minimizer.getItem() instanceof MinimizerItem item && item.gridSize(minimizer) == MinimizerItem.NORMAL_SIZE) {
+            // Normal blocks: where a block placed by this click goes, as vanilla places it.
+            BlockPos into = clicked.canBeReplaced() ? pos : pos.relative(face);
+            return level.getBlockState(into).canBeReplaced() ? new Target(into, MinimizerItem.NORMAL_SIZE) : null;
+        }
         if (clicked.getBlock() instanceof SubgridBlock block) {
             int size = level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.getGridSize() : block.gridSize;
             Vec3i cell = GridRay.cellAt(pos, hit.getLocation(), face, size);

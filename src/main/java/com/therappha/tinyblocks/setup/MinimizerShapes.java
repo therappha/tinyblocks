@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * A Minimizer in a shape mode (BuildMode other than PLACE): the first click marks a corner, the second builds the
  * shape between the two with the block in the main hand — across as many blocks as it spans, making grids of the
- * corner's size where there is air. A sneaking click drops the corner.
+ * corner's size where there is air; at the normal size (1/1), with normal blocks. A sneaking click drops the corner.
  */
 public final class MinimizerShapes {
 
@@ -67,6 +67,18 @@ public final class MinimizerShapes {
 
         int size = target.gridSize();
         int placed = 0;
+        if (size == com.therappha.tinyblocks.items.MinimizerItem.NORMAL_SIZE) {
+            // Normal blocks, into the world, where nothing is in the way (air, grass, water).
+            for (BlockPos pos : cells) {
+                if (!player.isCreative() && stack.isEmpty()) break;
+                if (!level.getBlockState(pos).canBeReplaced() || !level.mayInteract(player, pos)) continue;
+                if (!level.setBlock(pos, state, net.minecraft.world.level.block.Block.UPDATE_ALL)) continue;
+                placed++;
+                if (!player.isCreative()) stack.shrink(1);
+            }
+            finish(level, player, minimizer, hit, state, placed);
+            return;
+        }
         Set<SubgridBlockEntity> touched = new LinkedHashSet<>();
         for (BlockPos fine : cells) {
             if (!player.isCreative() && stack.isEmpty()) break;
@@ -93,6 +105,11 @@ public final class MinimizerShapes {
             // The same delayed resync a hand placement schedules, for grids created just now.
             level.getBlockTicks().schedule(new ScheduledTick<>(level.getBlockState(pos).getBlock(), pos, level.getGameTime() + 2, 0L));
         }
+        finish(level, player, minimizer, hit, state, placed);
+    }
+
+    /** The shape is built: the corner is dropped, and the click sounds and says how much went in. */
+    private static void finish(ServerLevel level, Player player, ItemStack minimizer, BlockHitResult hit, BlockState state, int placed) {
         MinimizerBuild.setCorner(minimizer, null);
         if (placed > 0) {
             SoundType sound = state.getSoundType();

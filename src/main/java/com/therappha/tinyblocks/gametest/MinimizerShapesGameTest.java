@@ -141,4 +141,54 @@ public class MinimizerShapesGameTest {
                 "no 5-grid with the dirt in it above the stone: " + helper.getLevel().getBlockState(real.above()));
         helper.succeed();
     }
+
+    private static void clickTop(GameTestHelper helper, Player player, BlockPos at) {
+        BlockPos real = helper.absolutePos(at);
+        net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
+                net.minecraft.world.phys.Vec3.atCenterOf(real).add(0, 0.5, 0), Direction.UP, real, false);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+                new net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock(player, InteractionHand.MAIN_HAND, real, hit));
+    }
+
+    /** At the normal size (1/1) a shape is built with normal blocks: a 3x3 floor of dirt between two corners. */
+    @GameTest(template = "empty_platform")
+    public void atTheNormalSizeAShapeIsBuiltWithNormalBlocks(GameTestHelper helper) {
+        for (BlockPos at : java.util.List.of(new BlockPos(1, 1, 1), new BlockPos(3, 1, 3))) {
+            helper.setBlock(at, Blocks.STONE);
+        }
+        for (BlockPos at : BlockPos.betweenClosed(new BlockPos(1, 2, 1), new BlockPos(3, 2, 3))) helper.setBlock(at, Blocks.AIR);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT));
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, 1);
+        MinimizerBuild.cycle(minimizer); // FILL
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+
+        clickTop(helper, player, new BlockPos(1, 1, 1));
+        clickTop(helper, player, new BlockPos(3, 1, 3));
+
+        long dirt = java.util.stream.StreamSupport.stream(BlockPos.betweenClosed(new BlockPos(1, 2, 1), new BlockPos(3, 2, 3)).spliterator(), false)
+                .filter(at -> helper.getBlockState(at).is(Blocks.DIRT)).count();
+        helper.assertTrue(dirt == 9, "dirt blocks in the 3x3 floor: " + dirt);
+        helper.succeed();
+    }
+
+    /** At the normal size, in the Normal mode, the Minimizer leaves a click on a piece to vanilla (a normal block). */
+    @GameTest(template = "empty_platform")
+    public void atTheNormalSizeAClickOnAPieceIsLeftToVanilla(GameTestHelper helper) {
+        SubgridBlockEntity be = stoneCorners(helper);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT));
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, 1);
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+
+        var event = new net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock(player, InteractionHand.MAIN_HAND,
+                be.getBlockPos(), SubgridTestSupport.topHit(be, new BlockPos(0, 0, 0)));
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(event);
+
+        helper.assertTrue(!event.isCanceled(), "the click on the piece was taken, not left to vanilla");
+        helper.assertTrue(be.getPieces().size() == 2, "a piece was placed");
+        helper.succeed();
+    }
 }

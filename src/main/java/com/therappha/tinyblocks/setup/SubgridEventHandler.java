@@ -157,6 +157,19 @@ public class SubgridEventHandler {
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
         MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
+        // A Minimizer in a shape mode builds between two corners instead of placing one piece — of any size, the
+        // normal size (1/1) included. Taken whatever was clicked, so a shape click never places a block of its own.
+        if (minimizer != null && blockItem != null
+                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) != com.therappha.tinyblocks.items.BuildMode.PLACE) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            if (level instanceof ServerLevel serverLevel) {
+                MinimizerShapes.click(serverLevel, player, player.getOffhandItem(), minimizer, blockItem, stack, event.getHitVec());
+            }
+            return;
+        }
+        // At the normal size the Minimizer places normal blocks: it stays out of the way, even on a piece.
+        if (minimizer != null && minimizer.gridSize(player.getOffhandItem()) == MinimizerItem.NORMAL_SIZE) return;
         // Any item might interact with or modify a piece on an existing subgrid, or (with the
         // Minimizer in the offhand) start a brand new one — not just BlockItems; a bucket of
         // water should be able to create a fresh subgrid and place water into it the same way a
@@ -197,13 +210,6 @@ public class SubgridEventHandler {
         // of the SubgridBlock instead of ever reaching our own useOn-only handling below.
         event.setCancellationResult(InteractionResult.SUCCESS);
         if (!(level instanceof ServerLevel serverLevel)) return;
-
-        // A Minimizer in a shape mode builds between two corners instead of placing one piece.
-        if (minimizer != null && blockItem != null
-                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) != com.therappha.tinyblocks.items.BuildMode.PLACE) {
-            MinimizerShapes.click(serverLevel, player, player.getOffhandItem(), minimizer, blockItem, stack, event.getHitVec());
-            return;
-        }
 
         // --- Everything below is server-authoritative; recompute against live state. ---
         SubgridBlockEntity be;
