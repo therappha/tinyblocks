@@ -191,4 +191,24 @@ public class MinimizerShapesGameTest {
         helper.assertTrue(be.getPieces().size() == 2, "a piece was placed");
         helper.succeed();
     }
+
+    /** Minimize me: holding a 1/7 Minimizer the player shrinks to 1/7 (size, speed, step), and back on the next press. */
+    @GameTest(template = "empty_platform")
+    public void minimizeMeShrinksThePlayerToTheMinimizersSizeAndBack(GameTestHelper helper) {
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Registration.MINIMIZER.get())); // starts at 1/7
+        double height = player.getBbHeight(), speed = player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+
+        com.therappha.tinyblocks.items.MinimizeMe.toggle(player);
+        player.refreshDimensions();
+        helper.assertTrue(Math.abs(player.getScale() - 1 / 7f) < 1e-4, "scale " + player.getScale() + ", not 1/7");
+        helper.assertTrue(Math.abs(player.getBbHeight() - height / 7) < 1e-4, "hitbox " + player.getBbHeight() + ", not " + height / 7);
+        helper.assertTrue(Math.abs(player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED) - speed / 7) < 1e-6,
+                "speed not a seventh");
+
+        com.therappha.tinyblocks.items.MinimizeMe.toggle(player);
+        player.refreshDimensions();
+        helper.assertTrue(player.getScale() == 1 && Math.abs(player.getBbHeight() - height) < 1e-4, "not back to full size");
+        helper.succeed();
+    }
 }

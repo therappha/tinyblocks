@@ -46,5 +46,8 @@
   "item.tinyblocks.minimizer.sized": "Minimizer (1/%s)",
   "item.tinyblocks.minimizer.tooltip_size": "Right-click the air with it in your main hand to pick the size; Shift+G: build mode",
   "tinyblocks.minimizer.size_board": "Minimizer grid size",
-  "tinyblocks.minimizer.size_row": "Cell size"
+  "tinyblocks.minimizer.size_row": "Cell size",
+  "key.tinyblocks.minimize_me": "Minimize me",
+  "tinyblocks.minimize_me.minimized": "Minimized to 1/%s",
+  "tinyblocks.minimize_me.restored": "Back to full size"
 }

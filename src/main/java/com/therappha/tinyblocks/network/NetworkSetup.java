@@ -28,6 +28,8 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+        registrar.playToServer(MinimizeMePayload.TYPE, MinimizeMePayload.STREAM_CODEC,
+                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizeMe.toggle(ctx.player())));
     }
 
     private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {

@@ -26,6 +26,10 @@ public final class MinimizerKeys {
             KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G,
             "key.categories.tinyblocks");
 
+    /** X (rebindable): shrink to the held Minimizer's size, or back to full size (MinimizeMe). */
+    public static final KeyMapping MINIMIZE_ME = new KeyMapping("key.tinyblocks.minimize_me",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_X, "key.categories.tinyblocks");
+
     private MinimizerKeys() {}
 
     @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
@@ -35,6 +39,7 @@ public final class MinimizerKeys {
         @SubscribeEvent
         public static void onRegisterKeys(RegisterKeyMappingsEvent event) {
             event.register(NEXT_MODE);
+            event.register(MINIMIZE_ME);
         }
     }
 
@@ -51,6 +56,13 @@ public final class MinimizerKeys {
                         || mc.player.getMainHandItem().getItem() instanceof MinimizerItem) {
                     PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
                 }
+            }
+        }
+
+        @SubscribeEvent
+        public static void onMinimizeMe(ClientTickEvent.Post event) {
+            while (MINIMIZE_ME.consumeClick()) {
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizeMePayload.INSTANCE);
             }
         }
 
