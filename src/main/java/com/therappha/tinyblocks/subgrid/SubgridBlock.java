@@ -80,6 +80,17 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
         return new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state);
     }
 
+    /**
+     * The shapes come from the block entity's pieces, so a block state can't cache them: asked without an entity's
+     * context, BlockState#getCollisionShape would answer from a cache built with no block entity — empty. Sable's
+     * collision of entities against a sub-level asks that way, and players fell through the pieces of an assembled
+     * subgrid.
+     */
+    @Override
+    public boolean hasDynamicShape() {
+        return true;
+    }
+
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
