@@ -20,8 +20,8 @@ import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /**
- * A shaft connector meets whatever is across its face: a real block (ShaftConnectorGameTest), or another SubgridBlock
- * — of the same size, cell to cell, or of another size, the cell its socket line meets (ShaftConnectorPiece#partnerCell).
+ * A shaft connector meets whatever is across its face: a real block (SubgridConnectorGameTest), or another
+ * SubgridBlock — of the same size cell to cell; of another size only that grid's own connector facing back.
  */
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -50,16 +50,20 @@ public class SubgridConnectorNeighbourGameTest {
     }
 
     /**
-     * A motor behind a connector on the east face of grid A drives the shaft in grid B east of it, in the cell the
-     * connector meets.
+     * A motor behind a connector on the east face of grid A drives the shaft in grid B east of it: in the cell the
+     * connector meets for the same size, behind B's own connector facing back for another size.
      */
     private static void motorInADrivesB(GameTestHelper helper, int sizeA, int sizeB) {
         SubgridBlockEntity a = grid(helper, new BlockPos(2, 2, 2), sizeA);
         SubgridBlockEntity b = grid(helper, new BlockPos(3, 2, 2), sizeB);
         if (!ConnectorPlacement.place(a, helper.getLevel(), Direction.EAST)) throw new IllegalStateException("no connector");
         SubgridTestSupport.placePiece(a, helper.getLevel(), ShaftConnectorPiece.socket(Direction.EAST, sizeA), motorFacing(Direction.EAST));
-        PlacedPiece shaft = SubgridTestSupport.placePiece(b, helper.getLevel(),
-                ShaftConnectorPiece.partnerCell(Direction.EAST, sizeA, sizeB), shaftX());
+        BlockPos shaftCell = ShaftConnectorPiece.partnerCell(Direction.EAST, sizeA, sizeB);
+        if (sizeA != sizeB) {
+            if (!ConnectorPlacement.place(b, helper.getLevel(), Direction.WEST)) throw new IllegalStateException("no connector on B");
+            shaftCell = ShaftConnectorPiece.socket(Direction.WEST, sizeB);
+        }
+        PlacedPiece shaft = SubgridTestSupport.placePiece(b, helper.getLevel(), shaftCell, shaftX());
 
         helper.startSequence()
                 .thenIdle(120) // past Create's periodic source validation
@@ -83,9 +87,9 @@ public class SubgridConnectorNeighbourGameTest {
         motorInADrivesB(helper, 5, 9);
     }
 
-    /** The other way: a motor in grid B, at the cell the connector meets, drives the shaft behind A's connector. */
+    /** Across sizes a plain piece does not join a connector: a motor in grid B, at the cell A's connector meets, drives nothing. */
     @GameTest(template = PLATFORM, timeoutTicks = 300)
-    public void theGridNextToAConnectorDrivesIt(GameTestHelper helper) {
+    public void anotherSizeJoinsOnlyThroughItsOwnConnector(GameTestHelper helper) {
         SubgridBlockEntity a = grid(helper, new BlockPos(2, 2, 2), 9);
         SubgridBlockEntity b = grid(helper, new BlockPos(3, 2, 2), 5);
         if (!ConnectorPlacement.place(a, helper.getLevel(), Direction.EAST)) throw new IllegalStateException("no connector");
@@ -94,8 +98,27 @@ public class SubgridConnectorNeighbourGameTest {
 
         helper.startSequence()
                 .thenIdle(120)
-                .thenExecute(() -> helper.assertTrue(speed(helper, a, shaft) != 0 && !Float.isNaN(speed(helper, a, shaft)),
-                        "the shaft behind the connector is still: " + speed(helper, a, shaft)))
+                .thenExecute(() -> helper.assertTrue(speed(helper, a, shaft) == 0,
+                        "a plain piece of another size drove the connector: " + speed(helper, a, shaft)))
+                .thenSucceed();
+    }
+
+    /** A 1/7 funnel facing a 1/8 gear: the motor behind the funnel turns a small cogwheel on the gear's side. */
+    @GameTest(template = PLATFORM, timeoutTicks = 300)
+    public void aFunnelFacingAGearJoins(GameTestHelper helper) {
+        SubgridBlockEntity a = grid(helper, new BlockPos(2, 2, 2), 7);
+        SubgridBlockEntity b = grid(helper, new BlockPos(3, 2, 2), 8);
+        if (!ConnectorPlacement.place(a, helper.getLevel(), Direction.EAST)) throw new IllegalStateException("no funnel");
+        if (!ConnectorPlacement.place(b, helper.getLevel(), Direction.WEST)) throw new IllegalStateException("no gear");
+        SubgridTestSupport.placePiece(a, helper.getLevel(), ShaftConnectorPiece.socket(Direction.EAST, 7), motorFacing(Direction.EAST));
+        PlacedPiece cog = SubgridTestSupport.placePiece(b, helper.getLevel(),
+                ShaftConnectorPiece.meshCells(Direction.WEST, 8).sides().get(0),
+                AllBlocks.COGWHEEL.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.X));
+
+        helper.startSequence()
+                .thenIdle(120)
+                .thenExecute(() -> helper.assertTrue(Math.abs(speed(helper, b, cog)) == 32,
+                        "the cogwheel on the gear's side turns at " + speed(helper, b, cog) + ", not twice the motor's 16"))
                 .thenSucceed();
     }
 

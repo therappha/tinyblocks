@@ -86,7 +86,7 @@ public final class KineticBridge {
     /**
      * What a plate meets across its face: the real kinetic block there, or, when that is another SubgridBlock, the
      * piece in the cell its socket line meets (ShaftConnectorPiece#partnerCell) — of the same size the cell right
-     * across, of another size the one whose square holds the socket line. Null when nothing kinetic is there.
+     * across; of another size only that grid's own connector facing back. Null when nothing kinetic is there.
      */
     @Nullable
     private static KineticBlockEntity partnerOf(Connector plate) {
@@ -96,34 +96,15 @@ public final class KineticBridge {
         if (there instanceof SubgridBlockEntity other) {
             BlockPos cell = ShaftConnectorPiece.partnerCell(plate.face(), plate.grid().getGridSize(), other.getGridSize());
             PlacedPiece piece = other.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
-            return piece != null && VanillaBlockPiece.boundPhantom(piece, other, level) instanceof KineticBlockEntity k ? k : null;
+            if (piece == null) return null;
+            // Across sizes only a connector facing back joins: two frames meet only where both sides say so.
+            if (other.getGridSize() != plate.grid().getGridSize()
+                    && ShaftConnectorPiece.faceOf(piece) != plate.face().getOpposite()) {
+                return null;
+            }
+            return VanillaBlockPiece.boundPhantom(piece, other, level) instanceof KineticBlockEntity k ? k : null;
         }
         return there instanceof KineticBlockEntity k ? k : null;
-    }
-
-    /**
-     * The other way round, for a piece of a grid: the plate of a SubgridBlock of ANOTHER size next to it whose
-     * socket line meets this piece's cell. (Next to a grid of the same size the virtual frames run on, so the piece
-     * finds a plate there on its own.)
-     */
-    @Nullable
-    private static KineticBlockEntity plateAcross(KineticBlockEntity phantom) {
-        PhantomOwners.Owner owner = PhantomOwners.of(phantom);
-        SubgridBlockEntity grid = owner == null ? null : owner.grid();
-        if (grid == null || !(grid.getLevel() instanceof ServerLevel level)) return null;
-        BlockPos cell = owner.cell();
-        int size = grid.getGridSize();
-        for (Direction towards : Direction.values()) {
-            int coordinate = cell.get(towards.getAxis());
-            if (coordinate != (towards.getAxisDirection() == Direction.AxisDirection.POSITIVE ? size - 1 : 0)) continue;
-            if (!(level.getBlockEntity(grid.getBlockPos().relative(towards)) instanceof SubgridBlockEntity other)
-                    || other.getGridSize() == size) continue;
-            Direction face = towards.getOpposite();
-            if (!ShaftConnectorPiece.partnerCell(face, other.getGridSize(), size).equals(cell)) continue;
-            KineticBlockEntity plate = connectorOn(other, face, level);
-            if (plate != null) return plate;
-        }
-        return null;
     }
 
     /** Whether {@code be} is a plate's partner across its face (see partnerOf). */
@@ -140,14 +121,13 @@ public final class KineticBridge {
     }
 
     /**
-     * findConnectedNeighbour for a phantom looking across into a grid of another size: Create looks the position up
-     * in the phantom's own fake space, whose frame the other grid's virtual positions are not in.
+     * findConnectedNeighbour for a plate looking across into a grid of another size, at that grid's connector: Create
+     * looks the position up in the plate's own fake space, whose frame the other grid's virtual positions are not in.
      */
     @Nullable
     public static KineticBlockEntity acrossGrids(KineticBlockEntity current, BlockPos neighbourPos) {
-        if (!isPhantom(current)) return null;
-        Connector plate = connectorOf(current);
-        KineticBlockEntity other = plate != null ? (otherSizeAcross(plate) != null ? partnerOf(plate) : null) : plateAcross(current);
+        Connector plate = isPhantom(current) ? connectorOf(current) : null;
+        KineticBlockEntity other = plate != null && otherSizeAcross(plate) != null ? partnerOf(plate) : null;
         return other != null && other.getBlockPos().equals(neighbourPos) ? other : null;
     }
 
@@ -236,14 +216,7 @@ public final class KineticBridge {
      */
     public static List<BlockPos> withFunnelEnds(KineticBlockEntity be, List<BlockPos> locations) {
         Connector connector = connectorOf(be);
-        if (connector == null) {
-            // A piece next to a grid of another size whose plate meets it: that plate, in its own frame.
-            KineticBlockEntity plate = isPhantom(be) ? plateAcross(be) : null;
-            if (plate == null || locations.contains(plate.getBlockPos())) return locations;
-            locations = new java.util.ArrayList<>(locations);
-            locations.add(plate.getBlockPos());
-            return locations;
-        }
+        if (connector == null) return locations;
         SubgridBlockEntity grid = connector.grid();
         BlockPos socket = ShaftConnectorPiece.socket(connector.face(), grid.getGridSize());
         // A gear has no socket: it reaches out from its own cells, and in to the cogwheels it meshes with.
@@ -352,7 +325,7 @@ public final class KineticBridge {
             // Checked before trusting `found`: the fake space reads a position of another frame (a real one, or
             // a grid of another size) as one of its own.
             Connector plate = connectorOf(self);
-            KineticBlockEntity across = plate != null ? partnerOf(plate) : plateAcross(self);
+            KineticBlockEntity across = plate != null ? partnerOf(plate) : null;
             if (across != null && across.getBlockPos().equals(source)) return across;
             return found;
         }
