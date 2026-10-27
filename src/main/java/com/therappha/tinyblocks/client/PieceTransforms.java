@@ -56,8 +56,8 @@ public final class PieceTransforms {
                                            axis == Direction.Axis.Y ? along : centre,
                                            axis == Direction.Axis.Z ? along : centre);
             Slice gear = new Slice(middle.sub(cell / 2, cell / 2, cell / 2), new Vector3f(cell, cell, cell));
-            // 1: a full-size shaft end, a quarter of a cell thick, right on the face: what meets the shaft outside.
-            float thickness = cell / 4;
+            // 1: a full-size shaft end from the face to the gear's middle: what meets the shaft outside.
+            float thickness = cell / 2;
             float at = positive ? 1 - thickness : 0;
             Slice end = new Slice(
                     new Vector3f(axis == Direction.Axis.X ? at : 0, axis == Direction.Axis.Y ? at : 0, axis == Direction.Axis.Z ? at : 0),

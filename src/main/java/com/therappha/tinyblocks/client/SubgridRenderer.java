@@ -76,7 +76,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                         poseStack.pushPose();
                         poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                         poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
-                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource, packedLight);
+                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
+                                packedLight, be.getBlockPos().relative(piece.facing));
                         poseStack.popPose();
                     }
                 }

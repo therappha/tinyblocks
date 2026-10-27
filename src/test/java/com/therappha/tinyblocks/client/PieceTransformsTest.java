@@ -34,7 +34,7 @@ class PieceTransformsTest {
 
     /**
      * An 8-grid's gear connector: the shaftless gear a cell's scale (two cells across), then a full-size shaft end
-     * a quarter of a cell thick on the face.
+     * from the face to the gear's middle, half a cell.
      */
     @Test
     void aGearIsTheGearThenAFullSizeShaftEndOnTheFace() {
@@ -42,7 +42,7 @@ class PieceTransformsTest {
         assertEquals(2, slices.size());
         assertEquals(1f / 8, slices.get(0).scale().y, 1e-6);
         assertEquals(1f, slices.get(1).scale().y, 1e-6);
-        assertEquals(1f / 32, slices.get(1).scale().x, 1e-6);
-        assertEquals(1f - 1f / 32, slices.get(1).translation().x, 1e-6);
+        assertEquals(1f / 16, slices.get(1).scale().x, 1e-6);
+        assertEquals(1f - 1f / 16, slices.get(1).translation().x, 1e-6);
     }
 }

@@ -121,7 +121,8 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
             // A gear connector is drawn from Create's parts (shaftless gear, shaft end), not as the cogwheel it stands in as.
             slices.add(createChild(gear
                     ? embedding -> com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.visual(embedding,
-                            (com.simibubi.create.content.kinetics.base.KineticBlockEntity) phantom, slice, partialTick)
+                            (com.simibubi.create.content.kinetics.base.KineticBlockEntity) phantom, slice, partialTick,
+                            blockEntity.getBlockPos().relative(piece.facing))
                     : embedding -> visualizer.createVisual(embedding, phantom, partialTick),
                     phantom, state, transforms.get(i), partialTick));
         }
