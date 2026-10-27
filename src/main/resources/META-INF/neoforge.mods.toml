@@ -38,6 +38,14 @@ config = "tinyblocks.sable.mixins.json"
     ordering = "NONE"
     side = "BOTH"
 
+# Create: the shaft connector, the gear, value boxes, links and belts on pieces are all built on it.
+[[dependencies.tinyblocks]]
+    modId = "create"
+    type = "required"
+    versionRange = "[6.0.11,7)"
+    ordering = "AFTER"
+    side = "BOTH"
+
 # EXPERIMENT: optional so the mod still loads without Flywheel; ordered after it when present.
 [[dependencies.tinyblocks]]
     modId = "flywheel"

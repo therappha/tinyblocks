@@ -7,7 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
-/** The recipes that load depend on whether Create is installed; it is here. */
+/** The Minimizer and shaft connector recipes (Create is required, so its items are in them). */
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
 public class RecipesGameTest {
@@ -17,9 +17,8 @@ public class RecipesGameTest {
     }
 
     @GameTest(template = "empty_platform")
-    public void withCreateTheMinimizerTakesAnElectronTubeAndTheConnectorIsCraftable(GameTestHelper helper) {
-        helper.assertTrue(loaded(helper, "minimizer_create"), "no Minimizer recipe with an electron tube");
-        helper.assertTrue(!loaded(helper, "minimizer"), "the recipe without Create loaded alongside it");
+    public void theMinimizerAndTheConnectorAreCraftable(GameTestHelper helper) {
+        helper.assertTrue(loaded(helper, "minimizer"), "no Minimizer recipe with an electron tube");
         helper.assertTrue(loaded(helper, "shaft_connector"), "no shaft connector recipe");
         helper.succeed();
     }

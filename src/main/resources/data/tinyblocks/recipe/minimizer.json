@@ -1,22 +1,17 @@
 {
-  "neoforge:conditions": [
-    {
-      "type": "neoforge:not",
-      "value": {
-        "type": "neoforge:mod_loaded",
-        "modid": "create"
-      }
-    }
-  ],
   "type": "minecraft:crafting_shaped",
   "category": "tools",
   "pattern": [
     "A",
+    "E",
     "S"
   ],
   "key": {
     "A": {
       "item": "minecraft:amethyst_shard"
+    },
+    "E": {
+      "item": "create:electron_tube"
     },
     "S": {
       "item": "minecraft:stick"
