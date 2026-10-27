@@ -1,0 +1,31 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.therappha.tinyblocks.mixin.create",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BlockEntityConfigurationPacketMixin",
+    "KineticBlockEntityMixin",
+    "KineticNetworkMixin",
+    "LinkedControllerBindPacketMixin",
+    "LinkBehaviourMixin",
+    "RedstoneLinkNetworkHandlerMixin",
+    "RotationPropagatorAccessor",
+    "RotationPropagatorMixin",
+    "TorquePropagatorMixin"
+  ],
+  "client": [
+    "SlotItemDistanceMixin",
+    "GoggleOverlayRendererMixin",
+    "LevelVirtualViewMixin",
+    "LinkedControllerClientHandlerMixin",
+    "OutlineParamsAccessor",
+    "OutlinerMixin",
+    "PlacementClientMixin",
+    "ValueBoxTickMixin",
+    "ValueSettingsClientMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

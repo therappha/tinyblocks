@@ -48,10 +48,8 @@ final class SubgridTestSupport {
             throw new IllegalStateException("cell " + anchor + " in subgrid at " + be.getBlockPos() + " is already occupied");
         }
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(state, fakeLevel, anchor, Blocks.AIR.defaultBlockState(), false);
-        for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
-            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(), level.getGameTime() + entry.delay());
-        }
+        BlockAccess.onPlace(state, fakeLevel, fakeLevel.world(anchor), Blocks.AIR.defaultBlockState(), false);
+        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         return piece;
     }
 
@@ -66,8 +64,9 @@ final class SubgridTestSupport {
                               net.minecraft.world.item.ItemStack stack, BlockPos anchor) {
         com.therappha.tinyblocks.v2.FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, level);
         java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        BlockPos at = fakeLevel.world(anchor); // world frame, see FakeSpace#world
         net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
-                net.minecraft.world.phys.Vec3.atCenterOf(anchor), Direction.UP, anchor, false);
+                net.minecraft.world.phys.Vec3.atCenterOf(at), Direction.UP, at, false);
         net.minecraft.world.InteractionResult result = stack.useOn(
                 new net.minecraft.world.item.context.UseOnContext(fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, stack, hit));
 
@@ -76,7 +75,7 @@ final class SubgridTestSupport {
             BlockState newState = touched.getValue();
             if (newState.equals(before.get(pos))) continue;
             PlacedPiece piece = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
-            if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                 piece.runtimeState = newState;
                 be.notifyNeighbors(piece);
                 be.notifyUpdate();
@@ -85,12 +84,45 @@ final class SubgridTestSupport {
         return result != net.minecraft.world.InteractionResult.PASS;
     }
 
-    /** Simulates a right-click on an existing piece (lever toggle, etc.) via its own onUse. */
+    /** Simulates a right-click on an existing piece (lever toggle, etc.) via its own onUse, on the middle of its top face. */
     static net.minecraft.world.InteractionResult useOnPiece(SubgridBlockEntity be, ServerLevel level,
                                                               PlacedPiece piece, net.minecraft.world.entity.player.Player player) {
-        net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
-                net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()), Direction.UP, be.getBlockPos(), false);
-        return piece.definition.onUse(piece, level, be.getBlockPos(), be, player, hit);
+        return piece.definition.onUse(piece, level, be.getBlockPos(), be, player, topHit(be, piece.anchor));
+    }
+
+    /** A real-level hit on the middle of the top face of {@code cell}. */
+    static net.minecraft.world.phys.BlockHitResult topHit(SubgridBlockEntity be, BlockPos cell) {
+        return faceHit(be, cell, Direction.UP);
+    }
+
+    /** A real-level hit on the middle of {@code face} of {@code cell}, as a player's click on it would be. */
+    static net.minecraft.world.phys.BlockHitResult faceHit(SubgridBlockEntity be, BlockPos cell, Direction face) {
+        double size = be.getGridSize();
+        net.minecraft.world.phys.Vec3 point = net.minecraft.world.phys.Vec3.atCenterOf(cell)
+                .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(face.getNormal()).scale(0.5))
+                .scale(1 / size)
+                .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(be.getBlockPos()));
+        return new net.minecraft.world.phys.BlockHitResult(point, face, be.getBlockPos(), false);
+    }
+
+    /** A player's right click on the SubgridBlock at {@code hit}, posted as the event SubgridEventHandler listens to. */
+    static void rightClick(SubgridBlockEntity be, net.minecraft.world.entity.player.Player player,
+                           net.minecraft.world.phys.BlockHitResult hit) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(new net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock(
+                player, net.minecraft.world.InteractionHand.MAIN_HAND, be.getBlockPos(), hit));
+    }
+
+    /**
+     * A server player of this test's own, standing by the grid. NeoForge's shared FakePlayerFactory#getMinecraft is
+     * one player for all tests, and tests run side by side: one moving it took another's out of reach. A fake
+     * player drops what other mods send it, where a mock player's missing connection refused it.
+     */
+    static net.minecraft.server.level.ServerPlayer serverPlayer(net.minecraft.gametest.framework.GameTestHelper helper,
+                                                                 SubgridBlockEntity be) {
+        net.minecraft.server.level.ServerPlayer player = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.getLevel(),
+                new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "tinyblocks-test"));
+        player.moveTo(net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()).add(0, 0, 2));
+        return player;
     }
 
     static BlockState stateOf(SubgridBlockEntity be, BlockPos anchor) {

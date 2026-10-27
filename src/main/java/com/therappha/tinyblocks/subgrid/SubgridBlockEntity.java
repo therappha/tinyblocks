@@ -259,7 +259,12 @@ public class SubgridBlockEntity extends BlockEntity {
         if (existing != null) {
             if (existing.definition != definition) return null;
             if (runtimeState.equals(existing.runtimeState)) return existing;
+            Object was = existing.runtimeState;
             existing.runtimeState = runtimeState;
+            // Its block entity follows, as for a change made in this grid's own fake space.
+            if (was instanceof BlockState wasState && runtimeState instanceof BlockState nowState) {
+                com.therappha.tinyblocks.v2.VanillaBlockPiece.followStateChange(this, existing, wasState, nowState);
+            }
             notifyNeighbors(existing);
             notifyUpdate();
             return existing;
@@ -270,12 +275,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
-        return switch (gridSize) {
-            case 2 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_2.get();
-            case 4 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_4.get();
-            case 16 -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK_16.get();
-            default -> com.therappha.tinyblocks.setup.Registration.SUBGRID_BLOCK.get();
-        };
+        return com.therappha.tinyblocks.setup.Registration.subgridBlock(gridSize);
     }
 
     /**
@@ -312,9 +312,83 @@ public class SubgridBlockEntity extends BlockEntity {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
                     new net.minecraft.world.level.ChunkPos(worldPosition),
                     new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+            removed.definition.onRemoved(removed, serverLevel, this);
         }
         notifyNeighbors(removed);
         return removed;
+    }
+
+    /**
+     * Set when a fake level's sendBlockUpdated fires (a phantom BlockEntity asked to sync, e.g. Create's
+     * SmartBlockEntity#sendData); flushed once per tick in serverTick as PhantomDataPayloads.
+     */
+    private boolean phantomDataDirty = false;
+
+    public void markPhantomDataDirty() {
+        phantomDataDirty = true;
+    }
+
+    /** How many times phantom data was pushed to clients; lets GameTests observe the sync without a client. */
+    private int phantomDataFlushes = 0;
+
+    public int phantomDataFlushes() {
+        return phantomDataFlushes;
+    }
+
+    /** How often (ticks) phantom data is compared against what clients last received. */
+    private static final int PHANTOM_CHANGE_SCAN_INTERVAL = 20;
+
+    /**
+     * Pushes phantom block entity data to clients. Always when something marked it dirty (everything is
+     * resent), and otherwise every few ticks for just the phantoms whose saved data changed since the last
+     * push: block entities change on their own after the event that touched them (a kinetic block dropping
+     * to speed 0 a while after its motor was removed) and nothing reliably calls back for that (Create's
+     * sendData goes through ServerChunkCache#blockChanged, which the fake levels cannot intercept).
+     * Containers are left out of the periodic scan: serializing a full inventory every pass is wasteful and
+     * their menus already sync themselves.
+     */
+    private void flushPhantomData(ServerLevel level) {
+        boolean all = phantomDataDirty;
+        if (!all && level.getGameTime() % PHANTOM_CHANGE_SCAN_INTERVAL != 0) return;
+        phantomDataDirty = false;
+        boolean sentAny = false;
+        for (PlacedPiece piece : pieces) {
+            if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) continue;
+            // A piston's moving-block BE has its own dedicated animation payload (see PistonAnimationPayload).
+            if (phantom instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) continue;
+            if (!all && phantom instanceof net.minecraft.world.Container) continue;
+            var tag = phantom.saveCustomOnly(level.registryAccess());
+            int hash = tag.hashCode();
+            if (!all && hash == piece.lastSyncedPhantomHash) continue;
+            piece.lastSyncedPhantomHash = hash;
+            sentAny = true;
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(level,
+                    new net.minecraft.world.level.ChunkPos(worldPosition),
+                    new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition, new BlockPos(piece.anchor), tag));
+        }
+        if (sentAny) phantomDataFlushes++;
+    }
+
+    private boolean chunkUnloaded = false;
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        chunkUnloaded = true;
+    }
+
+    /**
+     * The SubgridBlock itself was removed: every piece goes with it, so each gets the same onRemoved a single
+     * broken piece gets (a Create shaft inside lets the network around it know at once). Not on a chunk
+     * unload, which only stops the pieces running.
+     */
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (chunkUnloaded || !(level instanceof ServerLevel serverLevel)) return;
+        for (PlacedPiece piece : List.copyOf(pieces)) {
+            piece.definition.onRemoved(piece, serverLevel, this);
+        }
     }
 
     public void serverTick(ServerLevel level) {
@@ -341,6 +415,25 @@ public class SubgridBlockEntity extends BlockEntity {
         drainScheduledTicks(level);
         sampleRandomTicks(level);
         tickPendingDrops(level);
+        flushPhantomData(level);
+        updateRedstoneOutputs(level);
+        removeIfLeftEmpty(level);
+    }
+
+    /** How long a grid stays empty before it goes: past any operation still bringing a piece in (a piston's move). */
+    static final int EMPTY_GRACE_TICKS = 20;
+    private int emptyTicks = 0;
+
+    /**
+     * A grid whose last piece went — however it went: mined, pushed out by a piston, taken apart by Create, fallen —
+     * or that was made and never got one, removes its SubgridBlock once nothing is pending in it any more.
+     */
+    private void removeIfLeftEmpty(ServerLevel level) {
+        if (!pieces.isEmpty() || !pendingDrops.isEmpty() || !scheduledTicks.isEmpty() || hasActiveCaptures()) {
+            emptyTicks = 0;
+            return;
+        }
+        if (++emptyTicks >= EMPTY_GRACE_TICKS) level.removeBlock(worldPosition, false);
     }
 
     /**
@@ -759,6 +852,26 @@ public class SubgridBlockEntity extends BlockEntity {
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+            markNeighbouringPhantomsDirty();
+        }
+    }
+
+    /**
+     * A change in this grid can alter the phantom block entities of the grids next to it without anything
+     * telling THEM (Create's rotation propagating across the edge sets the neighbour's speed, but only this
+     * grid is re-synced); queue a phantom data push for each adjacent same-size grid. Skipped when this grid
+     * holds no phantom block entity of its own, so plain block grids (water, redstone) cause no extra traffic.
+     */
+    private void markNeighbouringPhantomsDirty() {
+        boolean anyPhantom = false;
+        for (PlacedPiece piece : pieces) {
+            if (piece.runtimeBlockEntity != null) { anyPhantom = true; break; }
+        }
+        if (!anyPhantom) return;
+        for (Direction dir : Direction.values()) {
+            if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other && other.gridSize == gridSize) {
+                other.markPhantomDataDirty();
+            }
         }
     }
 
@@ -826,6 +939,211 @@ public class SubgridBlockEntity extends BlockEntity {
         cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
     }
 
+    // --- Redstone through the faces ---
+
+    /**
+     * Each face gives the block on that side the strongest signal among the pieces against it, weak and strong
+     * alike (SubgridBlock#getSignal), and, for a SubgridBlock of another size on that side, cell by cell
+     * (overlapSignal). Per face, indexed by the cell's two coordinates across it (faceIndex).
+     */
+    private int[][] weakCells = new int[6][0], strongCells = new int[6][0];
+    private final int[] weakFace = new int[6], strongFace = new int[6];
+    private int signalKey;
+    private boolean signalsBuilt = false;
+
+    /** Changes when a piece is added, removed or changes state: states are interned, so their identities tell. */
+    private int pieceKey() {
+        int key = gridSize;
+        for (PlacedPiece p : pieces) {
+            key = 31 * key + p.anchor.hashCode();
+            key = 31 * key + System.identityHashCode(p.runtimeState);
+        }
+        return key;
+    }
+
+    /** Index of the cell (x,y,z) on a face along {@code axis}: its two other coordinates, in x, y, z order. */
+    private int faceIndex(Direction.Axis axis, int x, int y, int z) {
+        return switch (axis) {
+            case X -> y * gridSize + z;
+            case Y -> x * gridSize + z;
+            case Z -> x * gridSize + y;
+        };
+    }
+
+    private static boolean onFace(Direction face, int x, int y, int z, int size) {
+        int coordinate = face.getAxis().choose(x, y, z);
+        return coordinate == (face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? size - 1 : 0);
+    }
+
+    private void refreshSignals() {
+        int key = pieceKey();
+        if (signalsBuilt && key == signalKey) return;
+        signalsBuilt = true;
+        signalKey = key;
+        weakCells = new int[6][gridSize * gridSize];
+        strongCells = new int[6][gridSize * gridSize];
+        Arrays.fill(weakFace, 0);
+        Arrays.fill(strongFace, 0);
+        if (!(level instanceof ServerLevel server)) return;
+        net.minecraft.world.level.Level space = null;
+        for (PlacedPiece p : pieces) {
+            if (!(p.runtimeState instanceof BlockState state) || !state.isSignalSource()) continue;
+            for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
+                for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
+                    for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
+                        for (Direction face : Direction.values()) {
+                            if (!onFace(face, x, y, z, gridSize)) continue;
+                            if (space == null) space = com.therappha.tinyblocks.v2.VanillaBlockPiece.buildFakeSpace(this, server);
+                            // Asked as the block across that face would: the direction points from it into the grid.
+                            BlockPos at = virtualPosOf(new BlockPos(x, y, z));
+                            Direction towards = face.getOpposite();
+                            int weak = state.getSignal(space, at, towards), strong = state.getDirectSignal(space, at, towards);
+                            int f = face.ordinal(), i = faceIndex(face.getAxis(), x, y, z);
+                            weakCells[f][i] = Math.max(weakCells[f][i], weak);
+                            strongCells[f][i] = Math.max(strongCells[f][i], strong);
+                            weakFace[f] = Math.max(weakFace[f], weak);
+                            strongFace[f] = Math.max(strongFace[f], strong);
+                        }
+        }
+    }
+
+    /** The signal this grid gives the block across {@code face}: the strongest of the pieces against it. */
+    public int faceSignal(Direction face, boolean strong) {
+        refreshSignals();
+        return (strong ? strongFace : weakFace)[face.ordinal()];
+    }
+
+    /**
+     * The signal this grid gives, across {@code face}, the cell (u, v) of a SubgridBlock of {@code otherSize} there:
+     * the strongest of the pieces whose squares on the shared face overlap that cell's.
+     */
+    public int overlapSignal(Direction face, int otherSize, int u, int v, boolean strong) {
+        refreshSignals();
+        int[] cells = (strong ? strongCells : weakCells)[face.ordinal()];
+        int best = 0;
+        for (int i = u * gridSize / otherSize; i < gridSize && i * otherSize < (u + 1) * gridSize; i++) {
+            if ((i + 1) * otherSize <= u * gridSize) continue;
+            for (int j = v * gridSize / otherSize; j < gridSize && j * otherSize < (v + 1) * gridSize; j++) {
+                if ((j + 1) * otherSize <= v * gridSize) continue;
+                best = Math.max(best, cells[i * gridSize + j]);
+            }
+        }
+        return best;
+    }
+
+    /** The two coordinates across {@code axis} of the cell (x,y,z), as faceIndex orders them. */
+    public static int[] acrossFace(Direction.Axis axis, int x, int y, int z) {
+        return switch (axis) {
+            case X -> new int[] {y, z};
+            case Y -> new int[] {x, z};
+            case Z -> new int[] {x, y};
+        };
+    }
+
+    /** Once a tick: when what the faces give changed, the blocks around are told, as a lever tells them. */
+    private void updateRedstoneOutputs(ServerLevel level) {
+        if (signalsBuilt && pieceKey() == signalKey) return;
+        int[][] weakBefore = weakCells, strongBefore = strongCells;
+        int[] strongFaceBefore = strongFace.clone();
+        refreshSignals();
+        if (Arrays.deepEquals(weakBefore, weakCells) && Arrays.deepEquals(strongBefore, strongCells)) return;
+        Block block = getBlockState().getBlock();
+        level.updateNeighborsAt(worldPosition, block);
+        for (Direction face : Direction.values()) {
+            if (strongFaceBefore[face.ordinal()] != strongFace[face.ordinal()]) {
+                level.updateNeighborsAt(worldPosition.relative(face), block); // what that block now powers in turn
+            }
+        }
+    }
+
+    /** The block across {@code face} changed: the pieces against that face look again (a signal there, for one). */
+    public void notifyFace(Direction face) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        for (PlacedPiece piece : new ArrayList<>(pieces)) {
+            boolean against = false;
+            for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX() && !against; x++)
+                for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY() && !against; y++)
+                    for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ() && !against; z++)
+                        against = onFace(face, x, y, z, gridSize);
+            if (!against || !pieces.contains(piece)) continue;
+            try {
+                piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+            } catch (Exception e) {
+                logTickFailure("onNeighborChanged (real neighbour)", piece, e);
+            }
+        }
+    }
+
+    private VoxelShape outlineShape = Shapes.empty();
+    private int outlineKey;
+    private boolean outlineBuilt = false;
+
+    /**
+     * What a crosshair or a click hits: each piece's own shape, shrunk into its cell — a redstone link is its thin
+     * plate, so a click lands on the plate where its frequency slots are, not on the face of a whole cell. (Collision
+     * stays whole cells: getCachedShape.) Rebuilt only when a piece or its state changed; states are interned, so
+     * their identities say whether one did.
+     */
+    public VoxelShape getOutlineShape() {
+        int key = gridSize;
+        for (PlacedPiece p : pieces) {
+            key = 31 * key + p.anchor.hashCode();
+            key = 31 * key + System.identityHashCode(p.runtimeState);
+        }
+        if (!outlineBuilt || key != outlineKey) {
+            outlineShape = buildOutlineShape();
+            outlineKey = key;
+            outlineBuilt = true;
+        }
+        return outlineShape;
+    }
+
+    /** The shape of {@code piece} in its own block space (0..1), or null where it fills its cells whole. */
+    @javax.annotation.Nullable
+    public static VoxelShape pieceShape(PlacedPiece piece) {
+        if (!(piece.runtimeState instanceof net.minecraft.world.level.block.state.BlockState state)) return null;
+        if (piece.footprint.getX() != 1 || piece.footprint.getY() != 1 || piece.footprint.getZ() != 1) return null;
+        VoxelShape shape;
+        try {
+            shape = state.getShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        } catch (RuntimeException e) {
+            return null; // a shape that needs a real world around it
+        }
+        // An empty shape (light, structure void) would leave the piece impossible to aim at, so to break.
+        if (shape.isEmpty() || net.minecraft.world.level.block.Block.isShapeFullBlock(shape)) return null;
+        return shape;
+    }
+
+    private VoxelShape buildOutlineShape() {
+        var whole = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
+        boolean anyWhole = false;
+        VoxelShape partial = Shapes.empty();
+        double cell = 1.0 / gridSize;
+        for (PlacedPiece p : pieces) {
+            VoxelShape shape = pieceShape(p);
+            if (shape == null) {
+                for (int x = 0; x < p.footprint.getX(); x++)
+                    for (int y = 0; y < p.footprint.getY(); y++)
+                        for (int z = 0; z < p.footprint.getZ(); z++) {
+                            int cx = p.anchor.getX() + x, cy = p.anchor.getY() + y, cz = p.anchor.getZ() + z;
+                            if (!outOfBounds(cx, cy, cz)) {
+                                whole.fill(cx, cy, cz);
+                                anyWhole = true;
+                            }
+                        }
+                continue;
+            }
+            for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
+                partial = Shapes.joinUnoptimized(partial, Shapes.create(
+                        (p.anchor.getX() + box.minX) * cell, (p.anchor.getY() + box.minY) * cell, (p.anchor.getZ() + box.minZ) * cell,
+                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell),
+                        net.minecraft.world.phys.shapes.BooleanOp.OR);
+            }
+        }
+        VoxelShape out = anyWhole ? ShapeAccess.wrap(whole) : Shapes.empty();
+        return partial.isEmpty() ? out : Shapes.joinUnoptimized(out, partial, net.minecraft.world.phys.shapes.BooleanOp.OR).optimize();
+    }
+
     public int indexOf(int x, int y, int z) {
         return y * gridSize * gridSize + z * gridSize + x;
     }
@@ -845,6 +1163,37 @@ public class SubgridBlockEntity extends BlockEntity {
                 worldPosition.getY() + (local.getY() + 0.5) * cell,
                 worldPosition.getZ() + (local.getZ() + 0.5) * cell
         );
+    }
+
+    /**
+     * Virtual-frame position of local cell (0,0,0). The frame is global: every SubgridBlock sits at
+     * {@code worldPosition * gridSize}, so the cells of two neighbouring grids are adjacent in it exactly
+     * like the blocks are in the world. A lookup that steps across a grid edge therefore lands on the
+     * neighbour's own phantom block entity at a position consistent with the one asked for, which is what
+     * lookups that compare block entity positions (Create's rotation propagation) need.
+     */
+    public BlockPos virtualOrigin() {
+        return new BlockPos(
+                wrapHorizontal(worldPosition.getX()) * gridSize,
+                worldPosition.getY() * gridSize,
+                wrapHorizontal(worldPosition.getZ()) * gridSize);
+    }
+
+    /**
+     * Horizontal virtual coordinates are world coordinates times the grid size, which would leave the world
+     * border (+-30M) for any grid far from the origin and make vanilla reject every cell there. Folding the world
+     * position into a 1M-wide window first keeps them inside (1M * 16 = 16M); the only cost is that two grids
+     * facing each other across a window seam (every 1M blocks) are no longer adjacent in the frame.
+     */
+    public static final int HORIZONTAL_WINDOW = 1 << 20;
+
+    private static int wrapHorizontal(int coordinate) {
+        return Math.floorMod(coordinate + HORIZONTAL_WINDOW / 2, HORIZONTAL_WINDOW) - HORIZONTAL_WINDOW / 2;
+    }
+
+    /** World-frame position a phantom block entity for the piece at {@code cell} lives at. */
+    public BlockPos virtualPosOf(net.minecraft.core.Vec3i cell) {
+        return virtualOrigin().offset(cell);
     }
 
     private boolean outOfBounds(int x, int y, int z) {

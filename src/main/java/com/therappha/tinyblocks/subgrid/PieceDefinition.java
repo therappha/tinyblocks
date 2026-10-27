@@ -118,6 +118,12 @@ public abstract class PieceDefinition {
     public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {}
 
     /**
+     * Called on the server right after {@code piece} was taken out of {@code be} (broken, or the whole
+     * SubgridBlock removed). Mirrors a real block entity being removed with its block.
+     */
+    public void onRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {}
+
+    /**
      * Called on the server when a piece adjacent to this one (within the same subgrid) is
      * placed, removed, or reports a state change from tick(). Mirrors vanilla neighborChanged.
      * Interactive pieces that change state in onUse() can trigger this themselves by calling

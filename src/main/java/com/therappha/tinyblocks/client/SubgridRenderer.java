@@ -5,6 +5,7 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
+import java.util.List;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -61,44 +62,94 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 blockRenderer.renderLiquid(piece.anchor, fluidView, fluidBuffer, state, fluidState);
             }
 
-            poseStack.pushPose();
-            poseStack.translate(piece.anchor.getX() * cell, piece.anchor.getY() * cell, piece.anchor.getZ() * cell);
-            poseStack.scale(cell, cell, cell);
-
-            blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
-
-            // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
-            // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
-            // static baked model — renderSingleBlock above already no-ops for these
-            // (RenderShape.INVISIBLE, or just has nothing interesting to show statically). A piston
-            // gets its runtimeBlockEntity from the dedicated animation payload (see syncBlockEntity/
-            // applyClientAnimation) for smooth per-tick progress; for everything else, lazily build
-            // the SAME phantom BlockEntity blockEntityFor already builds server-side, straight from
-            // this piece's synced extraData "be" NBT — no piston-specific plumbing needed, exactly
-            // how vanilla's own BlockEntityRenderDispatcher works generically off whatever
-            // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
-            // itself caches onto piece.runtimeBlockEntity).
-            if (piece.runtimeBlockEntity == null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
-            if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity) {
-                BlockEntityRenderer<BlockEntity> ber =
-                        Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
-                if (ber != null) {
-                    ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+            // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
+            List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece));
+            if (isGear(be, piece)) {
+                if (piece.runtimeBlockEntity instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity gear
+                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
+                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
+                    for (int i = 0; i < slices.size(); i++) {
+                        PieceTransforms.Slice slice = slices.get(i);
+                        poseStack.pushPose();
+                        poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                        poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
+                                packedLight, be.getBlockPos().relative(piece.facing));
+                        poseStack.popPose();
+                    }
                 }
+                continue;
             }
+            for (PieceTransforms.Slice slice : slices) {
+                poseStack.pushPose();
+                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
 
-            if (piece == crackedPiece) {
-                ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
-                    "textures/block/destroy_stage_" + crackStage + ".png");
-                RenderType crumbleType = RenderType.crumbling(crackTex);
-                MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
-                blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
+                blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+
+                // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
+                // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
+                // static baked model — renderSingleBlock above already no-ops for these
+                // (RenderShape.INVISIBLE, or just has nothing interesting to show statically). A piston
+                // gets its runtimeBlockEntity from the dedicated animation payload (see syncBlockEntity/
+                // applyClientAnimation) for smooth per-tick progress; for everything else, lazily build
+                // the SAME phantom BlockEntity blockEntityFor already builds server-side, straight from
+                // this piece's synced extraData "be" NBT — no piston-specific plumbing needed, exactly
+                // how vanilla's own BlockEntityRenderDispatcher works generically off whatever
+                // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
+                // itself caches onto piece.runtimeBlockEntity).
+                if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
+                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
+                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
+                    BlockEntityRenderer<BlockEntity> ber =
+                            Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
+                    if (ber != null) {
+                        drawingPhantom = true;
+                        try {
+                            ber.render(blockEntity, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+                        } finally {
+                            drawingPhantom = false;
+                        }
+                    }
+                }
+
+                if (piece == crackedPiece) {
+                    ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
+                        "textures/block/destroy_stage_" + crackStage + ".png");
+                    RenderType crumbleType = RenderType.crumbling(crackTex);
+                    MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
+                    blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
+                }
+
+                poseStack.popPose();
             }
-
-            poseStack.popPose();
         }
+    }
+
+    /**
+     * True while a piece's block entity renderer runs. Its block entity sits at a virtual position far from the
+     * camera, so renderers that skip what is far away by that position (Create's frequency and filter items) are
+     * told it is near; the SubgridBlock itself was already culled by distance like any block entity.
+     */
+    public static boolean drawingPhantom;
+
+    /**
+     * For a shaft connector, the size of a SubgridBlock of the same size across its face, which it meets cell to cell
+     * (a straight tiny shaft); 0 otherwise — a real block, or another size's connector, met by a full-size shaft.
+     */
+    public static int acrossOf(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
+        net.minecraft.core.Direction face = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece);
+        int across = face == null ? 0 : com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.sizeAcross(be, face);
+        return across == be.getGridSize() ? across : 0;
+    }
+
+    /** Whether {@code piece} is a gear connector, drawn from Create's parts (GearConnectorDrawing) rather than as its block. */
+    static boolean isGear(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
+        return com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null
+                && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(be.getGridSize());
     }
 
     @Override

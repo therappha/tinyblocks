@@ -48,7 +48,7 @@ public final class MiningTracker {
         Direction face = bhr.getDirection();
         int gs = be.gridSize;
         int max = gs - 1;
-        double nudge = 0.5 / gs;
+        double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
         int gx = Mth.clamp((int)(((hitLoc.x - pos.getX()) - face.getStepX() * nudge) * gs), 0, max);
         int gy = Mth.clamp((int)(((hitLoc.y - pos.getY()) - face.getStepY() * nudge) * gs), 0, max);
         int gz = Mth.clamp((int)(((hitLoc.z - pos.getZ()) - face.getStepZ() * nudge) * gs), 0, max);

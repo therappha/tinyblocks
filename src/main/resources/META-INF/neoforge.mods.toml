@@ -13,6 +13,17 @@ TinyBlocks is a mod for NeoForge 1.21.1. Craft a Minimizer with a stick and an i
 Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drops, and behave like real blocks — redstone, pistons, and other interactions propagate between neighboring pieces just like in the full-size world.
 '''
 
+[[mixins]]
+config = "tinyblocks.mixins.json"
+
+# EXPERIMENT: connector shafts across a SubgridBlock face (com.therappha.tinyblocks.compat.create.KineticBridge).
+[[mixins]]
+config = "tinyblocks.create.mixins.json"
+
+# EXPERIMENT: a SubgridBlock weighs a full block in a Sable sub-level (mixin.sable.VoxelNeighborhoodStateMixin).
+[[mixins]]
+config = "tinyblocks.sable.mixins.json"
+
 [[dependencies.tinyblocks]]
     modId = "neoforge"
     type = "required"
@@ -27,3 +38,18 @@ Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drop
     ordering = "NONE"
     side = "BOTH"
 
+# Create: the shaft connector, the gear, value boxes, links and belts on pieces are all built on it.
+[[dependencies.tinyblocks]]
+    modId = "create"
+    type = "required"
+    versionRange = "[6.0.11,7)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+# EXPERIMENT: optional so the mod still loads without Flywheel; ordered after it when present.
+[[dependencies.tinyblocks]]
+    modId = "flywheel"
+    type = "optional"
+    versionRange = "[1.0,)"
+    ordering = "AFTER"
+    side = "CLIENT"

@@ -1,32 +1,32 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_iron_nugget": {
+    "has_item": {
+      "trigger": "minecraft:inventory_changed",
       "conditions": {
         "items": [
           {
-            "items": "minecraft:iron_nugget"
+            "items": "create:cogwheel"
           }
         ]
-      },
-      "trigger": "minecraft:inventory_changed"
+      }
     },
     "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
       "conditions": {
-        "recipe": "tinyblocks:minimizer_4"
-      },
-      "trigger": "minecraft:recipe_unlocked"
+        "recipe": "tinyblocks:shaft_connector"
+      }
     }
   },
   "requirements": [
     [
       "has_the_recipe",
-      "has_iron_nugget"
+      "has_item"
     ]
   ],
   "rewards": {
     "recipes": [
-      "tinyblocks:minimizer_4"
+      "tinyblocks:shaft_connector"
     ]
   }
 }

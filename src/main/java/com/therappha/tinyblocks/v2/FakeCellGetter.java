@@ -76,6 +76,33 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /**
+     * The vanilla-visible ("world") position of local cell {@code local}. Identity here; the subgrid-backed
+     * subclass maps its cells into a virtual cube around the SubgridBlock's real position, so every phantom
+     * block entity gets its own unique, consistent BlockPos (Create identifies and orients kinetic blocks purely
+     * by BlockPos differences) and open container menus stay within interaction range of the player.
+     */
+    public BlockPos toWorld(BlockPos local) {
+        return local;
+    }
+
+    /**
+     * The redstone signal at vanilla-visible position {@code world} towards {@code direction}, when it lies outside
+     * this cell space and is better answered by the world around it; null to answer it from the cells as usual.
+     */
+    @Nullable
+    public Integer outsideSignal(BlockPos world, net.minecraft.core.Direction direction, boolean strong) {
+        return null;
+    }
+
+    /** A block entity at this vanilla-visible position asked its clients to resync; no-op without an owning grid. */
+    public void blockUpdatedAt(BlockPos world) {}
+
+    /** Inverse of {@link #toWorld}. */
+    public BlockPos toLocal(BlockPos world) {
+        return world;
+    }
+
+    /**
      * Every position explicitly written this call (via set, i.e. real vanilla code calling
      * setBlock), NOT including positions only ever read via fallback(). Lets a caller notice a
      * write to a position that isn't an already-tracked piece — e.g. water spreading into a

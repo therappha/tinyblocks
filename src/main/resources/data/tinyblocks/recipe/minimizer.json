@@ -1,18 +1,22 @@
 {
   "type": "minecraft:crafting_shaped",
-  "category": "misc",
+  "category": "tools",
+  "pattern": [
+    "A",
+    "E",
+    "S"
+  ],
   "key": {
-    "N": {
-      "item": "minecraft:iron_nugget"
+    "A": {
+      "item": "minecraft:amethyst_shard"
     },
-    "#": {
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "S": {
       "item": "minecraft:stick"
     }
   },
-  "pattern": [
-    "NN",
-    "N#"
-  ],
   "result": {
     "count": 1,
     "id": "tinyblocks:minimizer"

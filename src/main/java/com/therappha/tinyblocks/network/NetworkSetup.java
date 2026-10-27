@@ -23,7 +23,50 @@ public class NetworkSetup {
         registrar.playToClient(SubgridPieceRemovedPayload.TYPE, SubgridPieceRemovedPayload.STREAM_CODEC, NetworkSetup::handlePieceRemoved);
         registrar.playToClient(PistonAnimationPayload.TYPE, PistonAnimationPayload.STREAM_CODEC, NetworkSetup::handlePistonAnimation);
         registrar.playToClient(PieceBlockEventPayload.TYPE, PieceBlockEventPayload.STREAM_CODEC, NetworkSetup::handlePieceBlockEvent);
+        registrar.playToClient(PhantomDataPayload.TYPE, PhantomDataPayload.STREAM_CODEC, NetworkSetup::handlePhantomData);
         registrar.playToServer(SubgridMinePiecePayload.TYPE, SubgridMinePiecePayload.STREAM_CODEC, NetworkSetup::handleMinePiece);
+        registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
+        registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
+        registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+        registrar.playToServer(MinimizeMePayload.TYPE, MinimizeMePayload.STREAM_CODEC,
+                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizeMe.toggle(ctx.player())));
+    }
+
+    private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getMainHandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+                    ? player.getMainHandItem() : player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem item)) return;
+            com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, payload.size());
+            com.therappha.tinyblocks.items.MinimizerBuild.setCorner(minimizer, null); // a corner of the old size
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("item.tinyblocks.minimizer.sized",
+                    item.gridSize(minimizer)), true);
+        });
+    }
+
+    private static void handleMinimizerLift(MinimizerLiftPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
+                    || com.therappha.tinyblocks.items.MinimizerBuild.corner(minimizer) == null) return;
+            int lift = com.therappha.tinyblocks.items.MinimizerBuild.addLift(minimizer, Integer.signum(payload.delta()));
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.lift",
+                    (lift > 0 ? "+" : "") + lift), true);
+        });
+    }
+
+    private static void handleMinimizerMode(MinimizerModePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+                    ? player.getOffhandItem() : player.getMainHandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) return;
+            var mode = com.therappha.tinyblocks.items.MinimizerBuild.cycle(minimizer);
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.mode",
+                    net.minecraft.network.chat.Component.translatable(mode.translationKey())), true);
+        });
     }
 
     private static void handlePieceAdded(SubgridPieceAddedPayload payload, IPayloadContext ctx) {
@@ -53,6 +96,17 @@ public class NetworkSetup {
             Level level = ctx.player().level();
             if (level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid) {
                 com.therappha.tinyblocks.v2.VanillaBlockPiece.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
+            }
+        });
+    }
+
+    private static void handlePhantomData(PhantomDataPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Level level = ctx.player().level();
+            if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
+            com.therappha.tinyblocks.v2.VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), level);
+            if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
+                com.therappha.tinyblocks.client.flywheel.FlywheelCompat.queueUpdate(subgrid);
             }
         });
     }

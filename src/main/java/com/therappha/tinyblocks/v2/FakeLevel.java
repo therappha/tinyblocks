@@ -68,6 +68,33 @@ public class FakeLevel extends Level implements FakeSpace {
     public FakeCellGetter cells() { return cells; }
 
     @Override
+    public Level realLevel() { return real; }
+
+    // The virtual frame scales real positions by the grid size (SubgridBlockEntity#virtualOrigin), so
+    // phantom Y values leave the real dimension's build height; keep the whole range BlockPos can pack
+    // (12 bits of Y) valid, or vanilla's isOutsideBuildHeight checks (pistons, fluids) reject every cell.
+    // Virtual positions no longer sit in the chunk of the real SubgridBlock, so vanilla's chunk-loaded checks
+    // (Create's propagation asks before touching a neighbour) would answer "unloaded"; the fake space is
+    // always resident.
+    @Override
+    public boolean hasChunkAt(BlockPos pos) { return true; }
+
+    @Override
+    public boolean hasChunkAt(int blockX, int blockZ) { return true; }
+
+    @Override
+    public boolean hasChunksAt(int minX, int minZ, int maxX, int maxZ) { return true; }
+
+    @Override
+    public boolean isLoaded(BlockPos pos) { return true; }
+
+    @Override
+    public int getMinBuildHeight() { return -65536; }
+
+    @Override
+    public int getHeight() { return 131072; }
+
+    @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
 
     /**
@@ -111,6 +138,19 @@ public class FakeLevel extends Level implements FakeSpace {
         return cells.getBlockState(pos);
     }
 
+    /** Past the grid's faces a signal comes from the world around it (FakeCellGetter#outsideSignal). */
+    @Override
+    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells.outsideSignal(pos, direction, false);
+        return outside != null ? outside : super.getSignal(pos, direction);
+    }
+
+    @Override
+    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells.outsideSignal(pos, direction, true);
+        return outside != null ? outside : super.getDirectSignal(pos, direction);
+    }
+
     @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
         cells.set(pos, state);
@@ -146,7 +186,17 @@ public class FakeLevel extends Level implements FakeSpace {
     // --- Delegated to the real level ---
 
     @Override
-    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
+    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {
+        // A phantom BlockEntity asking its clients to resync (Create's sendData() lands here with the
+        // phantom's REAL position, so the piece can't be told apart — resync every phantom in the grid).
+        if (real instanceof net.minecraft.server.level.ServerLevel
+                && real.getBlockEntity(realPos) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity sub) {
+            sub.markPhantomDataDirty();
+        }
+        // The virtual frame is global, so the phantom may belong to a NEIGHBOURING grid (rotation propagated
+        // across the edge); that grid's clients need the resync, not just this one's.
+        cells.blockUpdatedAt(pos);
+    }
 
     // Substitutes the real position for whatever fake position a piece's own code played a sound
     // at — same reasoning as the light/sky queries below: a subgrid's pieces don't have their own

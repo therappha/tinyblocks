@@ -46,9 +46,11 @@ import java.util.concurrent.Executor;
  * against the specific block ticks we actually exercise (redstone lamp delay, crop growth), not
  * by exhaustively reimplementing ServerLevel.
  */
-public class FakeServerLevel extends ServerLevel implements FakeSpace {
+public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder {
 
     private FakeLevel delegate;
+    /** The real ServerLevel this fake space was built from — for ServerLevel-only state the transplant can't copy. */
+    private ServerLevel realServer;
 
     // Not initialized inline — field initializers are compiled into the constructor, which never
     // runs for a reflection-allocated instance. Set explicitly in create() instead.
@@ -77,6 +79,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
             FakeServerLevel instance = ctor.newInstance();
             FakeLevel delegateLevel = new FakeLevel(real, cells, realPos);
             instance.delegate = delegateLevel;
+            instance.realServer = (ServerLevel) real;
             instance.scheduled = new ArrayList<>();
 
             // Reflection allocation skips the *entire* constructor chain, not just ServerLevel's
@@ -122,10 +125,69 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
 
     public FakeCellGetter cells() { return delegate.cells(); }
 
+    @Override
+    public net.minecraft.world.level.Level realLevel() { return delegate.realLevel(); }
+
+    /**
+     * Sable keeps its sub-level container in a field its mixin adds to ServerLevel, which the Level-field
+     * transplant in create() never fills (same gap as the light storage). Everything that asks the fake level
+     * for it (SubLevelAssemblyHelper, Containing.get...) gets the real level's container instead.
+     */
+    @Override
+    public dev.ryanhcode.sable.api.sublevel.SubLevelContainer sable$getPlotContainer() {
+        return ((dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder) realServer).sable$getPlotContainer();
+    }
+
+    // Light queries go to the FakeLevel (which answers with the real SubgridBlock's light). Left to the
+    // defaults they reach whatever replaces the light storage (Sable), which has no data for a fake level
+    // and throws on the first grass/crop random tick.
+    @Override
+    public int getRawBrightness(BlockPos pos, int amount) { return delegate.getRawBrightness(pos, amount); }
+
+    @Override
+    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) { return delegate.getBrightness(layer, pos); }
+
+    @Override
+    public boolean canSeeSky(BlockPos pos) { return delegate.canSeeSky(pos); }
+
+    // See FakeLevel: the virtual frame leaves the real dimension's build height.
+    // Virtual positions no longer sit in the chunk of the real SubgridBlock, so vanilla's chunk-loaded checks
+    // (Create's propagation asks before touching a neighbour) would answer "unloaded"; the fake space is
+    // always resident.
+    @Override
+    public boolean hasChunkAt(BlockPos pos) { return true; }
+
+    @Override
+    public boolean hasChunkAt(int blockX, int blockZ) { return true; }
+
+    @Override
+    public boolean hasChunksAt(int minX, int minZ, int maxX, int maxZ) { return true; }
+
+    @Override
+    public boolean isLoaded(BlockPos pos) { return true; }
+
+    @Override
+    public int getMinBuildHeight() { return -65536; }
+
+    @Override
+    public int getHeight() { return 131072; }
+
     // --- Delegated to the FakeLevel wrapping the same fake cell space ---
 
     @Override
     public BlockState getBlockState(BlockPos pos) { return delegate.getBlockState(pos); }
+
+    @Override
+    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells().outsideSignal(pos, direction, false);
+        return outside != null ? outside : super.getSignal(pos, direction);
+    }
+
+    @Override
+    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+        Integer outside = cells().outsideSignal(pos, direction, true);
+        return outside != null ? outside : super.getDirectSignal(pos, direction);
+    }
 
     @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
@@ -151,8 +213,36 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace {
     @Override
     public FluidState getFluidState(BlockPos pos) { return delegate.getFluidState(pos); }
 
+
+    // Found live with Create (run/logs/latest.log): both are ServerLevel-only state create()'s Level-field
+    // transplant never populates, so anything touching them NPE'd and aborted the whole piece tick.
+    //  - sendParticles reads this.players (Create's KineticEffectHandler rotation indicators);
+    //  - getRandomSequence reads this.randomSequences (any loot-table roll via Level.destroyBlock ->
+    //    Block.dropResources, e.g. Create's RotationPropagator destroying a conflicting gear).
+    // The exception mid-propagation left the kinetic network half-updated ("gear locks up").
     @Override
-    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {}
+    public net.minecraft.util.RandomSource getRandomSequence(net.minecraft.resources.ResourceLocation id) {
+        return realServer.getRandomSequence(id);
+    }
+
+    // Particles at fake-local coordinates would land nowhere meaningful in the real world; drop them.
+    @Override
+    public <T extends net.minecraft.core.particles.ParticleOptions> int sendParticles(T type, double x, double y, double z,
+            int count, double dx, double dy, double dz, double speed) {
+        return 0;
+    }
+
+    @Override
+    public <T extends net.minecraft.core.particles.ParticleOptions> boolean sendParticles(
+            net.minecraft.server.level.ServerPlayer player, T type, boolean longDistance, double x, double y, double z,
+            int count, double dx, double dy, double dz, double speed) {
+        return false;
+    }
+
+    @Override
+    public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {
+        delegate.sendBlockUpdated(pos, oldState, newState, flags);
+    }
 
     @Nullable
     @Override

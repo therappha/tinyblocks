@@ -50,6 +50,16 @@ public class SubgridEventHandler {
         ServerLevel level = (ServerLevel) event.getLevel();
         BlockPos pos = event.getPos();
         Player player = event.getPlayer();
+        // A real player's client mines a piece itself and has the server remove exactly that cell
+        // (SubgridMiningInterceptor -> handleMinePiece). Vanilla still sends its own "destroy the block" action
+        // on the same click, which lands here: re-tracing the crosshair now — after the mined piece is already
+        // gone — hits the piece behind it, and one click broke two pieces. For a real player this only stops
+        // the whole SubgridBlock from going; machines breaking blocks (fake players) have no client and still
+        // remove the piece under their aim here.
+        if (!(player instanceof net.neoforged.neoforge.common.util.FakePlayer)) {
+            level.getBlockTicks().schedule(new ScheduledTick<>(event.getState().getBlock(), pos, level.getGameTime() + 2, 0L));
+            return;
+        }
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
@@ -133,6 +143,8 @@ public class SubgridEventHandler {
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         Level level = event.getLevel();
         Player player = event.getEntity();
+        // A click PieceClickDispatch re-posts inside a piece's fake space is for the piece's own listeners.
+        if (level instanceof com.therappha.tinyblocks.v2.FakeSpace) return;
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
@@ -145,6 +157,19 @@ public class SubgridEventHandler {
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
         MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
+        // A Minimizer in a shape mode builds between two corners instead of placing one piece — of any size, the
+        // normal size (1/1) included. Taken whatever was clicked, so a shape click never places a block of its own.
+        if (minimizer != null && blockItem != null
+                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) != com.therappha.tinyblocks.items.BuildMode.PLACE) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            if (level instanceof ServerLevel serverLevel) {
+                MinimizerShapes.click(serverLevel, player, player.getOffhandItem(), minimizer, blockItem, stack, event.getHitVec());
+            }
+            return;
+        }
+        // At the normal size the Minimizer places normal blocks: it stays out of the way, even on a piece.
+        if (minimizer != null && minimizer.gridSize(player.getOffhandItem()) == MinimizerItem.NORMAL_SIZE) return;
         // Any item might interact with or modify a piece on an existing subgrid, or (with the
         // Minimizer in the offhand) start a brand new one — not just BlockItems; a bucket of
         // water should be able to create a fresh subgrid and place water into it the same way a
@@ -194,11 +219,40 @@ public class SubgridEventHandler {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
 
+            if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+                // Before the clicked piece's own use: a tiny shaft would otherwise run Create's shaft placement
+                // helper and extend itself with a one-cell connector. Clicking a shaft puts the plate at the end
+                // of the shaft's own axis, so it meets the shaft.
+                PlacedPiece clickedPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
+                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeFrom(existing, serverLevel, clickedPiece,
+                        face.getAxis(), new BlockPos(clickedCell)) && !player.isCreative()) {
+                    stack.shrink(1);
+                }
+                return;
+            }
+
+            PlacedPiece clickedPlate = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
+            if (blockItem != null && clickedPlate != null
+                    && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                // A block clicked onto a connector: into a funnel's socket, or a small cogwheel onto a gear's side.
+                var target = com.therappha.tinyblocks.compat.create.ConnectorPlacement.targetOn(existing, clickedPlate,
+                        blockItem.getBlock(), hit.getLocation());
+                boolean gear = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(existing.getGridSize());
+                if (target != null || !gear) {
+                    if (target != null && com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeAt(existing, serverLevel,
+                            target, clickedPlate.facing) && !player.isCreative()) {
+                        stack.shrink(1);
+                    }
+                    return;
+                }
+                // Anything else clicked onto a gear goes next to the clicked face, as onto any piece.
+            }
+
             // Try interacting with whatever's at the exact clicked cell first — same priority
             // vanilla gives "interact with what you clicked" over "place a new block" — but only
             // defer to it if it actually did something (a lever flips); a non-interactive piece
             // (stone, wire) falls through to placement, same as vanilla blocks with no
-            // useWithoutItem override do. Sneaking always skips straight to placement.
+            // useWithoutItem override do. Sneaking skips the piece's own use (see the item-only branch below).
             PlacedPiece existingPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
             if (existingPiece != null && !player.isShiftKeyDown()) {
                 InteractionResult result = existingPiece.definition.onUse(existingPiece, serverLevel, pos, existing, player, hit);
@@ -213,6 +267,13 @@ public class SubgridEventHandler {
                 // placing anything, since BlockItem placement already has its own correct
                 // offset/overflow-aware path just below.
                 if (blockItem == null && runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
+                        clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
+                    return;
+                }
+            } else if (existingPiece != null && blockItem == null) {
+                // Sneaking with an item skips the block's own use, as in vanilla, but not the item's: a wrench
+                // still dismantles, for instance.
+                if (runItemInteraction(existing, serverLevel, player, event.getHand(), stack, face, hit,
                         clickedCell.getX(), clickedCell.getY(), clickedCell.getZ())) {
                     return;
                 }
@@ -245,11 +306,20 @@ public class SubgridEventHandler {
             }
         } else {
             BlockPos targetPos = pos.relative(face);
-            SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.preferredSubgrid().gridSize);
+            SubgridBlockEntity created = SubgridBlockEntity.createAt(serverLevel, targetPos, minimizer.gridSize(player.getOffhandItem()));
             if (created == null) return;
             be = created;
             int[] cell = TinyPieceItem.computeGridCell(pos, face, hit.getLocation(), be.gridSize);
             nx = cell[0]; ny = cell[1]; nz = cell[2];
+        }
+
+        if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+            // Not a one-cell piece: a plate centred on the grid face nearest the target cell, along the clicked axis.
+            if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.place(be, serverLevel, face.getAxis(), new BlockPos(nx, ny, nz))
+                    && !player.isCreative()) {
+                stack.shrink(1);
+            }
+            return;
         }
 
         if (be.getPieceAt(nx, ny, nz) != null) return;
@@ -264,14 +334,15 @@ public class SubgridEventHandler {
             return;
         }
 
-        BlockPos fakeAnchor = new BlockPos(nx, ny, nz);
+        BlockPos fakeAnchor = new BlockPos(nx, ny, nz); // local cell
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, hit.isInside());
+        BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, hit.isInside());
         BlockPlaceContext placeCtx = new BlockPlaceContext(
                 new UseOnContext(fakeLevel, player, event.getHand(), stack, fakeHit));
 
         BlockState state = blockItem.getBlock().getStateForPlacement(placeCtx);
-        if (state == null || !state.canSurvive(fakeLevel, fakeAnchor)) return;
+        if (state == null || !state.canSurvive(fakeLevel, at)) return;
 
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
@@ -283,12 +354,9 @@ public class SubgridEventHandler {
             // just placed." Rebuild the fake space (now including this piece) and fire onPlace
             // explicitly so any block relying on it behaves the same as it would in the real world.
             FakeLevel placedFakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
-            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, fakeAnchor, Blocks.AIR.defaultBlockState(), false);
-            for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : placedFakeLevel.scheduledTicks()) {
-                be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
-                        serverLevel.getGameTime() + entry.delay());
-            }
-            state.getBlock().setPlacedBy(fakeLevel, fakeAnchor, state, player, stack);
+            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, placedFakeLevel.world(fakeAnchor), Blocks.AIR.defaultBlockState(), false);
+            VanillaBlockPiece.scheduleCaptured(be, placedFakeLevel, serverLevel.getGameTime());
+            state.getBlock().setPlacedBy(fakeLevel, at, state, player, stack);
             // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
             // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
             // "untracked write" pattern VanillaBlockPiece.applyChanges already generalizes for
@@ -303,7 +371,7 @@ public class SubgridEventHandler {
                     continue;
                 }
                 if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel) != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
                 }
             }
             if (!player.isCreative()) stack.shrink(1);
@@ -337,13 +405,14 @@ public class SubgridEventHandler {
     private static boolean runItemInteraction(SubgridBlockEntity be, ServerLevel serverLevel, Player player,
                                                InteractionHand hand, ItemStack stack, Direction face,
                                                BlockHitResult realHit, int x, int y, int z) {
-        BlockPos fakeAnchor = new BlockPos(x, y, z);
+        BlockPos fakeAnchor = new BlockPos(x, y, z); // local cell
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
         java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
 
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(fakeAnchor), face, fakeAnchor, realHit.isInside());
+        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
         // #TODO remove before release (or fold into a permanent comment) once verified live —
@@ -362,16 +431,16 @@ public class SubgridEventHandler {
         // already computed above, generic to any item implementing them, not bucket-specific.
         if (result == InteractionResult.PASS) {
             if (stack.getItem() instanceof net.minecraft.world.item.DispensibleContainerItem dispensible
-                    && dispensible.emptyContents(player, fakeLevel, fakeAnchor, fakeHit)) {
-                dispensible.checkExtraContent(player, fakeLevel, stack, fakeAnchor);
+                    && dispensible.emptyContents(player, fakeLevel, at, fakeHit)) {
+                dispensible.checkExtraContent(player, fakeLevel, stack, at);
                 ItemStack emptied = net.minecraft.world.item.ItemUtils.createFilledResult(
                         stack, player, net.minecraft.world.item.BucketItem.getEmptySuccessItem(stack, player));
                 player.setItemInHand(hand, emptied);
                 result = InteractionResult.SUCCESS;
             } else {
-                BlockState currentState = fakeLevel.getBlockState(fakeAnchor);
+                BlockState currentState = fakeLevel.getBlockState(at);
                 if (currentState.getBlock() instanceof net.minecraft.world.level.block.BucketPickup bucketPickup) {
-                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, fakeAnchor, currentState);
+                    ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, at, currentState);
                     if (!picked.isEmpty()) {
                         ItemStack filled = net.minecraft.world.item.ItemUtils.createFilledResult(stack, player, picked);
                         player.setItemInHand(hand, filled);
@@ -388,7 +457,7 @@ public class SubgridEventHandler {
             if (touchedState.equals(wasState)) continue;
 
             PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
-            if (piece != null && piece.definition == VanillaBlockPiece.INSTANCE) {
+            if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                 if (touchedState.isAir()) {
                     // #TODO remove before release — water-placement investigation. A piece that
                     // became air here (e.g. BucketPickup emptying a water piece back into a
@@ -405,7 +474,7 @@ public class SubgridEventHandler {
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
                 SubgridBlockEntity.PlacementResult placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
                 if (placed != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, touchedPos, Blocks.AIR.defaultBlockState(), false);
+                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
                 }
             }
         }
@@ -420,10 +489,7 @@ public class SubgridEventHandler {
         // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
         // the onPlace call just above. Same drain FakeSpace callers always do after touching a
         // fake space; skipped here previously since this function never called applyChanges.
-        for (com.therappha.tinyblocks.v2.FakeSpace.ScheduledEntry entry : fakeLevel.scheduledTicks()) {
-            be.scheduleTick(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ(),
-                    serverLevel.getGameTime() + entry.delay());
-        }
+        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, serverLevel.getGameTime());
         return result != InteractionResult.PASS;
     }
 
@@ -442,12 +508,21 @@ public class SubgridEventHandler {
 
         Player player = event.getEntity();
         if (!(player.getMainHandItem().getItem() instanceof BlockItem)) return;
+        // In creative the client already mines the clicked piece (SubgridMiningInterceptor); removing here as
+        // well took the piece behind it on the same click.
+        if (player.isCreative()) return;
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
 
         Vec3i cell = GridRay.cellAt(pos, bhr.getLocation(), bhr.getDirection(), be.gridSize);
+        // A piece that breaks instantly is the client's to mine on the click (SubgridMiningInterceptor), and
+        // holding the button sends this event every tick: removing here too took the pieces behind it.
+        if (be.getPieceAt(cell.getX(), cell.getY(), cell.getZ()) != null
+                && SubgridBlock.pieceDestroyProgress(be, cell.getX(), cell.getY(), cell.getZ(), player) >= 1f) {
+            return;
+        }
         PlacedPiece removed = be.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return;
 

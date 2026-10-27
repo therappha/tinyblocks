@@ -75,4 +75,12 @@ class GridRayTest {
             assertEquals(expectedMid, cell.getZ(), "gridSize " + gridSize);
         }
     }
+
+    /** The top of a thin plate (2/16 of a cell high) inside cell y=3 is hit well inside that cell, not on its edge. */
+    @Test
+    void aHitOnAThinPieceInsideACellLandsInThatCell() {
+        int gridSize = 8;
+        Vec3 hit = Vec3.atLowerCornerOf(POS).add((4 + 0.5) / gridSize, (3 + 2 / 16.0) / gridSize, (4 + 0.5) / gridSize);
+        assertEquals(new Vec3i(4, 3, 4), GridRay.cellAt(POS, hit, Direction.UP, gridSize));
+    }
 }

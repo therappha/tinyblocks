@@ -41,7 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import javax.annotation.Nullable;
 import java.util.List;
 
-public class SubgridBlock extends BaseEntityBlock {
+public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape {
 
     /** Valid grid sizes: powers of 2 from 2 to 16. Each cell maps exactly to whole 1/16 pixels. */
     public static final List<Integer> VALID_SIZES = List.of(2, 4, 8, 16);
@@ -80,10 +80,31 @@ public class SubgridBlock extends BaseEntityBlock {
         return new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state);
     }
 
+    /**
+     * The shapes come from the block entity's pieces, so a block state can't cache them: asked without an entity's
+     * context, BlockState#getCollisionShape would answer from a cache built with no block entity — empty. Sable's
+     * collision of entities against a sub-level asks that way, and players fell through the pieces of an assembled
+     * subgrid.
+     */
+    @Override
+    public boolean hasDynamicShape() {
+        return true;
+    }
+
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
-        return be.getCachedShape();
+        return be.getOutlineShape();
+    }
+
+    /**
+     * Collision inside a Sable sub-level. Sable asks for this from the block state alone (no position, so no
+     * block entity to read the pieces from); a full cube makes the box a solid body in a ship. Without it
+     * Sable falls back to getCollisionShape against a getter with no block entity, i.e. no collision at all.
+     */
+    @Override
+    public VoxelShape getSubLevelCollisionShape(BlockGetter level, BlockState state) {
+        return Shapes.block();
     }
 
     @Override
@@ -97,6 +118,35 @@ public class SubgridBlock extends BaseEntityBlock {
         // (tracked separately), not a guess reapplied blind.
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
         return be.getCachedShape();
+    }
+
+    // Redstone through the faces: see SubgridBlockEntity#faceSignal.
+
+    @Override
+    protected boolean isSignalSource(BlockState state) {
+        return true;
+    }
+
+    /** {@code direction} points from the block asking into this one, so the face it asks through is its opposite. */
+    @Override
+    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+        return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), false) : 0;
+    }
+
+    @Override
+    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+        return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), true) : 0;
+    }
+
+    /** A block next to this one changed: the pieces against that face look again. */
+    @Override
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, net.minecraft.world.level.block.Block block,
+                                   BlockPos fromPos, boolean movedByPiston) {
+        super.neighborChanged(state, level, pos, block, fromPos, movedByPiston);
+        if (level.isClientSide || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
+        BlockPos diff = fromPos.subtract(pos);
+        if (diff.distManhattan(BlockPos.ZERO) != 1) return;
+        be.notifyFace(net.minecraft.core.Direction.getNearest(diff.getX(), diff.getY(), diff.getZ()));
     }
 
     @Override
