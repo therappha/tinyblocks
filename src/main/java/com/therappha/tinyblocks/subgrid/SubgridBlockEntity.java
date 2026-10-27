@@ -417,6 +417,23 @@ public class SubgridBlockEntity extends BlockEntity {
         tickPendingDrops(level);
         flushPhantomData(level);
         updateRedstoneOutputs(level);
+        removeIfLeftEmpty(level);
+    }
+
+    /** How long a grid stays empty before it goes: past any operation still bringing a piece in (a piston's move). */
+    static final int EMPTY_GRACE_TICKS = 20;
+    private int emptyTicks = 0;
+
+    /**
+     * A grid whose last piece went — however it went: mined, pushed out by a piston, taken apart by Create, fallen —
+     * or that was made and never got one, removes its SubgridBlock once nothing is pending in it any more.
+     */
+    private void removeIfLeftEmpty(ServerLevel level) {
+        if (!pieces.isEmpty() || !pendingDrops.isEmpty() || !scheduledTicks.isEmpty() || hasActiveCaptures()) {
+            emptyTicks = 0;
+            return;
+        }
+        if (++emptyTicks >= EMPTY_GRACE_TICKS) level.removeBlock(worldPosition, false);
     }
 
     /**

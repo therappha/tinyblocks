@@ -58,4 +58,21 @@ public class SubgridCollisionGameTest {
         helper.assertTrue(collidingCells(helper, be) == 7, "7 pieces collide as " + collidingCells(helper, be) + " cells");
         helper.succeed();
     }
+
+    /** A grid whose last piece goes some other way than mining (here: taken out directly) removes its SubgridBlock. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void anEmptyGridRemovesItself(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 3, 3), Blocks.STONE.defaultBlockState());
+        be.removePieceAt(3, 3, 3);
+
+        helper.startSequence()
+                .thenIdle(5)
+                .thenExecute(() -> helper.assertTrue(helper.getLevel().getBlockEntity(be.getBlockPos()) == be,
+                        "the grid went at once, not after its grace"))
+                .thenIdle(25)
+                .thenExecute(() -> helper.assertTrue(helper.getLevel().getBlockState(be.getBlockPos()).isAir(),
+                        "the empty grid is still there: " + helper.getLevel().getBlockState(be.getBlockPos())))
+                .thenSucceed();
+    }
 }
