@@ -24,6 +24,9 @@ public final class PieceTransforms {
 
     public record Slice(Vector3f translation, Vector3f scale) {}
 
+    /** How much bigger than a cell's scale the gear connector's cogwheel is drawn. */
+    public static final float GEAR_SCALE = 1.1f;
+
     /** Slices drawn per cell of a funnel's depth: enough for the taper to read as a cone, not as steps. */
     private static final int SLICES_PER_CELL = 4;
 
@@ -55,7 +58,9 @@ public final class PieceTransforms {
             Vector3f middle = new Vector3f(axis == Direction.Axis.X ? along : centre,
                                            axis == Direction.Axis.Y ? along : centre,
                                            axis == Direction.Axis.Z ? along : centre);
-            Slice gear = new Slice(middle.sub(cell / 2, cell / 2, cell / 2), new Vector3f(cell, cell, cell));
+            // A tenth bigger than a cell's scale: closer to meeting the small cogwheels on its sides.
+            float gearScale = cell * GEAR_SCALE;
+            Slice gear = new Slice(middle.sub(gearScale / 2, gearScale / 2, gearScale / 2), new Vector3f(gearScale, gearScale, gearScale));
             // 1: a full-size shaft end from the face to the gear's middle: what meets the shaft outside.
             float thickness = cell / 2;
             float at = positive ? 1 - thickness : 0;
