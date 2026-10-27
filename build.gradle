@@ -127,3 +127,10 @@ modrinth {
     loaders = ["neoforge"]
     changelog = System.getenv("CHANGELOG") ?: ""
 }
+
+// neoforge.mods.toml reads the mod's version (${file.jarVersion}) from the jar manifest.
+jar {
+    manifest {
+        attributes 'Implementation-Version': project.version
+    }
+}
