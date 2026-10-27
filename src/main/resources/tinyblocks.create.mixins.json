@@ -12,6 +12,7 @@
     "RedstoneLinkNetworkHandlerMixin",
     "RotationPropagatorAccessor",
     "RotationPropagatorMixin",
+    "SyncedBlockEntityMixin",
     "TorquePropagatorMixin"
   ],
   "client": [
