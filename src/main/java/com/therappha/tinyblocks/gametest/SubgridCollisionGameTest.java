@@ -32,4 +32,30 @@ public class SubgridCollisionGameTest {
                 "no collision without a context (Sable's entity collision): the cached empty shape");
         helper.succeed();
     }
+
+    /** How many cells of collision the SubgridBlock has, asked as Sable asks (no context). */
+    private static long collidingCells(GameTestHelper helper, SubgridBlockEntity be) {
+        BlockPos pos = be.getBlockPos();
+        double volume = 0;
+        for (net.minecraft.world.phys.AABB box : helper.getLevel().getBlockState(pos).getCollisionShape(helper.getLevel(), pos).toAabbs()) {
+            volume += box.getXsize() * box.getYsize() * box.getZsize();
+        }
+        int size = be.getGridSize();
+        return Math.round(volume * size * size * size);
+    }
+
+    /** The collision follows the pieces: 5 pieces collide as 5 cells, 10 as 10, and 7 after taking 3 away. */
+    @GameTest(template = "empty_platform")
+    public void theCollisionIsRebuiltWhenPiecesAreAddedOrRemoved(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        for (int x = 0; x < 5; x++) SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(x, 0, 0), Blocks.STONE.defaultBlockState());
+        helper.assertTrue(collidingCells(helper, be) == 5, "5 pieces collide as " + collidingCells(helper, be) + " cells");
+
+        for (int x = 0; x < 5; x++) SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(x, 1, 0), Blocks.STONE.defaultBlockState());
+        helper.assertTrue(collidingCells(helper, be) == 10, "10 pieces collide as " + collidingCells(helper, be) + " cells");
+
+        for (int x = 0; x < 3; x++) be.removePieceAt(x, 1, 0);
+        helper.assertTrue(collidingCells(helper, be) == 7, "7 pieces collide as " + collidingCells(helper, be) + " cells");
+        helper.succeed();
+    }
 }
