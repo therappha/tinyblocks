@@ -1,18 +1,27 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:not",
+      "value": {
+        "type": "neoforge:mod_loaded",
+        "modid": "create"
+      }
+    }
+  ],
   "type": "minecraft:crafting_shaped",
-  "category": "misc",
+  "category": "tools",
+  "pattern": [
+    "A",
+    "S"
+  ],
   "key": {
-    "N": {
-      "item": "minecraft:iron_nugget"
+    "A": {
+      "item": "minecraft:amethyst_shard"
     },
-    "#": {
+    "S": {
       "item": "minecraft:stick"
     }
   },
-  "pattern": [
-    "NN",
-    "N#"
-  ],
   "result": {
     "count": 1,
     "id": "tinyblocks:minimizer"
