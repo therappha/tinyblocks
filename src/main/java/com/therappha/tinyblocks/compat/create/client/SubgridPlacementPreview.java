@@ -85,6 +85,17 @@ public final class SubgridPlacementPreview {
         if (piece == null || !(piece.definition instanceof VanillaBlockPiece)
                 || !(piece.runtimeState instanceof BlockState state)) return null;
 
+        double cellSize = 1.0 / grid.getGridSize();
+        if (com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null) {
+            // A connector places by its own rule (into a funnel's socket, a small cogwheel onto a gear's side), not
+            // by the shaft it stands in as: show where that puts the block.
+            var target = com.therappha.tinyblocks.compat.create.ConnectorPlacement.targetOn(grid, piece, blockItem.getBlock(), ray.getLocation());
+            if (target == null) return null;
+            Vec3 corner = hit.realCornerOf(grid.virtualPosOf(target.cell()));
+            ghost = new Ghost(corner, cellSize, target.state());
+            return BlockPos.containing(corner.add(cellSize / 2, cellSize / 2, cellSize / 2));
+        }
+
         FakeLevel space = null;
         for (IPlacementHelper helper : PlacementHelpers.getHelpersView()) {
             if (!helper.matchesItem(held) || !helper.matchesState(state)) continue;
@@ -92,7 +103,6 @@ public final class SubgridPlacementPreview {
             PlacementOffset offset = helper.getOffset(mc.player, space, state, hit.hit().getBlockPos(), hit.hit(), held);
             if (!offset.isSuccessful() || !offset.hasGhostState()) continue;
 
-            double cellSize = 1.0 / grid.getGridSize();
             Vec3 corner = hit.realCornerOf(offset.getBlockPos());
             ghost = new Ghost(corner, cellSize, offset.getTransform().apply(offset.getGhostState()));
             return BlockPos.containing(corner.add(cellSize / 2, cellSize / 2, cellSize / 2));

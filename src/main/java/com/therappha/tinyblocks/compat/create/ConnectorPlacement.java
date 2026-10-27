@@ -42,24 +42,57 @@ public final class ConnectorPlacement {
         return place(be, level, nearestFace(axis, cell, be.getGridSize()));
     }
 
+    /** Where a block clicked onto a connector goes, and as what. */
+    public record Target(BlockPos cell, net.minecraft.world.level.block.state.BlockState state) {}
+
     /**
-     * A block clicked onto a plate goes into the plate's socket, turned to meet it: along the plate's axis, or,
-     * for a block with a facing (a motor), facing the plate. False if the socket is taken.
+     * Where {@code block} clicked onto connector {@code plate} at {@code realHit} goes: into a funnel's socket,
+     * turned to meet it — along the plate's axis, or, for a block with a facing (a motor), facing the plate; or, for a
+     * gear, a small cogwheel on its axis into the free side cell (ShaftConnectorPiece#meshCells) nearest the hit.
+     * Null when nowhere: the socket taken, every side taken, or anything but a small cogwheel on a gear. The click
+     * (SubgridEventHandler) and the ghost (SubgridPlacementPreview) both ask here, so they agree.
      */
-    public static boolean placeInSocket(SubgridBlockEntity be, ServerLevel level, PlacedPiece plate, Block block) {
-        BlockPos socket = ShaftConnectorPiece.socket(plate.facing, be.getGridSize());
-        if (socket == null || be.getPieceAt(socket.getX(), socket.getY(), socket.getZ()) != null) return false;
+    @javax.annotation.Nullable
+    public static Target targetOn(SubgridBlockEntity be, PlacedPiece plate, Block block, net.minecraft.world.phys.Vec3 realHit) {
+        int size = be.getGridSize();
         net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
-        if (state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
-            state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
-        } else if (state.hasProperty(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING)) {
-            state = state.setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, plate.facing);
+        if (!ShaftConnectorPiece.isGear(size)) {
+            BlockPos socket = ShaftConnectorPiece.socket(plate.facing, size);
+            if (socket == null || be.getPieceAt(socket.getX(), socket.getY(), socket.getZ()) != null) return null;
+            if (state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
+                state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
+            } else if (state.hasProperty(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING)) {
+                state = state.setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, plate.facing);
+            }
+            return new Target(socket, state);
         }
-        PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, socket, plate.facing);
-        piece.runtimeState = state;
+        if (!com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state)
+                || !state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
+            return null;
+        }
+        state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
+        net.minecraft.world.phys.Vec3 local = realHit.subtract(net.minecraft.world.phys.Vec3.atLowerCornerOf(be.getBlockPos())).scale(size);
+        BlockPos nearest = null;
+        double best = Double.MAX_VALUE;
+        for (BlockPos side : ShaftConnectorPiece.meshCells(plate.facing, size)) {
+            if (be.getPieceAt(side.getX(), side.getY(), side.getZ()) != null) continue;
+            double distance = net.minecraft.world.phys.Vec3.atCenterOf(side).distanceToSqr(local);
+            if (distance < best) {
+                best = distance;
+                nearest = side;
+            }
+        }
+        return nearest == null ? null : new Target(nearest, state);
+    }
+
+    /** Places {@code target} in {@code be}, as a one-cell placement does; false if its cell is taken. */
+    public static boolean placeAt(SubgridBlockEntity be, ServerLevel level, Target target, Direction facing) {
+        BlockPos cell = target.cell();
+        PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, cell, facing);
+        piece.runtimeState = target.state();
         if (!be.placePiece(piece)) return false;
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(state, fakeLevel, fakeLevel.world(socket), Blocks.AIR.defaultBlockState(), false);
+        BlockAccess.onPlace(target.state(), fakeLevel, fakeLevel.world(cell), Blocks.AIR.defaultBlockState(), false);
         VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         BlockPos subgridPos = be.getBlockPos();
         level.sendBlockUpdated(subgridPos, level.getBlockState(subgridPos), level.getBlockState(subgridPos), Block.UPDATE_CLIENTS);

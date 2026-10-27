@@ -69,15 +69,14 @@ class ShaftConnectorPieceTest {
         assertEquals(null, ShaftConnectorPiece.socket(Direction.EAST, 8));
     }
 
-    /** Small cogwheels mesh on its eight side cells, large ones on its four diagonal cells, all in its layer. */
+    /** Small cogwheels mesh on its eight side cells, in its layer; not on its diagonals. */
     @Test
-    void theGearMeshesOnItsSidesAndDiagonals() {
-        ShaftConnectorPiece.Mesh mesh = ShaftConnectorPiece.meshCells(Direction.EAST, 8);
-        assertEquals(8, mesh.sides().size());
-        assertEquals(4, mesh.diagonals().size());
-        assertEquals(true, mesh.sides().contains(new BlockPos(7, 2, 3)) && mesh.sides().contains(new BlockPos(7, 4, 5)));
-        assertEquals(true, mesh.diagonals().contains(new BlockPos(7, 2, 2)) && mesh.diagonals().contains(new BlockPos(7, 5, 5)));
-        assertEquals(0, ShaftConnectorPiece.meshCells(Direction.EAST, 2).sides().size()); // a 1/2 gear fills the face
+    void theGearMeshesOnItsSides() {
+        java.util.List<BlockPos> sides = ShaftConnectorPiece.meshCells(Direction.EAST, 8);
+        assertEquals(8, sides.size());
+        assertEquals(true, sides.contains(new BlockPos(7, 2, 3)) && sides.contains(new BlockPos(7, 4, 5)));
+        assertEquals(false, sides.contains(new BlockPos(7, 2, 2)));
+        assertEquals(0, ShaftConnectorPiece.meshCells(Direction.EAST, 2).size()); // a 1/2 gear fills the face
     }
 
     /** In a 9-grid the socket is the middle cell, in line with a full-size shaft's centre, and the funnel around it. */

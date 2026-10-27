@@ -321,7 +321,8 @@ public class SubgridConnectorGameTest {
         int last = be.getGridSize() - 1;
 
         PlacedPiece plate = plateOn(be, level, Direction.EAST);
-        if (!ConnectorPlacement.placeInSocket(be, level, plate, AllBlocks.SHAFT.get())) {
+        var target = ConnectorPlacement.targetOn(be, plate, AllBlocks.SHAFT.get(), net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()));
+        if (target == null || !ConnectorPlacement.placeAt(be, level, target, plate.facing)) {
             throw new IllegalStateException("socket not filled");
         }
         BlockPos socket = ShaftConnectorPiece.socket(Direction.EAST, be.getGridSize());

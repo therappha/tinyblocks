@@ -112,7 +112,7 @@ public class SubgridConnectorNeighbourGameTest {
         if (!ConnectorPlacement.place(b, helper.getLevel(), Direction.WEST)) throw new IllegalStateException("no gear");
         SubgridTestSupport.placePiece(a, helper.getLevel(), ShaftConnectorPiece.socket(Direction.EAST, 7), motorFacing(Direction.EAST));
         PlacedPiece cog = SubgridTestSupport.placePiece(b, helper.getLevel(),
-                ShaftConnectorPiece.meshCells(Direction.WEST, 8).sides().get(0),
+                ShaftConnectorPiece.meshCells(Direction.WEST, 8).get(0),
                 AllBlocks.COGWHEEL.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.X));
 
         helper.startSequence()

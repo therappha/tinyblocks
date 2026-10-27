@@ -234,9 +234,7 @@ public final class KineticBridge {
         if (socket != null) {
             ends.add(grid.virtualPosOf(socket));
         } else {
-            ShaftConnectorPiece.Mesh mesh = ShaftConnectorPiece.meshCells(connector.face(), grid.getGridSize());
-            mesh.sides().forEach(cell -> ends.add(grid.virtualPosOf(cell)));
-            mesh.diagonals().forEach(cell -> ends.add(grid.virtualPosOf(cell)));
+            ShaftConnectorPiece.meshCells(connector.face(), grid.getGridSize()).forEach(cell -> ends.add(grid.virtualPosOf(cell)));
         }
         for (BlockPos end : ends) {
             if (end != null && !locations.contains(end)) locations.add(end);
@@ -291,25 +289,19 @@ public final class KineticBridge {
     }
 
     /**
-     * Speed ratio between a gear connector and a tiny cogwheel in {@code cell}, turning on the gear's axis: a small
-     * one on its sides turns twice as fast, a large one on its diagonals as fast, both the other way — Create's
-     * large-to-small ratio, and gear to gear. 0 for anything else, a tiny shaft against it included.
+     * Speed ratio between a gear connector and a tiny cogwheel in {@code cell}: a small one on its sides, turning on
+     * its axis, turns twice as fast the other way — Create's large-to-small ratio. 0 for anything else, a tiny shaft
+     * against it included.
      */
     private static float meshRatio(Connector gear, BlockPos cell, KineticBlockEntity cog, boolean fromGear) {
         BlockState state = cog.getBlockState();
-        if (!(state.getBlock() instanceof com.simibubi.create.content.kinetics.simpleRelays.ICogWheel)
+        if (!com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state)
                 || !(state.getBlock() instanceof IRotate rotate)
-                || rotate.getRotationAxis(state) != gear.face().getAxis()) {
+                || rotate.getRotationAxis(state) != gear.face().getAxis()
+                || !ShaftConnectorPiece.meshCells(gear.face(), gear.grid().getGridSize()).contains(cell)) {
             return 0f;
         }
-        ShaftConnectorPiece.Mesh mesh = ShaftConnectorPiece.meshCells(gear.face(), gear.grid().getGridSize());
-        if (com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state) && mesh.sides().contains(cell)) {
-            return fromGear ? -2f : -0.5f;
-        }
-        if (com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isLargeCog(state) && mesh.diagonals().contains(cell)) {
-            return -1f;
-        }
-        return 0f;
+        return fromGear ? -2f : -0.5f;
     }
 
     // --- KineticBlockEntity source lookups -----------------------------------------------------------------
