@@ -268,4 +268,106 @@ public class SubgridCreatePlacementGameTest {
                 })
                 .thenSucceed();
     }
+
+    /** Speeds of the cells from {@code first} to {@code second} along x, for messages; and whether all turn. */
+    private static String beltSpeeds(GameTestHelper helper, SubgridBlockEntity be, BlockPos first, BlockPos second, boolean[] allTurn) {
+        java.util.List<String> speeds = new java.util.ArrayList<>();
+        allTurn[0] = true;
+        for (int x = first.getX(); x <= second.getX(); x++) {
+            var piece = be.getPieceAt(x, first.getY(), first.getZ());
+            var phantom = piece == null ? null : SubgridTestSupport.blockEntityOf(be, piece, helper.getLevel());
+            float speed = phantom instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity k ? k.getSpeed() : Float.NaN;
+            speeds.add(x + "=" + speed);
+            allTurn[0] &= speed != 0 && !Float.isNaN(speed);
+        }
+        return speeds.toString();
+    }
+
+    /**
+     * The world is left and joined again (the chunk unloads, the grid is saved and loaded back): the belt turns as
+     * before, end to end.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 400)
+    public void aTinyBeltStillTurnsAfterTheGridIsReloaded(GameTestHelper helper) {
+        SubgridBlockEntity[] grid = {SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2))};
+        BlockPos first = new BlockPos(1, 3, 4);
+        BlockPos second = new BlockPos(5, 3, 4);
+        BlockState shaftZ = AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.Z);
+        SubgridTestSupport.placePiece(grid[0], helper.getLevel(), first, shaftZ);
+        SubgridTestSupport.placePiece(grid[0], helper.getLevel(), second, shaftZ);
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, grid[0]);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.BELT_CONNECTOR.asStack(4));
+        SubgridTestSupport.rightClick(grid[0], player, SubgridTestSupport.faceHit(grid[0], first, Direction.SOUTH));
+        boolean[] turns = new boolean[1];
+
+        helper.startSequence()
+                .thenIdle(6)
+                .thenExecute(() -> {
+                    player.getCooldowns().removeCooldown(AllItems.BELT_CONNECTOR.get());
+                    SubgridTestSupport.rightClick(grid[0], player, SubgridTestSupport.faceHit(grid[0], second, Direction.SOUTH));
+                    SubgridTestSupport.placePiece(grid[0], helper.getLevel(), first.north(),
+                            AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, Direction.SOUTH));
+                })
+                .thenIdle(80)
+                .thenExecute(() -> {
+                    String before = beltSpeeds(helper, grid[0], first, second, turns);
+                    helper.assertTrue(turns[0], "the belt didn't turn before the reload: " + before);
+                    // Unload and load back, as leaving the world and joining again does.
+                    var level = helper.getLevel();
+                    BlockPos pos = grid[0].getBlockPos();
+                    net.minecraft.nbt.CompoundTag saved = grid[0].saveWithFullMetadata(level.registryAccess());
+                    grid[0].onChunkUnloaded();
+                    level.removeBlockEntity(pos);
+                    var loaded = net.minecraft.world.level.block.entity.BlockEntity.loadStatic(pos, level.getBlockState(pos), saved, level.registryAccess());
+                    level.setBlockEntity(loaded);
+                    grid[0] = (SubgridBlockEntity) level.getBlockEntity(pos);
+                })
+                .thenIdle(150)
+                .thenExecute(() -> {
+                    String after = beltSpeeds(helper, grid[0], first, second, turns);
+                    helper.assertTrue(turns[0], "after the reload the belt turns as " + after);
+                })
+                .thenSucceed();
+    }
+
+    /** A belt from one grid into the grid next to it, of the same size: a tiny motor at one end turns it all, both grids. */
+    @GameTest(template = "empty_platform", timeoutTicks = 400)
+    public void aTinyBeltAcrossTwoGridsTurnsEndToEnd(GameTestHelper helper) {
+        SubgridBlockEntity a = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        helper.setBlock(new BlockPos(3, 1, 2), Blocks.AIR);
+        SubgridBlockEntity b = SubgridBlockEntity.createAt(helper.getLevel(), helper.absolutePos(new BlockPos(3, 1, 2)), a.getGridSize());
+        BlockPos first = new BlockPos(5, 3, 4);  // in A
+        BlockPos second = new BlockPos(2, 3, 4); // in B, past A's east edge
+        BlockState shaftZ = AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.Z);
+        SubgridTestSupport.placePiece(a, helper.getLevel(), first, shaftZ);
+        SubgridTestSupport.placePiece(b, helper.getLevel(), second, shaftZ);
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, a);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.BELT_CONNECTOR.asStack(4));
+        SubgridTestSupport.rightClick(a, player, SubgridTestSupport.faceHit(a, first, Direction.SOUTH));
+
+        helper.startSequence()
+                .thenIdle(6)
+                .thenExecute(() -> {
+                    player.getCooldowns().removeCooldown(AllItems.BELT_CONNECTOR.get());
+                    SubgridTestSupport.rightClick(b, player, SubgridTestSupport.faceHit(b, second, Direction.SOUTH));
+                    SubgridTestSupport.placePiece(a, helper.getLevel(), first.north(),
+                            AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, Direction.SOUTH));
+                })
+                .thenIdle(150)
+                .thenExecute(() -> {
+                    java.util.List<String> cells = new java.util.ArrayList<>();
+                    boolean all = true;
+                    int size = a.getGridSize();
+                    for (int x = first.getX(); x < size + second.getX() + 1; x++) {
+                        SubgridBlockEntity grid = x < size ? a : b;
+                        var piece = grid.getPieceAt(x % size, 3, 4);
+                        var phantom = piece == null ? null : SubgridTestSupport.blockEntityOf(grid, piece, helper.getLevel());
+                        float speed = phantom instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity k ? k.getSpeed() : Float.NaN;
+                        cells.add((x < size ? "A" : "B") + (x % size) + "=" + (piece == null ? "none" : speed));
+                        all &= speed != 0 && !Float.isNaN(speed);
+                    }
+                    helper.assertTrue(all, "belt across two grids: " + cells);
+                })
+                .thenSucceed();
+    }
 }

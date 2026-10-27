@@ -1124,8 +1124,18 @@ public class VanillaBlockPiece extends PieceDefinition {
      */
     private static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @javax.annotation.Nullable BlockState was,
                                           BlockState now, FakeCellGetter cells) {
-        if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) return;
         if (cells.touchedBlockEntities().containsKey(piece.anchor) || cells.removedBlockEntityPositions().contains(piece.anchor)) return;
+        followStateChange(be, piece, was, now);
+    }
+
+    /**
+     * The same for a piece whose state is changed from outside its own grid's fake space — a write that crossed
+     * into it from a neighbouring grid (SubgridBlockEntity#placePieceCrossBoundary): a Create belt laid from one
+     * grid into the next turns the shaft there into a belt, and that piece needs a belt's block entity.
+     */
+    public static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @javax.annotation.Nullable BlockState was,
+                                         BlockState now) {
+        if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) return;
         if (was != null && now.is(was.getBlock()) && phantom.getType().isValid(now)) {
             phantom.setBlockState(now);
             return;

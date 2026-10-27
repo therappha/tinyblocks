@@ -259,7 +259,12 @@ public class SubgridBlockEntity extends BlockEntity {
         if (existing != null) {
             if (existing.definition != definition) return null;
             if (runtimeState.equals(existing.runtimeState)) return existing;
+            Object was = existing.runtimeState;
             existing.runtimeState = runtimeState;
+            // Its block entity follows, as for a change made in this grid's own fake space.
+            if (was instanceof BlockState wasState && runtimeState instanceof BlockState nowState) {
+                com.therappha.tinyblocks.v2.VanillaBlockPiece.followStateChange(this, existing, wasState, nowState);
+            }
             notifyNeighbors(existing);
             notifyUpdate();
             return existing;
