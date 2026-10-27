@@ -229,4 +229,43 @@ public class SubgridCreatePlacementGameTest {
         }
         helper.succeed();
     }
+
+    /** A tiny motor on one end of a tiny belt turns the whole belt, its far end included. */
+    @GameTest(template = "empty_platform", timeoutTicks = 300)
+    public void aTinyMotorTurnsTheWholeBelt(GameTestHelper helper) {
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        BlockPos first = new BlockPos(1, 3, 4);
+        BlockPos second = new BlockPos(5, 3, 4);
+        BlockState shaftZ = AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.Z);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), first, shaftZ);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), second, shaftZ);
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.BELT_CONNECTOR.asStack(4));
+
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.faceHit(be, first, Direction.SOUTH));
+        helper.startSequence()
+                .thenIdle(6)
+                .thenExecute(() -> {
+                    player.getCooldowns().removeCooldown(AllItems.BELT_CONNECTOR.get());
+                    SubgridTestSupport.rightClick(be, player, SubgridTestSupport.faceHit(be, second, Direction.SOUTH));
+                    // A motor behind the first end, along its shaft.
+                    SubgridTestSupport.placePiece(be, helper.getLevel(), first.north(),
+                            AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, Direction.SOUTH));
+                })
+                .thenIdle(120)
+                .thenExecute(() -> {
+                    java.util.List<String> speeds = new java.util.ArrayList<>();
+                    boolean all = true;
+                    for (int x = first.getX(); x <= second.getX(); x++) {
+                        var piece = be.getPieceAt(x, 3, 4);
+                        var phantom = piece == null ? null : SubgridTestSupport.blockEntityOf(be, piece, helper.getLevel());
+                        float speed = phantom instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity k ? k.getSpeed() : Float.NaN;
+                        speeds.add(x + "=" + speed + (phantom instanceof com.simibubi.create.content.kinetics.belt.BeltBlockEntity belt
+                                ? "(len " + belt.beltLength + ", ctrl " + belt.getController() + ")" : ""));
+                        all &= speed != 0 && !Float.isNaN(speed);
+                    }
+                    helper.assertTrue(all, "belt speeds along it: " + speeds);
+                })
+                .thenSucceed();
+    }
 }
