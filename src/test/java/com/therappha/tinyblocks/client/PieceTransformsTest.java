@@ -32,12 +32,17 @@ class PieceTransformsTest {
         }
     }
 
-    /** Next to a 1/5 grid a 1/9 funnel starts at a 1/5 shaft and narrows to a 1/9 one. */
+    /**
+     * An 8-grid's gear connector: the shaftless gear a cell's scale (two cells across), then a full-size shaft end
+     * a quarter of a cell thick on the face.
+     */
     @Test
-    void againstAnotherSizeItStartsAtThatSize() {
-        List<PieceTransforms.Slice> slices = funnel(9, 5);
-        assertEquals(1f / 5, slices.get(0).scale().y, 1e-6);
-        float last = slices.get(slices.size() - 1).scale().y;
-        assertEquals(true, last < 1f / 5 && last > 1f / 9, "ends at " + last);
+    void aGearIsTheGearThenAFullSizeShaftEndOnTheFace() {
+        List<PieceTransforms.Slice> slices = funnel(8, 0);
+        assertEquals(2, slices.size());
+        assertEquals(1f / 8, slices.get(0).scale().y, 1e-6);
+        assertEquals(1f, slices.get(1).scale().y, 1e-6);
+        assertEquals(1f / 32, slices.get(1).scale().x, 1e-6);
+        assertEquals(1f - 1f / 32, slices.get(1).translation().x, 1e-6);
     }
 }

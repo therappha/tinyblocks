@@ -5,6 +5,7 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
+import java.util.List;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -65,7 +66,23 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
-            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece))) {
+            List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece));
+            if (isGear(be, piece)) {
+                if (piece.runtimeBlockEntity instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity gear
+                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
+                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
+                    for (int i = 0; i < slices.size(); i++) {
+                        PieceTransforms.Slice slice = slices.get(i);
+                        poseStack.pushPose();
+                        poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                        poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource, packedLight);
+                        poseStack.popPose();
+                    }
+                }
+                continue;
+            }
+            for (PieceTransforms.Slice slice : slices) {
                 poseStack.pushPose();
                 poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                 poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
@@ -118,10 +135,20 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      */
     public static boolean drawingPhantom;
 
-    /** For a shaft connector, the grid size across its face (its funnel is drawn from that); 0 otherwise. */
+    /**
+     * For a shaft connector, the size of a SubgridBlock of the same size across its face, which it meets cell to cell
+     * (a straight tiny shaft); 0 otherwise — a real block, or another size's connector, met by a full-size shaft.
+     */
     public static int acrossOf(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
         net.minecraft.core.Direction face = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece);
-        return face == null ? 0 : com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.sizeAcross(be, face);
+        int across = face == null ? 0 : com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.sizeAcross(be, face);
+        return across == be.getGridSize() ? across : 0;
+    }
+
+    /** Whether {@code piece} is a gear connector, drawn from Create's parts (GearConnectorDrawing) rather than as its block. */
+    static boolean isGear(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
+        return com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null
+                && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(be.getGridSize());
     }
 
     @Override
