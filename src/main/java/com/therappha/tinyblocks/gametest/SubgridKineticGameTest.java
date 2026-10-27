@@ -228,4 +228,42 @@ public class SubgridKineticGameTest {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * A grid near the world origin: its phantoms' virtual positions (world position times the grid size) fall in
+     * a loaded chunk, above the world's top. Create's sendData marked them changed in the real chunk cache, which
+     * threw every tick there and cut rotation off part way (SyncedBlockEntityMixin).
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 200)
+    public void aGridNearTheWorldOriginStillTurns(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos at = new BlockPos(1, 100, 1);
+        level.setChunkForced(0, 0, true);
+        level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+        SubgridBlockEntity be = SubgridBlockEntity.createAt(level, at, 7);
+        if (be == null) throw new IllegalStateException("no grid at " + at);
+        PlacedPiece motor = SubgridTestSupport.placePiece(be, level, new BlockPos(2, 3, 3),
+                AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(DirectionalKineticBlock.FACING, Direction.EAST));
+        PlacedPiece shaft = SubgridTestSupport.placePiece(be, level, new BlockPos(3, 3, 3),
+                AllBlocks.SHAFT.getDefaultState().setValue(RotatedPillarKineticBlock.AXIS, Direction.Axis.X));
+
+        helper.startSequence()
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    BlockEntity motorBE = SubgridTestSupport.blockEntityOf(be, motor, level);
+                    BlockEntity shaftBE = SubgridTestSupport.blockEntityOf(be, shaft, level);
+                    RuntimeException synced = null;
+                    try {
+                        ((KineticBlockEntity) shaftBE).sendData();
+                    } catch (RuntimeException e) {
+                        synced = e;
+                    }
+                    level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                    level.setChunkForced(0, 0, false);
+                    helper.assertTrue(synced == null, "the shaft's sendData threw: " + synced);
+                    helper.assertTrue(motorBE instanceof KineticBlockEntity k && k.getSpeed() != 0, "motor still: " + motorBE);
+                    helper.assertTrue(shaftBE instanceof KineticBlockEntity k && k.getSpeed() != 0, "shaft still: " + shaftBE);
+                })
+                .thenSucceed();
+    }
 }
