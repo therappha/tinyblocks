@@ -4,6 +4,7 @@
   "package": "com.therappha.tinyblocks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BlockItemAccessor",
     "PlayerMixin"
   ],
   "injectors": {
