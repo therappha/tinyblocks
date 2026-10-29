@@ -45,6 +45,8 @@ public class SubgridEventHandler {
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
+        // Only a question (may the player take the whole grid?), for the protections to answer.
+        if (com.therappha.tinyblocks.items.GridSaveItem.isAskingToBreak()) return;
         event.setCanceled(true);
 
         ServerLevel level = (ServerLevel) event.getLevel();

@@ -212,7 +212,7 @@ public class SubgridTransformGameTest {
     }
 
     /** Whether Create still counts {@code k} in any of the level's kinetic networks (TorquePropagator#networks). */
-    private static boolean inANetwork(ServerLevel level, KineticBlockEntity k) {
+    static boolean inANetwork(ServerLevel level, KineticBlockEntity k) {
         try {
             Field field = TorquePropagator.class.getDeclaredField("networks");
             field.setAccessible(true);

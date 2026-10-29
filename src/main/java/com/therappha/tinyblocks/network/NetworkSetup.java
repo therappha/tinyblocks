@@ -34,12 +34,7 @@ public class NetworkSetup {
     }
 
     private static void handleGridSaveTurn(GridSaveTurnPayload payload, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            var stack = ctx.player().getMainHandItem();
-            if (stack.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) {
-                com.therappha.tinyblocks.items.GridSaveItem.turn(stack);
-            }
-        });
+        ctx.enqueueWork(() -> com.therappha.tinyblocks.items.GridSaveItem.turnHeld(ctx.player()));
     }
 
     private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {

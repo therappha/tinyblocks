@@ -2,6 +2,7 @@ package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.network.GridSaveTurnPayload;
@@ -19,6 +20,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
@@ -36,11 +38,10 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 /**
- * A full Grid Save in the main hand shows its grid, see-through, where a click would place it (GridSaveItem#target),
+ * A full Grid Save in hand (GridSaveItem#heldFull) shows its grid, see-through, where a click would place it (GridSaveItem#target),
  * turned as it would be; R (rebindable) turns it a quarter turn more.
  */
 public final class GridSavePreview {
@@ -48,9 +49,9 @@ public final class GridSavePreview {
     public static final KeyMapping TURN = new KeyMapping("key.tinyblocks.grid_save_turn",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, "key.categories.tinyblocks");
 
-    /** The pieces last drawn, turned, and what they were made from: rebuilt only when the item's grid changes. */
-    private static CompoundTag cachedGrid;
-    private static List<PlacedPiece> cachedPieces = List.of();
+    /** The ghost last drawn and the custom data it was drawn from: drawn again only when the held grid changes. */
+    private static CustomData cachedData;
+    private static Ghost cachedGhost;
 
     private GridSavePreview() {}
 
@@ -72,7 +73,7 @@ public final class GridSavePreview {
         public static void onClientTick(ClientTickEvent.Post event) {
             Minecraft mc = Minecraft.getInstance();
             while (TURN.consumeClick()) {
-                if (mc.player != null && GridSaveItem.isFull(mc.player.getMainHandItem())) {
+                if (mc.player != null && GridSaveItem.heldFull(mc.player) != null) {
                     PacketDistributor.sendToServer(GridSaveTurnPayload.INSTANCE);
                 }
             }
@@ -83,60 +84,145 @@ public final class GridSavePreview {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
             Minecraft mc = Minecraft.getInstance();
             if (mc.player == null || mc.level == null) return;
-            ItemStack held = mc.player.getMainHandItem();
-            if (!(held.getItem() instanceof GridSaveItem)) return;
-            CompoundTag grid = GridSaveItem.grid(held);
-            if (grid == null) return;
+            ItemStack held = GridSaveItem.heldFull(mc.player);
+            if (held == null) {
+                cachedData = null;
+                cachedGhost = null;
+                return;
+            }
             if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
             BlockPos target = GridSaveItem.target(hit);
-            if (!mc.level.getBlockState(target).canBeReplaced()) return;
+            // As GridSaveItem#place refuses (but for who is in the way).
+            if (!mc.level.getBlockState(target).canBeReplaced() || !mc.level.isInWorldBounds(target)) return;
 
-            int size = grid.getInt("size");
-            List<PlacedPiece> pieces = pieces(grid, size);
+            Ghost ghost = ghost(GridSaveItem.data(held));
             Vec3 camera = event.getCamera().getPosition();
-            PoseStack poseStack = event.getPoseStack();
             MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
-            GhostVertexConsumer consumer = new GhostVertexConsumer(buffers.getBuffer(RenderType.translucent()), 120);
-            var blockRenderer = mc.getBlockRenderer();
-            float cell = 1f / size;
-
-            poseStack.pushPose();
-            poseStack.translate(target.getX() - camera.x, target.getY() - camera.y, target.getZ() - camera.z);
-            for (PlacedPiece piece : pieces) {
-                BlockState state = piece.definition.renderState(piece);
-                if (state == null) continue;
-                // As SubgridRenderer draws a piece (PieceTransforms), but see-through, through every render type of
-                // its model (a model hands out its quads per type) into the one translucent buffer.
-                for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, size)) {
-                    poseStack.pushPose();
-                    poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
-                    poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
-                    var model = blockRenderer.getBlockModel(state);
-                    for (RenderType layer : model.getRenderTypes(state, RandomSource.create(42L), ModelData.EMPTY)) {
-                        blockRenderer.getModelRenderer().renderModel(poseStack.last(), consumer, state, model,
-                                1f, 1f, 1f, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, layer);
-                    }
-                    poseStack.popPose();
-                }
-            }
-            poseStack.popPose();
+            ghost.replay(buffers.getBuffer(RenderType.translucent()), event.getPoseStack().last(),
+                    (float) (target.getX() - camera.x), (float) (target.getY() - camera.y), (float) (target.getZ() - camera.z));
             buffers.endBatch(RenderType.translucent());
         }
     }
 
-    /** The grid's pieces, turned as placing it turns them (SubgridBlockEntity#transformed), read once per grid. */
-    private static List<PlacedPiece> pieces(CompoundTag grid, int size) {
-        if (grid.equals(cachedGrid)) return cachedPieces;
-        var registries = Minecraft.getInstance().level.registryAccess();
+    /**
+     * The ghost of the held grid, drawn once for each grid (and turn) it holds: a stack keeps its custom data as it
+     * is until its grid changes, and an equal one (the server sending the stack again) is still the same grid.
+     */
+    private static Ghost ghost(CustomData data) {
+        if (data != cachedData) {
+            if (cachedGhost == null || !data.equals(cachedData)) cachedGhost = draw(data.getUnsafe().getCompound(GridSaveItem.GRID_KEY));
+            cachedData = data;
+        }
+        return cachedGhost;
+    }
+
+    /** The grid's pieces, turned as placing it turns them (SubgridBlockEntity#transformed), drawn as at the origin. */
+    private static Ghost draw(CompoundTag grid) {
+        Minecraft mc = Minecraft.getInstance();
+        var registries = mc.level.registryAccess();
+        int size = grid.getInt("size");
         SubgridBlock block = Registration.subgridBlock(size);
         // A grid entity of its own, in no level, only to read the saved pieces with.
         SubgridBlockEntity reader = new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), BlockPos.ZERO, block.defaultBlockState());
         reader.loadCustomOnly(grid.getCompound("data"), registries);
         Rotation rotation = Rotation.values()[Math.floorMod(grid.getInt("turns"), 4)];
-        List<PlacedPiece> turned = new ArrayList<>();
-        for (PlacedPiece piece : reader.getPieces()) turned.add(reader.transformed(piece, rotation, Mirror.NONE, registries));
-        cachedGrid = grid;
-        cachedPieces = turned;
-        return turned;
+
+        Ghost ghost = new Ghost();
+        GhostVertexConsumer consumer = new GhostVertexConsumer(ghost, 120);
+        var blockRenderer = mc.getBlockRenderer();
+        RandomSource random = RandomSource.create();
+        PoseStack poseStack = new PoseStack();
+        for (PlacedPiece original : reader.getPieces()) {
+            PlacedPiece piece = reader.transformed(original, rotation, Mirror.NONE, registries);
+            BlockState state = piece.definition.renderState(piece);
+            if (state == null) continue;
+            var model = blockRenderer.getBlockModel(state);
+            random.setSeed(42L);
+            var layers = model.getRenderTypes(state, random, ModelData.EMPTY);
+            // As SubgridRenderer draws a piece (PieceTransforms), but see-through, through every render type of
+            // its model (a model hands out its quads per type) into the one translucent buffer.
+            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, size)) {
+                poseStack.pushPose();
+                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                for (RenderType layer : layers) {
+                    blockRenderer.getModelRenderer().renderModel(poseStack.last(), consumer, state, model,
+                            1f, 1f, 1f, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, layer);
+                }
+                poseStack.popPose();
+            }
+        }
+        return ghost;
+    }
+
+    /**
+     * Vertices as the model renderer wrote them, kept to be written again each frame moved to where the grid would
+     * go: position, colour, uv, overlay, light and normal, in that order (what the translucent buffer doesn't take,
+     * it skips, as it did when drawn straight into it).
+     */
+    private static final class Ghost implements VertexConsumer {
+        private static final int FLOATS = 8, INTS = 4;
+        private float[] floats = new float[FLOATS * 256];
+        private int[] ints = new int[INTS * 256];
+        private int count = -1;
+
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            count++;
+            if ((count + 1) * FLOATS > floats.length) {
+                floats = Arrays.copyOf(floats, floats.length * 2);
+                ints = Arrays.copyOf(ints, ints.length * 2);
+            }
+            floats[count * FLOATS] = x;
+            floats[count * FLOATS + 1] = y;
+            floats[count * FLOATS + 2] = z;
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            ints[count * INTS] = (a << 24) | (r << 16) | (g << 8) | b;
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            floats[count * FLOATS + 3] = u;
+            floats[count * FLOATS + 4] = v;
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) {
+            ints[count * INTS + 1] = (v << 16) | (u & 0xFFFF);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            ints[count * INTS + 2] = (v << 16) | (u & 0xFFFF);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(float nx, float ny, float nz) {
+            floats[count * FLOATS + 5] = nx;
+            floats[count * FLOATS + 6] = ny;
+            floats[count * FLOATS + 7] = nz;
+            return this;
+        }
+
+        void replay(VertexConsumer into, PoseStack.Pose pose, float dx, float dy, float dz) {
+            for (int i = 0; i <= count; i++) {
+                int f = i * FLOATS, n = i * INTS;
+                int color = ints[n];
+                into.addVertex(pose, floats[f] + dx, floats[f + 1] + dy, floats[f + 2] + dz)
+                        .setColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF, color >>> 24)
+                        .setUv(floats[f + 3], floats[f + 4])
+                        .setUv1(ints[n + 1] & 0xFFFF, ints[n + 1] >>> 16)
+                        .setUv2(ints[n + 2] & 0xFFFF, ints[n + 2] >>> 16)
+                        .setNormal(pose, floats[f + 5], floats[f + 6], floats[f + 7]);
+            }
+        }
     }
 }

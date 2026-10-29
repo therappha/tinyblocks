@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.gametest;
 
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.Create;
 import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
@@ -24,6 +25,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -42,8 +44,10 @@ import java.util.List;
 
 /**
  * A grid taken into a Grid Save and placed somewhere else, as a player's clicks do (ServerPlayerGameMode#useItemOn):
- * nothing drops, its old place is air, and at the new one its pieces are there, its cogwheel turns with its motor
- * and its link answers a linked controller, without reopening the world. Once as it was, once turned a quarter.
+ * nothing drops, its old place is air and left behind in no kinetic or link network, a click where someone stands
+ * places nothing and keeps the grid, and at the new place its pieces are there, its cogwheel turns with its motor
+ * and its link answers a linked controller, without reopening the world. Once as it was, once turned a quarter by
+ * R as the server takes it (GridSaveItem#turnHeld, what GridSaveTurnPayload does).
  */
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -82,6 +86,10 @@ public class GridSaveGameTest {
         Rotation rotation = Rotation.values()[turns];
         BlockPos cog = be.transformCell(COG, rotation, Mirror.NONE), turnedLink = be.transformCell(LINK, rotation, Mirror.NONE);
         SubgridBlockEntity[] placed = new SubgridBlockEntity[1];
+        KineticBlockEntity[] oldCog = new KineticBlockEntity[1];
+        LinkBehaviour[] oldLink = new LinkBehaviour[1];
+        BlockPos floor = helper.absolutePos(TO.below());
+        BlockHitResult onFloor = new BlockHitResult(Vec3.atCenterOf(floor).add(0, 0.5, 0), Direction.UP, floor, false);
 
         helper.startSequence()
                 // A transmitter made a receiver with a sneaking click, then tuned, as in SubgridTransformGameTest.
@@ -100,16 +108,30 @@ public class GridSaveGameTest {
                 .thenIdle(10)
                 .thenExecute(() -> helper.assertTrue(spinning(be, level, COG), "the cog doesn't turn before the grid is saved"))
                 .thenExecute(() -> {
+                    oldCog[0] = (KineticBlockEntity) SubgridTestSupport.blockEntityOf(be, be.getPieceAt(COG.getX(), COG.getY(), COG.getZ()), level);
+                    oldLink[0] = linkOf(be, level, link);
                     player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, MOTOR));
                     helper.assertTrue(GridSaveItem.isFull(save), "the Grid Save took nothing");
                     helper.assertBlockPresent(Blocks.AIR, FROM);
-                    for (int i = 0; i < turns; i++) GridSaveItem.turn(save);
+                    for (int i = 0; i < turns; i++) helper.assertTrue(GridSaveItem.turnHeld(player), "R found no Grid Save to turn");
                 })
                 .thenIdle(2)
                 .thenExecute(() -> {
-                    BlockPos floor = helper.absolutePos(TO.below());
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND,
-                            new BlockHitResult(Vec3.atCenterOf(floor).add(0, 0.5, 0), Direction.UP, floor, false));
+                    helper.assertTrue(!SubgridTransformGameTest.inANetwork(level, oldCog[0]),
+                            "the taken grid's cog is still in a kinetic network");
+                    var members = Create.REDSTONE_LINK_NETWORK_HANDLER.networksIn(level).get(Couple.create(frequency, frequency));
+                    helper.assertTrue(members == null || !members.contains(oldLink[0]),
+                            "the taken grid's link is still in its link network");
+                    // Someone standing where it would go: nothing placed, the grid still in the item.
+                    ArmorStand inTheWay = helper.spawn(EntityType.ARMOR_STAND, TO);
+                    helper.assertTrue(!player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor).consumesAction(),
+                            "a grid was placed onto someone");
+                    helper.assertTrue(GridSaveItem.isFull(save), "a refused placement emptied the Grid Save");
+                    helper.assertBlockPresent(Blocks.AIR, TO);
+                    inTheWay.discard();
+                })
+                .thenExecute(() -> {
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor);
                     helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grid");
                     helper.assertTrue(level.getBlockEntity(helper.absolutePos(TO)) instanceof SubgridBlockEntity, "no grid was placed");
                     placed[0] = (SubgridBlockEntity) level.getBlockEntity(helper.absolutePos(TO));
