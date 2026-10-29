@@ -21,6 +21,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -106,6 +108,22 @@ public class VanillaBlockPiece extends PieceDefinition {
         if (piece.extraData.contains("state")) {
             piece.runtimeState = NbtUtils.readBlockState(
                     registries.lookupOrThrow(Registries.BLOCK), piece.extraData.getCompound("state"));
+        }
+    }
+
+    /**
+     * The state turns as a vanilla structure turns it. The block entity data saved for it is reread into a new phantom
+     * on its next tick, built with the turned state, as when its chunk loads.
+     */
+    @Override
+    public void transform(PlacedPiece piece, Rotation rotation, Mirror mirror, HolderLookup.Provider registries) {
+        BlockState state = stateOf(piece);
+        if (state == null) return;
+        BlockState turned = state.mirror(mirror).rotate(rotation);
+        piece.runtimeState = turned;
+        piece.extraData.put("state", NbtUtils.writeBlockState(turned));
+        if (piece.extraData.contains("be")) {
+            com.therappha.tinyblocks.compat.create.CreatePhantomTransform.transformData(turned, piece.extraData.getCompound("be"));
         }
     }
 

@@ -13,6 +13,8 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -316,6 +318,67 @@ public class SubgridBlockEntity extends BlockEntity {
         }
         notifyNeighbors(removed);
         return removed;
+    }
+
+    /**
+     * Turns (about the vertical axis, through the grid's centre) and mirrors everything in the grid in place, as a
+     * vanilla structure is placed rotated: the mirror applies first. Each piece moves to its new cell with its facing,
+     * its state and its block entity data turned (PieceDefinition#transform). Its phantom goes as when the piece is
+     * broken (onRemoved: Create leaves its kinetic and link networks) and a new one is read from the turned data on
+     * its next tick, as when its chunk loads, so it joins those networks again where it now is.
+     */
+    public void transform(Rotation rotation, Mirror mirror) {
+        if (rotation == Rotation.NONE && mirror == Mirror.NONE) return;
+        if (level == null) throw new IllegalStateException("a grid is transformed in a level: " + worldPosition);
+        HolderLookup.Provider registries = level.registryAccess();
+        List<PlacedPiece> before = List.copyOf(pieces);
+        for (PlacedPiece p : before) p.definition.onSaving(p, registries);
+        if (level instanceof ServerLevel serverLevel) {
+            for (PlacedPiece p : before) {
+                try {
+                    p.definition.onRemoved(p, serverLevel, this);
+                } catch (Exception e) {
+                    logTickFailure("onRemoved (transform)", p, e);
+                }
+            }
+        }
+
+        pieces.clear();
+        Arrays.fill(cellOwner, EMPTY);
+        for (PlacedPiece p : before) {
+            // The footprint's two far corners, turned, span the turned footprint.
+            BlockPos far = p.anchor.offset(p.footprint.getX() - 1, p.footprint.getY() - 1, p.footprint.getZ() - 1);
+            BlockPos a = transformCell(p.anchor, rotation, mirror), b = transformCell(far, rotation, mirror);
+            BlockPos anchor = new BlockPos(Math.min(a.getX(), b.getX()), a.getY(), Math.min(a.getZ(), b.getZ()));
+            PlacedPiece moved = new PlacedPiece(p.definition, anchor, rotation.rotate(mirror.mirror(p.facing)));
+            moved.currentSpeed = p.currentSpeed;
+            moved.extraData = p.extraData.copy();
+            moved.definition.onLoaded(moved, registries);
+            moved.definition.transform(moved, rotation, mirror, registries);
+            addToGridNoShape(moved);
+        }
+        rebuildShape();
+
+        List<ScheduledPieceTick> ticks = List.copyOf(scheduledTicks);
+        scheduledTicks.clear();
+        for (ScheduledPieceTick t : ticks) {
+            BlockPos cell = transformCell(new BlockPos(t.x(), t.y(), t.z()), rotation, mirror);
+            scheduledTicks.add(new ScheduledPieceTick(cell.getX(), cell.getY(), cell.getZ(), t.targetGameTime()));
+        }
+        notifyUpdate();
+    }
+
+    /** Where {@code cell} goes when the grid is mirrored, then turned, as in StructureTemplate#transform. */
+    public BlockPos transformCell(BlockPos cell, Rotation rotation, Mirror mirror) {
+        int last = gridSize - 1;
+        int x = mirror == Mirror.FRONT_BACK ? last - cell.getX() : cell.getX();
+        int z = mirror == Mirror.LEFT_RIGHT ? last - cell.getZ() : cell.getZ();
+        return switch (rotation) {
+            case NONE -> new BlockPos(x, cell.getY(), z);
+            case CLOCKWISE_90 -> new BlockPos(last - z, cell.getY(), x);
+            case CLOCKWISE_180 -> new BlockPos(last - x, cell.getY(), last - z);
+            case COUNTERCLOCKWISE_90 -> new BlockPos(z, cell.getY(), last - x);
+        };
     }
 
     /**
