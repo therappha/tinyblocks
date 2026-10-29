@@ -56,13 +56,14 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             // doc comment) — the scale has to be applied by wrapping the buffer instead.
             FluidState fluidState = state.getFluidState();
             if (!fluidState.isEmpty()) {
-                if (fluidView == null) fluidView = new SubgridFluidView(be, Minecraft.getInstance().level);
+                // The grid's own level: a schematic's preview or a contraption draws it from a level of their own.
+                if (fluidView == null) fluidView = new SubgridFluidView(be, be.getLevel() != null ? be.getLevel() : Minecraft.getInstance().level);
                 RenderType fluidRenderType = ItemBlockRenderTypes.getRenderLayer(fluidState);
                 var fluidBuffer = new ScaledVertexConsumer(bufferSource.getBuffer(fluidRenderType), cell, basePose);
                 blockRenderer.renderLiquid(piece.anchor, fluidView, fluidBuffer, state, fluidState);
             }
 
-            if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece) {
+            if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece && be.getLevel() != null) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).

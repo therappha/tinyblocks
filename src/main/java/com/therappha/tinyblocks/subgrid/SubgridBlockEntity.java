@@ -336,6 +336,16 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
+     * As transform, but done even unturned: for a grid just set down somewhere else with its saved data (a Create
+     * contraption coming apart), whose Create kinetic data belongs where the grid was.
+     */
+    public boolean transformMoved(Rotation rotation, Mirror mirror) {
+        if (hasActiveCaptures()) return false;
+        rearrange(rotation, mirror);
+        return true;
+    }
+
+    /**
      * Takes on a grid saved from another SubgridBlockEntity of this size (saveCustomOnly, as GridSaveItem keeps it)
      * and turns it. Done as transform does even unturned: the saved Create kinetic data belongs where the grid was.
      */
