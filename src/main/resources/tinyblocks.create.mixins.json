@@ -9,6 +9,7 @@
     "KineticNetworkMixin",
     "LinkedControllerBindPacketMixin",
     "LinkBehaviourMixin",
+    "LinkHandlerMixin",
     "RedstoneLinkNetworkHandlerMixin",
     "RotationPropagatorAccessor",
     "RotationPropagatorMixin",
