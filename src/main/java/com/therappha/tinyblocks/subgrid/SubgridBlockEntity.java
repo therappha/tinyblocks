@@ -325,11 +325,14 @@ public class SubgridBlockEntity extends BlockEntity {
      * vanilla structure is placed rotated: the mirror applies first. Each piece moves to its new cell with its facing,
      * its state and its block entity data turned (PieceDefinition#transform). Its phantom goes as when the piece is
      * broken (onRemoved: Create leaves its kinetic and link networks) and a new one is read from the turned data on
-     * its next tick, as when its chunk loads, so it joins those networks again where it now is.
+     * its next tick, as when its chunk loads, so it joins those networks again where it now is. Refused (false) while
+     * a piston in the grid is still moving something: its captured block entities belong to the pieces as they are.
      */
-    public void transform(Rotation rotation, Mirror mirror) {
-        if (rotation == Rotation.NONE && mirror == Mirror.NONE) return;
+    public boolean transform(Rotation rotation, Mirror mirror) {
+        if (hasActiveCaptures()) return false;
+        if (rotation == Rotation.NONE && mirror == Mirror.NONE) return true;
         rearrange(rotation, mirror);
+        return true;
     }
 
     /**
@@ -347,8 +350,12 @@ public class SubgridBlockEntity extends BlockEntity {
         HolderLookup.Provider registries = level.registryAccess();
         List<PlacedPiece> before = List.copyOf(pieces);
         for (PlacedPiece p : before) p.definition.onSaving(p, registries);
-        if (level instanceof ServerLevel serverLevel) {
-            for (PlacedPiece p : before) {
+        // Each piece leaves the grid before its phantom goes, as in removePieceAt: Create, telling the pieces around
+        // one that it went, must not find a phantom already gone and take it into a network again.
+        for (int i = before.size() - 1; i >= 0; i--) {
+            PlacedPiece p = before.get(i);
+            takeOut(p);
+            if (level instanceof ServerLevel serverLevel) {
                 try {
                     p.definition.onRemoved(p, serverLevel, this);
                 } catch (Exception e) {
@@ -361,6 +368,8 @@ public class SubgridBlockEntity extends BlockEntity {
         Arrays.fill(cellOwner, EMPTY);
         for (PlacedPiece p : before) addToGridNoShape(transformed(p, rotation, mirror, registries));
         rebuildShape();
+        pendingDrops.replaceAll(pd -> new PendingDrop(pd.state(), transformPoint(pd.dropPos(), rotation, mirror),
+                pd.drops(), pd.safetyDeadlineTick()));
 
         List<ScheduledPieceTick> ticks = List.copyOf(scheduledTicks);
         scheduledTicks.clear();
@@ -369,6 +378,55 @@ public class SubgridBlockEntity extends BlockEntity {
             scheduledTicks.add(new ScheduledPieceTick(cell.getX(), cell.getY(), cell.getZ(), t.targetGameTime()));
         }
         notifyUpdate();
+        // What is across the faces is new to the pieces against them (a real lever, the next grid's pieces), and they
+        // are new to it: both look again, as after a placement.
+        if (level instanceof ServerLevel serverLevel) {
+            for (PlacedPiece p : new ArrayList<>(pieces)) {
+                if (!pieces.contains(p)) continue;
+                notifyNeighbors(p);
+                try {
+                    p.definition.onNeighborChanged(p, serverLevel, worldPosition, this, p);
+                } catch (Exception e) {
+                    logTickFailure("onNeighborChanged (transform)", p, e);
+                }
+            }
+        }
+    }
+
+    /** Takes {@code p} out of pieces and cellOwner without rebuilding the shape; cheap when it is the last piece. */
+    private void takeOut(PlacedPiece p) {
+        int idx = -1;
+        for (int i = pieces.size() - 1; i >= 0 && idx < 0; i--) if (pieces.get(i) == p) idx = i;
+        if (idx < 0) return;
+        if (idx < pieces.size() - 1) {
+            rebuildAfterRemove((short) idx);
+            return;
+        }
+        pieces.remove(idx);
+        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
+            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
+                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
+                    cellOwner[indexOf(x, y, z)] = EMPTY;
+    }
+
+    /** Where a world point inside this grid's block goes when the grid is mirrored, then turned (as transformCell). */
+    private net.minecraft.world.phys.Vec3 transformPoint(net.minecraft.world.phys.Vec3 point, Rotation rotation, Mirror mirror) {
+        double x = point.x - worldPosition.getX(), z = point.z - worldPosition.getZ();
+        if (mirror == Mirror.FRONT_BACK) x = 1 - x;
+        if (mirror == Mirror.LEFT_RIGHT) z = 1 - z;
+        double tx = switch (rotation) {
+            case NONE -> x;
+            case CLOCKWISE_90 -> 1 - z;
+            case CLOCKWISE_180 -> 1 - x;
+            case COUNTERCLOCKWISE_90 -> z;
+        };
+        double tz = switch (rotation) {
+            case NONE -> z;
+            case CLOCKWISE_90 -> x;
+            case CLOCKWISE_180 -> 1 - z;
+            case COUNTERCLOCKWISE_90 -> 1 - x;
+        };
+        return new net.minecraft.world.phys.Vec3(worldPosition.getX() + tx, point.y, worldPosition.getZ() + tz);
     }
 
     /**

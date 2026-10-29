@@ -1,6 +1,6 @@
 package com.therappha.tinyblocks.compat.create;
 
-import com.simibubi.create.content.kinetics.base.KineticBlock;
+import com.simibubi.create.content.kinetics.base.IRotate;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -13,9 +13,11 @@ public final class CreatePhantomTransform {
      * A kinetic block entity's speed, source and network are dropped: the source is a position, where some other cell
      * now is, and the network was built for the old layout. Read without them, it starts at rest and joins whatever
      * drives it on its first tick, as Create does with a block a contraption has moved (KineticBlockEntity#wasMoved).
+     * IRotate, not KineticBlock: it is what Create's propagation itself asks of a kinetic block, and some (other mods'
+     * among them) implement it without extending KineticBlock.
      */
     public static void transformData(BlockState state, CompoundTag data) {
-        if (!(state.getBlock() instanceof KineticBlock)) return;
+        if (!(state.getBlock() instanceof IRotate)) return;
         data.remove("Speed");
         data.remove("Source");
         data.remove("Network");
