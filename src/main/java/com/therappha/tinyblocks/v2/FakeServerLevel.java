@@ -68,15 +68,47 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
         super(server, executor, storage, levelData, dimension, levelStem, listener, isDebug, seed, spawners, tickTime, randomSequences);
     }
 
+    /**
+     * The reflection create() needs, looked up once. newConstructorForSerialization generates a new accessor class
+     * on every call: a grid of tiny kinetic pieces builds a fake level per piece per tick, so it was most of the
+     * tick (and a steady stream of classes into Metaspace).
+     */
+    private static final class Reflection {
+        static final Constructor<FakeServerLevel> CTOR;
+        static final Field[] LEVEL_FIELDS;
+        static final Field NEIGHBOR_UPDATER;
+        static final Field SERVER;
+        static final Field DRAGON_PARTS;
+
+        static {
+            try {
+                sun.reflect.ReflectionFactory rf = sun.reflect.ReflectionFactory.getReflectionFactory();
+                @SuppressWarnings("unchecked")
+                Constructor<FakeServerLevel> ctor = (Constructor<FakeServerLevel>) rf.newConstructorForSerialization(
+                        FakeServerLevel.class, Object.class.getDeclaredConstructor());
+                ctor.setAccessible(true);
+                CTOR = ctor;
+                LEVEL_FIELDS = java.util.Arrays.stream(Level.class.getDeclaredFields())
+                        .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+                        .peek(field -> field.setAccessible(true))
+                        .toArray(Field[]::new);
+                NEIGHBOR_UPDATER = accessible(Level.class.getDeclaredField("neighborUpdater"));
+                SERVER = accessible(ServerLevel.class.getDeclaredField("server"));
+                DRAGON_PARTS = accessible(ServerLevel.class.getDeclaredField("dragonParts"));
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        private static Field accessible(Field field) {
+            field.setAccessible(true);
+            return field;
+        }
+    }
+
     public static FakeServerLevel create(Level real, FakeCellGetter cells, BlockPos realPos) {
         try {
-            sun.reflect.ReflectionFactory rf = sun.reflect.ReflectionFactory.getReflectionFactory();
-            Constructor<Object> objectCtor = Object.class.getDeclaredConstructor();
-            @SuppressWarnings("unchecked")
-            Constructor<FakeServerLevel> ctor =
-                    (Constructor<FakeServerLevel>) rf.newConstructorForSerialization(FakeServerLevel.class, objectCtor);
-            ctor.setAccessible(true);
-            FakeServerLevel instance = ctor.newInstance();
+            FakeServerLevel instance = Reflection.CTOR.newInstance();
             FakeLevel delegateLevel = new FakeLevel(real, cells, realPos);
             instance.delegate = delegateLevel;
             instance.realServer = (ServerLevel) real;
@@ -87,35 +119,27 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             // are set either. Rather than discovering and hand-patching each one via a fresh NPE,
             // transplant every Level-declared field from delegateLevel, whose real constructor
             // DID run (FakeLevel extends Level normally) and so has all of them properly set.
-            for (Field field : Level.class.getDeclaredFields()) {
-                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
-                field.setAccessible(true);
+            for (Field field : Reflection.LEVEL_FIELDS) {
                 field.set(instance, field.get(delegateLevel));
             }
 
             // neighborUpdater specifically gets rebound to `instance` itself (not delegateLevel)
             // so every redstone/shape-update cascade it drives operates through the object
             // actually passed around as the ServerLevel, not a sibling reference to it.
-            Field neighborUpdaterField = Level.class.getDeclaredField("neighborUpdater");
-            neighborUpdaterField.setAccessible(true);
-            neighborUpdaterField.set(instance, new CollectingNeighborUpdater(instance, 1000000));
+            Reflection.NEIGHBOR_UPDATER.set(instance, new CollectingNeighborUpdater(instance, 1000000));
 
             // ServerLevel-declared fields (server, entityManager, ...) aren't covered by the
             // Level-field transplant above — there's no sibling ServerLevel to borrow them from.
             // `server` is the one real MinecraftServer, safe to reference directly.
             // entityManager is handled separately via the getEntities() override below, since no
             // fake entity manager exists (or is needed — no entities live in fake cell space).
-            Field serverField = ServerLevel.class.getDeclaredField("server");
-            serverField.setAccessible(true);
-            serverField.set(instance, ((ServerLevel) real).getServer());
+            Reflection.SERVER.set(instance, ((ServerLevel) real).getServer());
 
             // dragonParts backs ServerLevel.getPartEntities(), which Level.getEntities(AABB,...)
             // calls internally (e.g. Block.pushEntitiesUp, hit when FarmBlock dries out and
             // reverts to dirt via a random tick) — an empty map is correct here: no dragon parts
             // live in the fake cell space.
-            Field dragonPartsField = ServerLevel.class.getDeclaredField("dragonParts");
-            dragonPartsField.setAccessible(true);
-            dragonPartsField.set(instance, new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>());
+            Reflection.DRAGON_PARTS.set(instance, new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>());
 
             return instance;
         } catch (ReflectiveOperationException e) {
