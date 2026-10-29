@@ -28,8 +28,18 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+        registrar.playToServer(GridSaveTurnPayload.TYPE, GridSaveTurnPayload.STREAM_CODEC, NetworkSetup::handleGridSaveTurn);
         registrar.playToServer(MinimizeMePayload.TYPE, MinimizeMePayload.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizeMe.toggle(ctx.player())));
+    }
+
+    private static void handleGridSaveTurn(GridSaveTurnPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var stack = ctx.player().getMainHandItem();
+            if (stack.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) {
+                com.therappha.tinyblocks.items.GridSaveItem.turn(stack);
+            }
+        });
     }
 
     private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {

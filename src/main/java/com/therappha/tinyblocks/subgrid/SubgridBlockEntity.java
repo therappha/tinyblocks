@@ -329,6 +329,20 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     public void transform(Rotation rotation, Mirror mirror) {
         if (rotation == Rotation.NONE && mirror == Mirror.NONE) return;
+        rearrange(rotation, mirror);
+    }
+
+    /**
+     * Takes on a grid saved from another SubgridBlockEntity of this size (saveCustomOnly, as GridSaveItem keeps it)
+     * and turns it. Done as transform does even unturned: the saved Create kinetic data belongs where the grid was.
+     */
+    public void loadMoved(CompoundTag saved, Rotation rotation) {
+        if (level == null) throw new IllegalStateException("a grid is moved into a level: " + worldPosition);
+        loadCustomOnly(saved, level.registryAccess());
+        rearrange(rotation, Mirror.NONE);
+    }
+
+    private void rearrange(Rotation rotation, Mirror mirror) {
         if (level == null) throw new IllegalStateException("a grid is transformed in a level: " + worldPosition);
         HolderLookup.Provider registries = level.registryAccess();
         List<PlacedPiece> before = List.copyOf(pieces);
@@ -345,18 +359,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
         pieces.clear();
         Arrays.fill(cellOwner, EMPTY);
-        for (PlacedPiece p : before) {
-            // The footprint's two far corners, turned, span the turned footprint.
-            BlockPos far = p.anchor.offset(p.footprint.getX() - 1, p.footprint.getY() - 1, p.footprint.getZ() - 1);
-            BlockPos a = transformCell(p.anchor, rotation, mirror), b = transformCell(far, rotation, mirror);
-            BlockPos anchor = new BlockPos(Math.min(a.getX(), b.getX()), a.getY(), Math.min(a.getZ(), b.getZ()));
-            PlacedPiece moved = new PlacedPiece(p.definition, anchor, rotation.rotate(mirror.mirror(p.facing)));
-            moved.currentSpeed = p.currentSpeed;
-            moved.extraData = p.extraData.copy();
-            moved.definition.onLoaded(moved, registries);
-            moved.definition.transform(moved, rotation, mirror, registries);
-            addToGridNoShape(moved);
-        }
+        for (PlacedPiece p : before) addToGridNoShape(transformed(p, rotation, mirror, registries));
         rebuildShape();
 
         List<ScheduledPieceTick> ticks = List.copyOf(scheduledTicks);
@@ -366,6 +369,23 @@ public class SubgridBlockEntity extends BlockEntity {
             scheduledTicks.add(new ScheduledPieceTick(cell.getX(), cell.getY(), cell.getZ(), t.targetGameTime()));
         }
         notifyUpdate();
+    }
+
+    /**
+     * A new piece where {@code p} goes when the grid is mirrored, then turned, with its facing and data turned; {@code p}
+     * itself is left as it is. Also what a grid's ghost (GridSavePreview) draws.
+     */
+    public PlacedPiece transformed(PlacedPiece p, Rotation rotation, Mirror mirror, HolderLookup.Provider registries) {
+        // The footprint's two far corners, turned, span the turned footprint.
+        BlockPos far = p.anchor.offset(p.footprint.getX() - 1, p.footprint.getY() - 1, p.footprint.getZ() - 1);
+        BlockPos a = transformCell(p.anchor, rotation, mirror), b = transformCell(far, rotation, mirror);
+        BlockPos anchor = new BlockPos(Math.min(a.getX(), b.getX()), a.getY(), Math.min(a.getZ(), b.getZ()));
+        PlacedPiece moved = new PlacedPiece(p.definition, anchor, rotation.rotate(mirror.mirror(p.facing)));
+        moved.currentSpeed = p.currentSpeed;
+        moved.extraData = p.extraData.copy();
+        moved.definition.onLoaded(moved, registries);
+        moved.definition.transform(moved, rotation, mirror, registries);
+        return moved;
     }
 
     /** Where {@code cell} goes when the grid is mirrored, then turned, as in StructureTemplate#transform. */

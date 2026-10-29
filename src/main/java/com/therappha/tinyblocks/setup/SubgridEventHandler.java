@@ -148,6 +148,8 @@ public class SubgridEventHandler {
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
+        // A Grid Save takes or places the whole grid (its onItemUseFirst), not a piece in it.
+        if (stack.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) return;
         // Only a real BlockItem can ever PLACE a new piece; other items (hoe, axe, shovel, ...)
         // can still MODIFY an existing piece via their own useOn — see runItemInteraction below.
         BlockItem blockItem = stack.getItem() instanceof BlockItem bi && !(bi.getBlock() instanceof SubgridBlock)

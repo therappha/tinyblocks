@@ -25,6 +25,8 @@ public final class VirtualClick {
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (!event.getLevel().isClientSide() || event.getLevel() instanceof FakeSpace) return;
+        // A Grid Save is for the whole grid, not a piece's value box.
+        if (event.getItemStack().getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) return;
         VirtualView.begin();
         try {
             if (!VirtualView.active() || !(Minecraft.getInstance().hitResult instanceof BlockHitResult hit)) return;
