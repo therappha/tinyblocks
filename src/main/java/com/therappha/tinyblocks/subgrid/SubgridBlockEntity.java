@@ -925,7 +925,8 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
-        if (tracingFluid) {
+        // The description is only built when it is logged: formatting it on every resolve weighed in a profile.
+        if (tracingFluid && LOGGER.isDebugEnabled()) {
             LOGGER.debug("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
                     dir, worldPosition, x, y, z, describeCellRef(ref));
         }

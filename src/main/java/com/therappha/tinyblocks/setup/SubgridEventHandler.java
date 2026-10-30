@@ -439,7 +439,7 @@ public class SubgridEventHandler {
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
-        java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        java.util.Map<BlockPos, BlockState> before = VanillaBlockPiece.snapshotStates(be); // the fake space no longer holds every piece
         BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
