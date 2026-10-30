@@ -346,6 +346,20 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
+     * As transformMoved, but quietly: nothing is told and nothing looks across, for a grid set down among others not
+     * yet turned (Sable's moveBlocks reloads one block entity after another). lookAroundMoved follows once all are
+     * turned. Never refused: a grid just loaded from its saved data holds no piston's captures.
+     */
+    public void turnMovedQuietly(Rotation rotation, Mirror mirror) {
+        turn(rotation, mirror);
+    }
+
+    /** After turnMovedQuietly, once the grids moved with this one are turned too: the pieces look across again. */
+    public void lookAroundMoved() {
+        lookAround();
+    }
+
+    /**
      * Takes on a grid saved from another SubgridBlockEntity of this size (saveCustomOnly, as GridSaveItem keeps it)
      * and turns it. Done as transform does even unturned: the saved Create kinetic data belongs where the grid was.
      */
@@ -356,6 +370,11 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private void rearrange(Rotation rotation, Mirror mirror) {
+        turn(rotation, mirror);
+        lookAround();
+    }
+
+    private void turn(Rotation rotation, Mirror mirror) {
         if (level == null) throw new IllegalStateException("a grid is transformed in a level: " + worldPosition);
         HolderLookup.Provider registries = level.registryAccess();
         List<PlacedPiece> before = List.copyOf(pieces);
@@ -387,6 +406,9 @@ public class SubgridBlockEntity extends BlockEntity {
             BlockPos cell = transformCell(new BlockPos(t.x(), t.y(), t.z()), rotation, mirror);
             scheduledTicks.add(new ScheduledPieceTick(cell.getX(), cell.getY(), cell.getZ(), t.targetGameTime()));
         }
+    }
+
+    private void lookAround() {
         notifyUpdate();
         // What is across the faces is new to the pieces against them (a real lever, the next grid's pieces), and they
         // are new to it: both look again, as after a placement.

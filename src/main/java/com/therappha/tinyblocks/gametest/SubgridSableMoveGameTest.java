@@ -67,6 +67,54 @@ public class SubgridSableMoveGameTest {
     }
 
     /**
+     * Two grids, one on the other, set down turned together: two carpets side by side in the top one, each resting on
+     * a stone in the one below, stay. Sable moves the top grid first: turned, its carpets tell each other they moved,
+     * and each looks down, which finds its stone only once the grid below is turned too.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void stackedGridsSetDownTurnedKeepWhatRestsAcross(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        SubgridBlockEntity bottom = SubgridTestSupport.placeSubgrid(helper, new BlockPos(1, 1, 1));
+        SubgridBlockEntity top = SubgridTestSupport.placeSubgrid(helper, new BlockPos(1, 2, 1));
+        int below = bottom.getGridSize() - 1;
+        List<BlockPos> carpets = List.of(new BlockPos(1, 0, 2), new BlockPos(2, 0, 2));
+        for (BlockPos carpet : carpets) {
+            SubgridTestSupport.placePiece(bottom, level, carpet.atY(below), Blocks.STONE.defaultBlockState());
+            SubgridTestSupport.placePiece(top, level, carpet, Blocks.WHITE_CARPET.defaultBlockState());
+        }
+        Rotation rotation = Rotation.CLOCKWISE_90;
+        BlockPos from = bottom.getBlockPos(), to = helper.absolutePos(new BlockPos(4, 1, 4));
+
+        helper.startSequence()
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    for (BlockPos carpet : carpets) {
+                        helper.assertTrue(Blocks.WHITE_CARPET.defaultBlockState().equals(SubgridTestSupport.stateOf(top, carpet)),
+                                "the carpet at " + carpet + " doesn't rest on the grid below before the move");
+                    }
+                })
+                .thenExecute(() -> SubLevelAssemblyHelper.moveBlocks(level,
+                        new SubLevelAssemblyHelper.AssemblyTransform(from, to, 4 - rotation.ordinal(), rotation, level),
+                        List.of(from.above(), from)))
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertTrue(level.getBlockEntity(to) instanceof SubgridBlockEntity
+                            && level.getBlockEntity(to.above()) instanceof SubgridBlockEntity, "no grids where they were moved to");
+                    SubgridBlockEntity movedBottom = (SubgridBlockEntity) level.getBlockEntity(to);
+                    SubgridBlockEntity movedTop = (SubgridBlockEntity) level.getBlockEntity(to.above());
+                    for (BlockPos carpet : carpets) {
+                        BlockPos stoneCell = bottom.transformCell(carpet.atY(below), rotation, Mirror.NONE);
+                        BlockPos carpetCell = top.transformCell(carpet, rotation, Mirror.NONE);
+                        helper.assertTrue(Blocks.STONE.defaultBlockState().equals(SubgridTestSupport.stateOf(movedBottom, stoneCell)),
+                                "stone at " + stoneCell + ": " + SubgridTestSupport.stateOf(movedBottom, stoneCell));
+                        helper.assertTrue(Blocks.WHITE_CARPET.defaultBlockState().equals(SubgridTestSupport.stateOf(movedTop, carpetCell)),
+                                "carpet at " + carpetCell + ": " + SubgridTestSupport.stateOf(movedTop, carpetCell));
+                    }
+                })
+                .thenSucceed();
+    }
+
+    /**
      * Assembled into a real sub-level, as a car is: the motor still drives the cog there, the link still answers, also
      * once placed again, and both still work after reopening the world.
      */
