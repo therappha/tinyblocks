@@ -43,6 +43,8 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape cachedShape = Shapes.empty();
     /** The fake server space this grid's ticking pieces share (VanillaBlockPiece.TickSpace); runtime only. */
     public Object tickSpace;
+    /** Client only: the renderer's cached mesh of this grid's static pieces (SubgridRenderer.StaticMesh). */
+    public Object renderCache;
 
     /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}
@@ -956,6 +958,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * hosted by a neighboring SubgridBlock across the grid boundary (same grid size only).
      */
     public void notifyNeighbors(PlacedPiece changed) {
+        pieceVersion++;
         if (!(level instanceof ServerLevel)) return;
         for (Neighbor neighbor : neighborsOf(changed)) {
             if (neighbor.be().level instanceof ServerLevel neighborLevel) {
@@ -1098,6 +1101,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     /** Like addToGrid but leaves the merged shape stale — callers adding many pieces rebuild once. */
     private void addToGridNoShape(PlacedPiece p) {
+        pieceVersion++;
         short idx = (short) pieces.size();
         pieces.add(p);
         for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
@@ -1107,6 +1111,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private void rebuildAfterRemove(short removedIdx) {
+        pieceVersion++;
         pieces.remove(removedIdx);
         Arrays.fill(cellOwner, EMPTY);
         for (int i = 0; i < pieces.size(); i++) {
@@ -1155,14 +1160,32 @@ public class SubgridBlockEntity extends BlockEntity {
     private int signalKey;
     private boolean signalsBuilt = false;
 
-    /** Changes when a piece is added, removed or changes state: states are interned, so their identities tell. */
+    /**
+     * Bumped whenever a piece may have been added, removed or changed state (issue #64): what the faces give and the
+     * outline shape are rebuilt when it moved. It used to be a hash over every piece, recomputed on every tick and
+     * every shape query. Every path that changes a piece's state calls notifyNeighbors or setChanged (notifyUpdate)
+     * right after, and the client reloads its pieces (loadAdditional) or adds/removes one; each of those bumps it.
+     */
+    private int pieceVersion;
+
+    /** See pieceVersion; the client's renderer rebuilds its cached mesh when this moves. */
+    public int pieceVersion() {
+        return pieceVersion;
+    }
+
+    /** For a change the paths above don't see: a piece's client-side block entity replaced (a piston's animation). */
+    public void markPiecesChanged() {
+        pieceVersion++;
+    }
+
     private int pieceKey() {
-        int key = gridSize;
-        for (PlacedPiece p : pieces) {
-            key = 31 * key + p.anchor.hashCode();
-            key = 31 * key + System.identityHashCode(p.runtimeState);
-        }
-        return key;
+        return pieceVersion;
+    }
+
+    @Override
+    public void setChanged() {
+        pieceVersion++;
+        super.setChanged();
     }
 
     /** Index of the cell (x,y,z) on a face along {@code axis}: its two other coordinates, in x, y, z order. */
@@ -1289,11 +1312,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * their identities say whether one did.
      */
     public VoxelShape getOutlineShape() {
-        int key = gridSize;
-        for (PlacedPiece p : pieces) {
-            key = 31 * key + p.anchor.hashCode();
-            key = 31 * key + System.identityHashCode(p.runtimeState);
-        }
+        int key = pieceVersion;
         if (!outlineBuilt || key != outlineKey) {
             outlineShape = buildOutlineShape();
             outlineKey = key;
@@ -1321,7 +1340,7 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape buildOutlineShape() {
         var whole = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
         boolean anyWhole = false;
-        VoxelShape partial = Shapes.empty();
+        List<VoxelShape> parts = new ArrayList<>();
         double cell = 1.0 / gridSize;
         for (PlacedPiece p : pieces) {
             VoxelShape shape = pieceShape(p);
@@ -1338,14 +1357,33 @@ public class SubgridBlockEntity extends BlockEntity {
                 continue;
             }
             for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
-                partial = Shapes.joinUnoptimized(partial, Shapes.create(
+                parts.add(Shapes.create(
                         (p.anchor.getX() + box.minX) * cell, (p.anchor.getY() + box.minY) * cell, (p.anchor.getZ() + box.minZ) * cell,
-                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell),
-                        net.minecraft.world.phys.shapes.BooleanOp.OR);
+                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell));
             }
         }
+        VoxelShape partial = joinAll(parts);
         VoxelShape out = anyWhole ? ShapeAccess.wrap(whole) : Shapes.empty();
         return partial.isEmpty() ? out : Shapes.joinUnoptimized(out, partial, net.minecraft.world.phys.shapes.BooleanOp.OR).optimize();
+    }
+
+    /**
+     * The union of {@code parts}, joined pairwise up a balanced tree (issue #64): joining them one by one into a
+     * growing shape cost O(parts x final shape) — 220 ms for a 16-grid layer of 256 cogwheels, on every change.
+     */
+    private static VoxelShape joinAll(List<VoxelShape> parts) {
+        if (parts.isEmpty()) return Shapes.empty();
+        List<VoxelShape> level = parts;
+        while (level.size() > 1) {
+            List<VoxelShape> next = new ArrayList<>((level.size() + 1) / 2);
+            for (int i = 0; i < level.size(); i += 2) {
+                next.add(i + 1 < level.size()
+                        ? Shapes.joinUnoptimized(level.get(i), level.get(i + 1), net.minecraft.world.phys.shapes.BooleanOp.OR)
+                        : level.get(i));
+            }
+            level = next;
+        }
+        return level.get(0);
     }
 
     public int indexOf(int x, int y, int z) {
@@ -1437,6 +1475,7 @@ public class SubgridBlockEntity extends BlockEntity {
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
+        pieceVersion++;
         pieces.clear();
         Arrays.fill(cellOwner, EMPTY);
         ListTag list = tag.getList("pieces", Tag.TAG_COMPOUND);
