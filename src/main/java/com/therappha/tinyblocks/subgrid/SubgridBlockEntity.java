@@ -41,6 +41,8 @@ public class SubgridBlockEntity extends BlockEntity {
     private final short[] cellOwner;
     private final List<PlacedPiece> pieces = new ArrayList<>();
     private VoxelShape cachedShape = Shapes.empty();
+    /** The fake server space this grid's ticking pieces share (VanillaBlockPiece.TickSpace); runtime only. */
+    public Object tickSpace;
 
     /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}

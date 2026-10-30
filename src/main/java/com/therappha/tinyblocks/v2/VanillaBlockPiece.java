@@ -181,22 +181,59 @@ public class VanillaBlockPiece extends PieceDefinition {
         // blockEntity.getBlockPos() and its neighbours (hopper, Create's rotation propagation) sees the
         // real layout, and a captured BE built by vanilla at a world-frame position needs no special case.
         BlockPos tickPos = be.virtualPosOf(piece.anchor);
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
-        populateCells(cells, be);
-        FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, realPos);
-        cells.attachLevel(fakeLevel);
+        TickSpace space = TickSpace.acquire(be, level, piece.anchor);
+        try {
+            FakeServerLevel fakeLevel = space.level;
+            BlockEntity phantom = blockEntityFor(piece, be, fakeLevel);
+            if (phantom == null) return false;
 
-        BlockEntity phantom = blockEntityFor(piece, be, fakeLevel);
-        if (phantom == null) return false;
-
-        Map<BlockPos, BlockState> before = snapshot(be);
-        if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
-        applyChanges(be, fakeLevel, before, level);
+            Map<BlockPos, BlockState> before = snapshot(be);
+            if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
+            applyChanges(be, fakeLevel, before, level);
+        } finally {
+            space.busy = false;
+        }
         // applyChanges already handles its own notifyUpdate/notifyNeighbors for whatever actually
         // changed — returning true here would make SubgridBlockEntity.serverTick redundantly
         // notifyNeighbors(piece) again for just this one piece regardless of whether anything
         // about IT specifically changed.
         return false;
+    }
+
+    /**
+     * One fake server space per grid, reused by every ticking piece of it, tick after tick (issue #64): building a
+     * FakeServerLevel runs Level's constructor, which was most of what a ticking piece cost once the cells stopped
+     * being copied. Before each use its cell map and captured ticks are cleared and it is pointed at the piece being
+     * ticked, so a use sees only its own writes, as a fresh space did. A phantom keeps the space as its level between
+     * ticks, as it kept its last fresh one; a use while the space is already in use (a tick reaching a tick) gets a
+     * fresh one.
+     */
+    private static final class TickSpace {
+        final SubgridFakeCellGetter cells;
+        final FakeServerLevel level;
+        final ServerLevel real;
+        boolean busy;
+
+        private TickSpace(SubgridBlockEntity be, ServerLevel real, BlockPos operatedCell) {
+            this.real = real;
+            this.cells = new SubgridFakeCellGetter(be, operatedCell);
+            this.level = FakeServerLevel.create(real, cells, be.getBlockPos());
+            cells.attachLevel(level);
+        }
+
+        static TickSpace acquire(SubgridBlockEntity be, ServerLevel real, BlockPos operatedCell) {
+            TickSpace space;
+            if (be.tickSpace instanceof TickSpace cached && cached.real == real && !cached.busy) {
+                space = cached;
+                space.cells.reuseFor(operatedCell);
+                space.level.scheduledTicks().clear();
+            } else {
+                space = new TickSpace(be, real, operatedCell);
+                if (!(be.tickSpace instanceof TickSpace cached && cached.busy)) be.tickSpace = space;
+            }
+            space.busy = true;
+            return space;
+        }
     }
 
     // --- Piston moving-block client animation ------------------------------------------------
@@ -641,7 +678,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         /** World-frame position of local cell (0,0,0). */
         private final BlockPos origin;
         /** The local cell whose own tick/onUse this space was built for, or null when nothing is being operated. */
-        @javax.annotation.Nullable private final BlockPos operatedCell;
+        @javax.annotation.Nullable private BlockPos operatedCell;
         /**
          * Set right after the FakeLevel/FakeServerLevel wrapping this cell space is constructed —
          * can't be known at this object's own construction time, since it's built first and
@@ -658,6 +695,12 @@ public class VanillaBlockPiece extends PieceDefinition {
 
         void attachLevel(Level level) {
             this.attachedLevel = level;
+        }
+
+        /** Empties the space of the last use's writes and points it at {@code operatedCell} (TickSpace). */
+        void reuseFor(BlockPos operatedCell) {
+            clear();
+            this.operatedCell = operatedCell;
         }
 
         @Override

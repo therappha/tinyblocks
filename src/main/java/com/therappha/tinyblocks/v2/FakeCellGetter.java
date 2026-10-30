@@ -29,6 +29,13 @@ public class FakeCellGetter implements BlockGetter {
     private final Set<BlockPos> removedBlockEntities = new HashSet<>();
     private final LevelHeightAccessor heightAccessor = LevelHeightAccessor.create(0, 16);
 
+    /** Forgets every write and captured block entity, so the space can be used again from scratch. */
+    public void clear() {
+        cells.clear();
+        blockEntities.clear();
+        removedBlockEntities.clear();
+    }
+
     public void set(BlockPos pos, BlockState state) {
         cells.put(pos, state);
     }
