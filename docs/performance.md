@@ -61,7 +61,25 @@ Todos os números são de uma rodada só, com o lock do gradle só meu; variam u
    mesmo grid (`PieceFaceCulling`, mesma regra do `Block#shouldRenderFace`). Peça com block entity, fluido, outro
    render shape ou funil continua no caminho por frame.
 
-Todos os GameTests passam (`All 94 required tests passed`) e os testes unitários também.
+Todos os GameTests passam (`All 96 required tests passed`) e os testes unitários também.
+
+### Depois da revisão do PR #80
+
+- O `TickSpace` agora é limpo (células escritas e ticks capturados, inclusive os do `FakeLevel` delegate do
+  `blockEvent`) quando a peça o devolve, não só quando a próxima o pega: phantoms continuam presos nele entre ticks,
+  e quem lê de fora do grid através deles (`boundPhantom`) via as escritas do último tick (ou uma peça já removida).
+- `applyChanges` compara cada célula com o que ela tinha na primeira escrita da call (`FakeCellGetter.originalState`),
+  não com o que tem quando o diff roda: uma escrita vinda de fora no meio (outro grid colocando peça aqui) não é
+  desfeita.
+- O crack não é mais desenhado duas vezes em peça com block entity e modelo baked (fornalha, hopper).
+- GameTests novos (`SubgridTickSpaceGameTest`): leitura por phantom preso ao space depois de um tick (falhava antes
+  do fix), e outline depois de uma peça mudar só de estado (alçapão aberto por alavanca).
+- Medido de novo: tudo dentro do ruído (cogs+stone 34 µs, stone 16-grid 26–46 µs, alavanca 2.3 / 2.2 ms,
+  outline 16-grid 1.3–1.8 µs).
+
+**Ao juntar com o #74 (transform do #78):** `transform`/`turnMovedQuietly`/`lookAroundMoved`/`emptyQuietly`/
+`loadMoved` precisam bumpar `pieceVersion` (via `markPiecesChanged`, `notifyNeighbors` ou `setChanged`). Qualquer
+código que muda `runtimeState` sem passar por um desses deixa outline, saída de redstone e mesh velhos.
 
 ## O que ainda pesa
 

@@ -191,7 +191,9 @@ public class VanillaBlockPiece extends PieceDefinition {
             if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
             applyChanges(be, fakeLevel, before, level);
         } finally {
-            space.busy = false;
+            // Phantoms stay bound to the space between ticks, and code outside the grid reads through them
+            // (boundPhantom): it must see the pieces as they are, not this tick's leftover writes and ticks.
+            space.release();
         }
         // applyChanges already handles its own notifyUpdate/notifyNeighbors for whatever actually
         // changed — returning true here would make SubgridBlockEntity.serverTick redundantly
@@ -226,13 +228,19 @@ public class VanillaBlockPiece extends PieceDefinition {
             if (be.tickSpace instanceof TickSpace cached && cached.real == real && !cached.busy) {
                 space = cached;
                 space.cells.reuseFor(operatedCell);
-                space.level.scheduledTicks().clear();
             } else {
                 space = new TickSpace(be, real, operatedCell);
                 if (!(be.tickSpace instanceof TickSpace cached && cached.busy)) be.tickSpace = space;
             }
             space.busy = true;
             return space;
+        }
+
+        /** Empties the space of this use's writes and captured ticks and frees it for the next one. */
+        void release() {
+            cells.reuseFor(null);
+            level.clearScheduledTicks();
+            busy = false;
         }
     }
 
@@ -760,6 +768,13 @@ public class VanillaBlockPiece extends PieceDefinition {
         }
 
         @Override
+        protected BlockState originalAt(BlockPos local) {
+            if (!be.inBounds(local.getX(), local.getY(), local.getZ())) return null;
+            PlacedPiece p = be.getPieceAt(local.getX(), local.getY(), local.getZ());
+            return p != null && p.definition instanceof VanillaBlockPiece && p.anchor.equals(local) ? stateOf(p) : null;
+        }
+
+        @Override
         public BlockState getBlockState(BlockPos pos) {
             return super.getBlockState(resolve(pos));
         }
@@ -938,14 +953,16 @@ public class VanillaBlockPiece extends PieceDefinition {
                                       Map<BlockPos, BlockState> before, ServerLevel realLevel) {
         FakeCellGetter cells = fakeSpace.cells();
         boolean anyChanged = false;
-        // What the written cells held before (the pieces there, untouched until below), and those pieces in the
+        // What the written cells held before their first write this call (a write reaching a cell from outside in
+        // the meantime, another grid's call placing a piece here, is not this call's change), and those pieces in the
         // grid's own order, so neighbours hear of changes in the order they did when every piece was diffed.
         before = new HashMap<>();
         List<PlacedPiece> written = new ArrayList<>();
         for (BlockPos pos : cells.touchedCells().keySet()) {
             PlacedPiece p = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
             if (p == null || !(p.definition instanceof VanillaBlockPiece) || !p.anchor.equals(pos)) continue;
-            before.put(p.anchor, stateOf(p));
+            BlockState original = cells.originalState(pos);
+            before.put(p.anchor, original != null ? original : stateOf(p));
             written.add(p);
         }
         written.sort(java.util.Comparator.comparingInt(p -> be.ownerAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ())));

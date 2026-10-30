@@ -135,7 +135,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                     }
                 }
 
-                if (piece == crackedPiece) {
+                // A piece with a baked model got its crack with the static mesh above.
+                if (piece == crackedPiece && !staticDrawn) {
                     ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
                         "textures/block/destroy_stage_" + crackStage + ".png");
                     RenderType crumbleType = RenderType.crumbling(crackTex);
