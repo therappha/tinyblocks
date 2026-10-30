@@ -383,6 +383,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         moving.loadCustomOnly(beNbt, level.registryAccess());
         moving.setLevel(level);
         piece.runtimeBlockEntity = moving;
+        be.markPiecesChanged(); // the renderer draws this piece through its block entity now
         LOGGER.debug("[piston-anim] client built local animation copy at {} (cell {}) extending={} source={}",
                 be.getBlockPos(), cell, moving.isExtending(), moving.isSourcePiston());
     }
