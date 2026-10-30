@@ -19,6 +19,7 @@ import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.createmod.catnip.data.Couple;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
@@ -35,6 +36,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DirectionalBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -50,7 +52,8 @@ import java.util.List;
  * and its link answers a linked controller, without reopening the world. Once as it was, once turned a quarter by
  * R as the server takes it (GridSaveItem#turnHeld, what GridSaveTurnPayload does). And two grids taken together, as
  * a box selected with a sneaking click on one and a click on the other, and placed turned: their cogs still mesh
- * across the edge between them and their links still answer.
+ * across the edge between them and their links still answer. A box taken without one grid in it reacting to another
+ * going, and one placed half turned against a west face, after a refused take and a refused place.
  */
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -220,9 +223,9 @@ public class GridSaveGameTest {
                     player.setShiftKeyDown(true);
                     player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(west, westLink));
                     player.setShiftKeyDown(false);
-                    helper.assertTrue(GridSaveItem.corner(save) != null && !GridSaveItem.isFull(save), "a sneaking click set no corner");
+                    helper.assertTrue(GridSaveItem.corner(save, level) != null && !GridSaveItem.isFull(save), "a sneaking click set no corner");
                     player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(east, eastLink));
-                    helper.assertTrue(GridSaveItem.isFull(save) && GridSaveItem.corner(save) == null, "the box was not taken");
+                    helper.assertTrue(GridSaveItem.isFull(save) && GridSaveItem.corner(save, level) == null, "the box was not taken");
                     helper.assertTrue(GridSaveItem.entries(GridSaveItem.grid(save)).size() == 2, "the box holds no two grids");
                     helper.assertBlockPresent(Blocks.AIR, westAt);
                     helper.assertBlockPresent(Blocks.AIR, eastAt);
@@ -266,6 +269,115 @@ public class GridSaveGameTest {
                     helper.assertEntityNotPresent(EntityType.ITEM);
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * A powered tiny piston in one grid, kept from extending by tiny obsidian across the edge in the next: the two
+     * taken together, nothing is left where they were. The piston, saved as it was, must not see the obsidian go
+     * first and push out into the emptied block.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 200)
+    public void gridsTakenTogetherDoNotReactToOneAnotherGoing(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos blockingAt = new BlockPos(1, 1, 1), pistonAt = new BlockPos(2, 1, 1);
+        SubgridBlockEntity blocking = SubgridTestSupport.placeSubgrid(helper, blockingAt);
+        SubgridBlockEntity pistonGrid = SubgridTestSupport.placeSubgrid(helper, pistonAt);
+        int last = blocking.getGridSize() - 1;
+        BlockPos piston = new BlockPos(0, 0, 4);
+        SubgridTestSupport.placePiece(blocking, level, new BlockPos(last, 0, 4), Blocks.OBSIDIAN.defaultBlockState());
+        SubgridTestSupport.placePiece(pistonGrid, level, piston,
+                Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.WEST));
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, blocking);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+
+        helper.startSequence()
+                .thenExecute(() -> SubgridTestSupport.placePiece(pistonGrid, level, piston.above(), Blocks.REDSTONE_BLOCK.defaultBlockState()))
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    BlockState state = SubgridTestSupport.stateOf(pistonGrid, piston);
+                    helper.assertTrue(state != null && !state.getValue(PistonBaseBlock.EXTENDED), "the piston extended into the obsidian");
+                })
+                .thenExecute(() -> {
+                    player.setShiftKeyDown(true);
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(blocking, BlockPos.ZERO));
+                    player.setShiftKeyDown(false);
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(pistonGrid, BlockPos.ZERO));
+                    helper.assertTrue(GridSaveItem.isFull(save) && GridSaveItem.entries(GridSaveItem.grid(save)).size() == 2,
+                            "the box was not taken");
+                    helper.assertBlockPresent(Blocks.AIR, blockingAt);
+                    helper.assertBlockPresent(Blocks.AIR, pistonAt);
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertBlockPresent(Blocks.AIR, blockingAt);
+                    helper.assertBlockPresent(Blocks.AIR, pistonAt);
+                    helper.assertEntityNotPresent(EntityType.ITEM);
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Two grids selected with a box past them (kept only as big as the two), after a take refused for a box too big
+     * that keeps the corner; turned half round and put against a west face: refused, still full, while one spot is
+     * taken, then placed reaching west from the face, the east grid now west of the other, its pieces turned.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void twoGridsPlacedHalfTurnedAgainstAWestFace(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos westAt = new BlockPos(1, 1, 1), eastAt = new BlockPos(2, 1, 1);
+        SubgridBlockEntity west = SubgridTestSupport.placeSubgrid(helper, westAt);
+        SubgridBlockEntity east = SubgridTestSupport.placeSubgrid(helper, eastAt);
+        SubgridTestSupport.placePiece(west, level, BlockPos.ZERO, Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(east, level, BlockPos.ZERO, Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(east, level, new BlockPos(1, 0, 0), Blocks.STONE.defaultBlockState());
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, west);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+        BlockPos wall = new BlockPos(4, 2, 3), toWest = new BlockPos(3, 2, 3), toEast = new BlockPos(2, 2, 3);
+        helper.setBlock(wall, Blocks.STONE);
+        BlockHitResult onWall = hitOn(helper, wall, Direction.WEST);
+
+        helper.startSequence()
+                .thenExecute(() -> {
+                    player.setShiftKeyDown(true);
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(west, BlockPos.ZERO));
+                    player.setShiftKeyDown(false);
+                    BlockPos corner = GridSaveItem.corner(save, level);
+                    helper.assertTrue(corner != null, "a sneaking click set no corner");
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, hitOn(helper, new BlockPos(1, 5, 1), Direction.UP));
+                    helper.assertTrue(!GridSaveItem.isFull(save) && corner.equals(GridSaveItem.corner(save, level)),
+                            "a box too big was taken, or lost the corner");
+                    helper.assertTrue(level.getBlockEntity(helper.absolutePos(westAt)) instanceof SubgridBlockEntity, "a refused take took a grid");
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, hitOn(helper, new BlockPos(2, 2, 1), Direction.UP));
+                    helper.assertTrue(GridSaveItem.isFull(save), "the box was not taken");
+                    helper.assertTrue(GridSaveItem.box(GridSaveItem.grid(save)).equals(new Vec3i(2, 1, 1)),
+                            "the box kept is " + GridSaveItem.box(GridSaveItem.grid(save)) + ", not only the two grids");
+                    for (int i = 0; i < 2; i++) helper.assertTrue(GridSaveItem.turnHeld(player), "R found no Grid Save to turn");
+                    helper.setBlock(toEast, Blocks.STONE);
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onWall);
+                    helper.assertTrue(GridSaveItem.isFull(save), "a refused placement emptied the Grid Save");
+                    helper.assertBlockPresent(Blocks.AIR, toWest);
+                    helper.setBlock(toEast, Blocks.AIR);
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onWall);
+                    helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grids");
+                    BlockPos[] at = {toWest, toEast};
+                    int[] pieces = {1, 2};
+                    BlockPos turnedCell = west.transformCell(BlockPos.ZERO, Rotation.CLOCKWISE_180, Mirror.NONE);
+                    for (int i = 0; i < 2; i++) {
+                        helper.assertTrue(level.getBlockEntity(helper.absolutePos(at[i])) instanceof SubgridBlockEntity be
+                                        && be.getPieces().size() == pieces[i] && be.getPieceAt(turnedCell.getX(), turnedCell.getY(), turnedCell.getZ()) != null,
+                                "no grid of " + pieces[i] + " turned pieces at " + at[i]);
+                    }
+                    helper.assertEntityNotPresent(EntityType.ITEM);
+                })
+                .thenSucceed();
+    }
+
+    /** A click on the middle of {@code face} of the block at {@code pos} (relative). */
+    private static BlockHitResult hitOn(GameTestHelper helper, BlockPos pos, Direction face) {
+        BlockPos at = helper.absolutePos(pos);
+        return new BlockHitResult(Vec3.atCenterOf(at).add(Vec3.atLowerCornerOf(face.getNormal()).scale(0.5)), face, at, false);
     }
 
     private static LinkBehaviour linkOf(SubgridBlockEntity be, ServerLevel level, PlacedPiece link) {

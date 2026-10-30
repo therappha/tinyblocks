@@ -134,9 +134,13 @@ public final class GridSavePreview {
          * while the crosshair is on a grid, which it is when selecting grids).
          */
         private static void outlineSelection(RenderLevelStageEvent event, Minecraft mc) {
-            ItemStack stack = mc.player.getMainHandItem();
-            if (!(stack.getItem() instanceof GridSaveItem)) stack = mc.player.getOffhandItem();
-            BlockPos corner = stack.getItem() instanceof GridSaveItem ? GridSaveItem.corner(stack) : null;
+            // The hand a click selects with (GridSaveItem#onItemUseFirst): the main one if it has a corner, else the
+            // off one, as an empty Grid Save in the main hand off the grids passes the click on.
+            ItemStack main = mc.player.getMainHandItem();
+            BlockPos corner = main.getItem() instanceof GridSaveItem ? GridSaveItem.corner(main, mc.level) : null;
+            ItemStack off = mc.player.getOffhandItem();
+            boolean mainPasses = main.isEmpty() || main.getItem() instanceof GridSaveItem && !mc.player.isSecondaryUseActive();
+            if (corner == null && mainPasses && off.getItem() instanceof GridSaveItem) corner = GridSaveItem.corner(off, mc.level);
             if (corner == null) return;
             BlockPos other = mc.hitResult instanceof BlockHitResult hit && hit.getType() != HitResult.Type.MISS
                     ? hit.getBlockPos() : corner;

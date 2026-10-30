@@ -369,6 +369,34 @@ public class SubgridBlockEntity extends BlockEntity {
         rearrange(rotation, Mirror.NONE);
     }
 
+    /**
+     * Every piece out of the grid, quietly: nothing is told, nothing looks across, for a grid taken away with others
+     * (GridSaveItem#pickUpBox) whose pieces, already saved, must not react to one another going. The pieces taken
+     * out are handed back for letGo, once the grids taken with this one are empty too.
+     */
+    public List<PlacedPiece> emptyQuietly() {
+        List<PlacedPiece> taken = List.copyOf(pieces);
+        pieces.clear();
+        Arrays.fill(cellOwner, EMPTY);
+        rebuildShape();
+        scheduledTicks.clear();
+        setChanged();
+        return taken;
+    }
+
+    /** After emptyQuietly: each piece taken out goes as when broken (onRemoved: Create leaves its networks). */
+    public void letGo(List<PlacedPiece> taken) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        for (int i = taken.size() - 1; i >= 0; i--) {
+            PlacedPiece p = taken.get(i);
+            try {
+                p.definition.onRemoved(p, serverLevel, this);
+            } catch (Exception e) {
+                logTickFailure("onRemoved (taken)", p, e);
+            }
+        }
+    }
+
     private void rearrange(Rotation rotation, Mirror mirror) {
         turn(rotation, mirror);
         lookAround();

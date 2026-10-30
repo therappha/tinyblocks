@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.items;
 
 import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.ChatFormatting;
@@ -30,11 +31,11 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.util.BlockSnapshot;
-import net.neoforged.neoforge.event.EventHooks;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
 import javax.annotation.Nullable;
@@ -57,8 +58,11 @@ public class GridSaveItem extends Item {
 
     public static final String GRID_KEY = "tinyblocks_grid";
 
-    /** The first corner of a box being selected, set by a sneaking click on an empty one: x, y, z. */
-    public static final String CORNER_KEY = "tinyblocks_corner";
+    /**
+     * The first corner of a box being selected, set by a sneaking click on an empty one: x, y, z; and the dimension
+     * it is in ({@link #CORNER_LEVEL_KEY}): taken through a portal, it is no corner there.
+     */
+    public static final String CORNER_KEY = "tinyblocks_corner", CORNER_LEVEL_KEY = "tinyblocks_corner_level";
 
     /** The most grids a box takes, and the most blocks it spans on each axis. */
     public static final int MAX_GRIDS = 4, MAX_SPAN = 4;
@@ -156,32 +160,53 @@ public class GridSaveItem extends Item {
         return inFront.relative(face, turnedBox.get(face.getAxis()) - 1);
     }
 
-    /** The corner a sneaking click set, or null. */
+    /** The corner a sneaking click set in {@code level}, or null (none, or one set in another dimension). */
     @Nullable
-    public static BlockPos corner(ItemStack stack) {
+    public static BlockPos corner(ItemStack stack, Level level) {
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
         if (data == null || !data.contains(CORNER_KEY)) return null;
-        int[] corner = data.getUnsafe().getIntArray(CORNER_KEY);
+        CompoundTag all = data.getUnsafe();
+        if (!all.getString(CORNER_LEVEL_KEY).equals(level.dimension().location().toString())) return null;
+        int[] corner = all.getIntArray(CORNER_KEY);
         return corner.length == 3 ? new BlockPos(corner[0], corner[1], corner[2]) : null;
     }
 
-    private static void setCorner(ItemStack stack, @Nullable BlockPos corner) {
+    private static boolean hasCorner(ItemStack stack) {
+        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+        return data != null && data.contains(CORNER_KEY);
+    }
+
+    private static void setCorner(ItemStack stack, @Nullable BlockPos corner, Level level) {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> {
-            if (corner == null) all.remove(CORNER_KEY);
-            else all.putIntArray(CORNER_KEY, new int[]{corner.getX(), corner.getY(), corner.getZ()});
+            if (corner == null) {
+                all.remove(CORNER_KEY);
+                all.remove(CORNER_LEVEL_KEY);
+                return;
+            }
+            all.putIntArray(CORNER_KEY, new int[]{corner.getX(), corner.getY(), corner.getZ()});
+            all.putString(CORNER_LEVEL_KEY, level.dimension().location().toString());
         });
     }
 
     /**
+     * Whether a click of {@code player}'s with the empty {@code stack} is for a box: a sneaking one sets a corner, and
+     * with a corner set the next one takes the box.
+     */
+    public static boolean selecting(ItemStack stack, Player player) {
+        return !isFull(stack) && (player.isSecondaryUseActive() || corner(stack, player.level()) != null);
+    }
+
+    /**
      * The full Grid Save a click of {@code player}'s would place, or null: in the main hand, or in the off hand while
-     * the main one holds nothing that would act first (nothing, or a Grid Save, empty, that passes off the grids).
+     * the main one holds nothing that would act first (nothing, or a Grid Save, empty, that passes off the grids and
+     * selects no box).
      */
     @Nullable
     public static ItemStack heldFull(Player player) {
         ItemStack main = player.getMainHandItem();
         if (main.getItem() instanceof GridSaveItem && isFull(main)) return main;
         ItemStack off = player.getOffhandItem();
-        boolean mainPasses = main.isEmpty() || main.getItem() instanceof GridSaveItem;
+        boolean mainPasses = main.isEmpty() || main.getItem() instanceof GridSaveItem && !selecting(main, player);
         return mainPasses && off.getItem() instanceof GridSaveItem && isFull(off) ? off : null;
     }
 
@@ -219,21 +244,21 @@ public class GridSaveItem extends Item {
         Direction face = context.getClickedFace();
         Player player = context.getPlayer();
         boolean full = isFull(stack);
-        boolean selecting = !full && (corner(stack) != null || player != null && player.isSecondaryUseActive());
+        boolean selecting = player != null && selecting(stack, player);
         if (!full && !selecting && !(level.getBlockState(clicked).getBlock() instanceof SubgridBlock)) return InteractionResult.PASS;
         if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
         boolean done;
         if (full) done = place(serverLevel, clicked.relative(face), face, stack, player);
-        else if (player != null && player.isSecondaryUseActive()) done = selectCorner(clicked, stack, player);
-        else if (selecting) done = pickUpBox(serverLevel, corner(stack), clicked, stack, player);
+        else if (player != null && player.isSecondaryUseActive()) done = selectCorner(serverLevel, clicked, stack, player);
+        else if (selecting) done = pickUpBox(serverLevel, corner(stack, level), clicked, stack, player);
         else done = pickUp(serverLevel, clicked, stack, player);
         return done ? InteractionResult.SUCCESS : InteractionResult.FAIL;
     }
 
     /** A sneaking click on a block: the first corner of a box there, or, on the corner already set, none. */
-    private static boolean selectCorner(BlockPos clicked, ItemStack stack, Player player) {
-        boolean again = clicked.equals(corner(stack));
-        setCorner(stack, again ? null : clicked);
+    private static boolean selectCorner(Level level, BlockPos clicked, ItemStack stack, Player player) {
+        boolean again = clicked.equals(corner(stack, level));
+        setCorner(stack, again ? null : clicked, level);
         tell(player, again ? "item.tinyblocks.grid_save.corner_cleared" : "item.tinyblocks.grid_save.corner_set");
         return true;
     }
@@ -242,20 +267,20 @@ public class GridSaveItem extends Item {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (!player.isSecondaryUseActive() || corner(stack) == null) return InteractionResultHolder.pass(stack);
+        if (!player.isSecondaryUseActive() || corner(stack, level) == null) return InteractionResultHolder.pass(stack);
         if (!level.isClientSide) {
-            setCorner(stack, null);
+            setCorner(stack, null, level);
             tell(player, "item.tinyblocks.grid_save.corner_cleared");
         }
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
     }
 
-    /** Put away, it forgets the corner it was selecting from. */
+    /** Put away, or taken to another dimension, it forgets the corner it was selecting from. */
     @Override
     public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
-        if (level.isClientSide || selected || corner(stack) == null) return;
-        if (entity instanceof LivingEntity living && living.getOffhandItem() == stack) return;
-        setCorner(stack, null);
+        if (level.isClientSide || !hasCorner(stack)) return;
+        boolean held = selected || entity instanceof LivingEntity living && living.getOffhandItem() == stack;
+        if (!held || corner(stack, level) == null) setCorner(stack, null, level);
     }
 
     /**
@@ -302,13 +327,14 @@ public class GridSaveItem extends Item {
      * Takes every grid in the box between {@code corner} and {@code other} into the empty {@code stack}, each with
      * where it was in the box, and removes their blocks; all or none, refused (the corner kept) for any grid pickUp
      * would refuse, for none or more than {@link #MAX_GRIDS}, for a box over {@link #MAX_SPAN} a side or all of them
-     * together over {@link #MAX_GRID_BYTES}. What is not a grid is neither taken nor asked about.
+     * together over {@link #MAX_GRID_BYTES}. What is not a grid is neither taken nor asked about, and the box kept is
+     * only as big as the grids in it.
      */
     public static boolean pickUpBox(ServerLevel level, BlockPos corner, BlockPos other, ItemStack stack, @Nullable Player player) {
         if (isFull(stack)) return false;
         BlockPos min = BlockPos.min(corner, other), max = BlockPos.max(corner, other);
-        Vec3i box = max.subtract(min).offset(1, 1, 1);
-        if (box.getX() > MAX_SPAN || box.getY() > MAX_SPAN || box.getZ() > MAX_SPAN) {
+        Vec3i selected = max.subtract(min).offset(1, 1, 1);
+        if (selected.getX() > MAX_SPAN || selected.getY() > MAX_SPAN || selected.getZ() > MAX_SPAN) {
             tell(player, "item.tinyblocks.grid_save.box_too_big");
             return false;
         }
@@ -320,6 +346,15 @@ public class GridSaveItem extends Item {
             tell(player, grids.isEmpty() ? "item.tinyblocks.grid_save.no_grids" : "item.tinyblocks.grid_save.too_many");
             return false;
         }
+        // Kept from the grids found, not the selection: empty space around them would only push them away from where
+        // the next click puts them.
+        min = grids.get(0).getBlockPos();
+        max = min;
+        for (SubgridBlockEntity be : grids) {
+            min = BlockPos.min(min, be.getBlockPos());
+            max = BlockPos.max(max, be.getBlockPos());
+        }
+        Vec3i box = max.subtract(min).offset(1, 1, 1);
         // Every one asked before any is taken: one refusing leaves them all.
         for (SubgridBlockEntity be : grids) {
             BlockPos pos = be.getBlockPos();
@@ -353,8 +388,14 @@ public class GridSaveItem extends Item {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> {
             all.put(GRID_KEY, grid);
             all.remove(CORNER_KEY);
+            all.remove(CORNER_LEVEL_KEY);
         });
-        // As pickUp removes one.
+        // Every one emptied before any is removed: a grid removed tells the ones next to it, and their pieces, already
+        // saved, would run (a piston blocked by the one gone pushing out where it was). Then each piece goes as when
+        // broken, and the blocks as pickUp removes one, empty.
+        List<List<PlacedPiece>> taken = new ArrayList<>();
+        for (SubgridBlockEntity be : grids) taken.add(be.emptyQuietly());
+        for (int i = 0; i < grids.size(); i++) grids.get(i).letGo(taken.get(i));
         for (SubgridBlockEntity be : grids) level.removeBlock(be.getBlockPos(), false);
         return true;
     }
@@ -363,7 +404,8 @@ public class GridSaveItem extends Item {
      * Puts the grids {@code stack} carries at {@code pos} (in front of {@code face} of the block clicked), turned, and
      * empties it; false, still full, if any of them can't go there: not replaceable, out of the world, someone in the
      * way (the whole cell: what a grid fills isn't known before it is there), not {@code player}'s to use or a
-     * protection cancelling its place event. All or none.
+     * protection cancelling its place event, or two of them in one spot or out of their box (data not as pickUpBox
+     * writes it). All or none.
      */
     public static boolean place(ServerLevel level, BlockPos pos, Direction face, ItemStack stack, @Nullable Player player) {
         CompoundTag grid = grid(stack);
@@ -374,7 +416,11 @@ public class GridSaveItem extends Item {
         List<Entry> entries = entries(grid);
         List<BlockPos> targets = new ArrayList<>();
         for (Entry entry : entries) {
-            BlockPos target = origin.offset(turnedOffset(entry.offset(), box, rotation));
+            BlockPos offset = entry.offset();
+            if (offset.getX() < 0 || offset.getY() < 0 || offset.getZ() < 0
+                    || offset.getX() >= box.getX() || offset.getY() >= box.getY() || offset.getZ() >= box.getZ()) return false;
+            BlockPos target = origin.offset(turnedOffset(offset, box, rotation));
+            if (targets.contains(target)) return false;
             if (!level.getBlockState(target).canBeReplaced() || !level.isInWorldBounds(target)) return false;
             if (player != null && !player.mayUseItemAt(target, face, stack)) return false;
             if (!level.isUnobstructed(null, Shapes.block().move(target.getX(), target.getY(), target.getZ()))) return false;
@@ -386,11 +432,14 @@ public class GridSaveItem extends Item {
             before.add(BlockSnapshot.create(level.dimension(), level, targets.get(i)));
             level.setBlock(targets.get(i), Registration.subgridBlock(entries.get(i).size()).defaultBlockState(), Block.UPDATE_ALL);
         }
-        // As BlockItem asks, with the blocks there (a player's place event reads them from the level); the grids are
-        // still empty, so taking them back leaves nothing behind.
-        boolean cancelled = before.size() == 1
-                ? EventHooks.onBlockPlace(player, before.get(0), face)
-                : EventHooks.onMultiBlockPlace(player, before, face);
+        // As BlockItem asks, with the blocks there (a player's place event reads them from the level), placed against
+        // the block clicked (EventHooks takes the one behind the first, not the clicked one, for a box); the grids
+        // are still empty, so taking them back leaves nothing behind.
+        BlockState against = level.getBlockState(pos.relative(face.getOpposite()));
+        BlockEvent.EntityPlaceEvent event = before.size() == 1
+                ? new BlockEvent.EntityPlaceEvent(before.get(0), against, player)
+                : new BlockEvent.EntityMultiPlaceEvent(before, against, player);
+        boolean cancelled = NeoForge.EVENT_BUS.post(event).isCanceled();
         if (cancelled) {
             for (BlockSnapshot snapshot : before) snapshot.restore(Block.UPDATE_ALL);
             return false;
