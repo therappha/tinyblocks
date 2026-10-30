@@ -12,11 +12,13 @@ import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
@@ -24,6 +26,7 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -38,20 +41,26 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
- * A full Grid Save in hand (GridSaveItem#heldFull) shows its grid, see-through, where a click would place it (GridSaveItem#target),
- * turned as it would be; R (rebindable) turns it a quarter turn more.
+ * A full Grid Save in hand (GridSaveItem#heldFull) shows its grids, see-through, where a click would place them (GridSaveItem#target),
+ * turned as they would be; R (rebindable) turns them a quarter turn more. An empty one with a corner set outlines the
+ * box a click would take, green when it would take it, yellow when not.
  */
 public final class GridSavePreview {
 
     public static final KeyMapping TURN = new KeyMapping("key.tinyblocks.grid_save_turn",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, "key.categories.tinyblocks");
 
-    /** The ghost last drawn and the custom data it was drawn from: drawn again only when the held grid changes. */
+    /** The ghosts last drawn and the custom data they were drawn from: drawn again only when the held grids change. */
     private static CustomData cachedData;
-    private static Ghost cachedGhost;
+    private static List<Part> cachedGhost;
+
+    /** One grid's ghost and where it goes in the turned box. */
+    private record Part(BlockPos offset, Ghost ghost) {}
 
     private GridSavePreview() {}
 
@@ -88,27 +97,76 @@ public final class GridSavePreview {
             if (held == null) {
                 cachedData = null;
                 cachedGhost = null;
+                outlineSelection(event, mc);
                 return;
             }
             if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
-            BlockPos target = GridSaveItem.target(hit);
+            CustomData data = GridSaveItem.data(held);
+            CompoundTag grid = data.getUnsafe().getCompound(GridSaveItem.GRID_KEY);
+            Vec3i turnedBox = GridSaveItem.turnedBox(GridSaveItem.box(grid), GridSaveItem.rotation(held));
+            BlockPos origin = GridSaveItem.origin(GridSaveItem.target(hit), hit.getDirection(), turnedBox);
+            List<Part> parts = ghost(data);
             // As GridSaveItem#place refuses (but for who is in the way).
-            if (!mc.level.getBlockState(target).canBeReplaced() || !mc.level.isInWorldBounds(target)) return;
+            for (Part part : parts) {
+                BlockPos target = origin.offset(part.offset());
+                if (!mc.level.getBlockState(target).canBeReplaced() || !mc.level.isInWorldBounds(target)) return;
+            }
 
-            Ghost ghost = ghost(GridSaveItem.data(held));
             Vec3 camera = event.getCamera().getPosition();
             MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
-            ghost.replay(buffers.getBuffer(RenderType.translucent()), event.getPoseStack().last(),
-                    (float) (target.getX() - camera.x), (float) (target.getY() - camera.y), (float) (target.getZ() - camera.z));
+            VertexConsumer translucent = buffers.getBuffer(RenderType.translucent());
+            for (Part part : parts) {
+                BlockPos target = origin.offset(part.offset());
+                part.ghost().replay(translucent, event.getPoseStack().last(),
+                        (float) (target.getX() - camera.x), (float) (target.getY() - camera.y), (float) (target.getZ() - camera.z));
+            }
             buffers.endBatch(RenderType.translucent());
+            if (parts.size() > 1) {
+                AABB box = new AABB(origin.getX(), origin.getY(), origin.getZ(), origin.getX() + turnedBox.getX(),
+                        origin.getY() + turnedBox.getY(), origin.getZ() + turnedBox.getZ());
+                outline(event, buffers, box.move(camera.scale(-1)), 0xFFFFFF, 0.4f);
+            }
+        }
+
+        /**
+         * The box an empty Grid Save with a corner set would take, from the corner to the block looked at: drawn with
+         * the level renderer's own lines, not Create's outliner (OutlinerMixin hands that one to a grid's insides
+         * while the crosshair is on a grid, which it is when selecting grids).
+         */
+        private static void outlineSelection(RenderLevelStageEvent event, Minecraft mc) {
+            ItemStack stack = mc.player.getMainHandItem();
+            if (!(stack.getItem() instanceof GridSaveItem)) stack = mc.player.getOffhandItem();
+            BlockPos corner = stack.getItem() instanceof GridSaveItem ? GridSaveItem.corner(stack) : null;
+            if (corner == null) return;
+            BlockPos other = mc.hitResult instanceof BlockHitResult hit && hit.getType() != HitResult.Type.MISS
+                    ? hit.getBlockPos() : corner;
+            BlockPos min = BlockPos.min(corner, other), max = BlockPos.max(corner, other);
+            // As GridSaveItem#pickUpBox refuses, but for what only the server asks.
+            int grids = 0;
+            for (BlockPos pos : BlockPos.betweenClosed(min, max)) {
+                if (mc.level.getBlockState(pos).getBlock() instanceof SubgridBlock) grids++;
+            }
+            BlockPos span = max.subtract(min);
+            boolean fits = span.getX() < GridSaveItem.MAX_SPAN && span.getY() < GridSaveItem.MAX_SPAN && span.getZ() < GridSaveItem.MAX_SPAN;
+            boolean takes = fits && grids > 0 && grids <= GridSaveItem.MAX_GRIDS;
+            Vec3 camera = event.getCamera().getPosition();
+            AABB box = new AABB(Vec3.atLowerCornerOf(min), Vec3.atLowerCornerOf(max).add(1, 1, 1)).move(camera.scale(-1));
+            // Create's Super Glue colours.
+            outline(event, mc.renderBuffers().bufferSource(), box, takes ? 0x68c586 : 0xc5b548, 1f);
+        }
+
+        private static void outline(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers, AABB box, int rgb, float alpha) {
+            LevelRenderer.renderLineBox(event.getPoseStack(), buffers.getBuffer(RenderType.lines()), box.inflate(1 / 512d),
+                    ((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, alpha);
+            buffers.endBatch(RenderType.lines());
         }
     }
 
     /**
-     * The ghost of the held grid, drawn once for each grid (and turn) it holds: a stack keeps its custom data as it
-     * is until its grid changes, and an equal one (the server sending the stack again) is still the same grid.
+     * The ghosts of the held grids, drawn once for each set of grids (and turn) it holds: a stack keeps its custom
+     * data as it is until its grids change, and an equal one (the server sending the stack again) is still the same.
      */
-    private static Ghost ghost(CustomData data) {
+    private static List<Part> ghost(CustomData data) {
         if (data != cachedData) {
             if (cachedGhost == null || !data.equals(cachedData)) cachedGhost = draw(data.getUnsafe().getCompound(GridSaveItem.GRID_KEY));
             cachedData = data;
@@ -116,16 +174,26 @@ public final class GridSavePreview {
         return cachedGhost;
     }
 
+    /** Each grid's ghost, and where it goes once the box is turned as placing turns it (GridSaveItem#turnedOffset). */
+    private static List<Part> draw(CompoundTag grid) {
+        Rotation rotation = Rotation.values()[Math.floorMod(grid.getInt("turns"), 4)];
+        Vec3i box = GridSaveItem.box(grid);
+        List<Part> parts = new ArrayList<>();
+        for (GridSaveItem.Entry entry : GridSaveItem.entries(grid)) {
+            parts.add(new Part(GridSaveItem.turnedOffset(entry.offset(), box, rotation), draw(entry, rotation)));
+        }
+        return parts;
+    }
+
     /** The grid's pieces, turned as placing it turns them (SubgridBlockEntity#transformed), drawn as at the origin. */
-    private static Ghost draw(CompoundTag grid) {
+    private static Ghost draw(GridSaveItem.Entry entry, Rotation rotation) {
         Minecraft mc = Minecraft.getInstance();
         var registries = mc.level.registryAccess();
-        int size = grid.getInt("size");
+        int size = entry.size();
         SubgridBlock block = Registration.subgridBlock(size);
         // A grid entity of its own, in no level, only to read the saved pieces with.
         SubgridBlockEntity reader = new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), BlockPos.ZERO, block.defaultBlockState());
-        reader.loadCustomOnly(grid.getCompound("data"), registries);
-        Rotation rotation = Rotation.values()[Math.floorMod(grid.getInt("turns"), 4)];
+        reader.loadCustomOnly(entry.data(), registries);
 
         Ghost ghost = new Ghost();
         GhostVertexConsumer consumer = new GhostVertexConsumer(ghost, 120);
