@@ -81,6 +81,42 @@ public class CreateBeltParityGameTest {
         }).thenSucceed();
     }
 
+    private static int belts(com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) {
+        int count = 0;
+        for (var piece : grid.getPieces()) {
+            if (piece.runtimeState instanceof BlockState state && AllBlocks.BELT.has(state)) count++;
+        }
+        return count;
+    }
+
+    /** A belt across two grids, one of them taken away: as a belt with a segment broken in the world, none of it stays. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 200)
+    public void parityBeltCutByTakingOneGridBreaks(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos westAt = new net.minecraft.core.BlockPos(1, 2, 1), eastAt = westAt.east(), to = new net.minecraft.core.BlockPos(3, 2, 3);
+        helper.setBlock(westAt, net.minecraft.world.level.block.Blocks.AIR);
+        helper.setBlock(eastAt, net.minecraft.world.level.block.Blocks.AIR);
+        var west = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(westAt), 8);
+        var east = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(eastAt), 8);
+        int first = 4, last = 11;
+        for (int x = first; x <= last; x++) {
+            var cell = new net.minecraft.core.BlockPos(x % 8, 1, 4);
+            SubgridTestSupport.placePiece(x < 8 ? west : east, level, cell, belt(x == first ? BeltPart.START : x == last ? BeltPart.END : BeltPart.MIDDLE));
+        }
+        var player = SubgridTestSupport.serverPlayer(helper, west);
+        var save = new net.minecraft.world.item.ItemStack(com.therappha.tinyblocks.setup.Registration.GRID_SAVE.get());
+        helper.startSequence().thenIdle(20).thenExecute(() -> {
+            helper.assertTrue(belts(west) == 4 && belts(east) == 4, "the belt wasn't built: " + belts(west) + " and " + belts(east));
+            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.pickUp(level, helper.absolutePos(eastAt), save, player), "nothing taken");
+        }).thenIdle(20).thenExecute(() -> {
+            helper.assertTrue(belts(west) == 0, belts(west) + " segments of the cut belt stayed in the grid left behind");
+            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.place(level, helper.absolutePos(to), Direction.UP, save, player), "nothing placed");
+        }).thenIdle(20).thenExecute(() -> {
+            var moved = level.getBlockEntity(helper.absolutePos(to)) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid ? grid : null;
+            helper.assertTrue(moved == null || belts(moved) == 0, (moved == null ? 0 : belts(moved)) + " segments of the cut belt stayed in the grid placed");
+        }).thenSucceed();
+    }
+
     @GameTestGenerator
     public Collection<TestFunction> belts() {
         List<TestFunction> tests = new ArrayList<>();
