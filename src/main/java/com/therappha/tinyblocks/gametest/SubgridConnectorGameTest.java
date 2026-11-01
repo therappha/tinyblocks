@@ -46,6 +46,30 @@ public class SubgridConnectorGameTest {
         return ShaftConnectorPiece.socket(Direction.EAST, be.getGridSize());
     }
 
+    /** A wrench moves a connector to the next free face, skipping a taken one, with its axis along the new face. */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void aWrenchMovesAConnectorToTheNextFreeFace(GameTestHelper helper) {
+        SubgridBlockEntity be = funnelGrid(helper, new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+        PlacedPiece plate = plateOn(be, level, Direction.EAST);
+        // East's next face is down: taken here, so it goes on to up.
+        BlockPos taken = ShaftConnectorPiece.anchorOn(Direction.DOWN, be.getGridSize());
+        SubgridTestSupport.placePiece(be, level, taken, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+        var player = helper.makeMockPlayer(net.minecraft.world.level.GameType.SURVIVAL);
+        player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, com.simibubi.create.AllItems.WRENCH.asStack());
+
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.topHit(be, plate.anchor));
+
+        var plates = be.getPieces().stream().filter(p -> ShaftConnectorPiece.faceOf(p) != null).toList();
+        helper.assertTrue(plates.size() == 1, "connectors in the grid: " + plates.size());
+        PlacedPiece moved = plates.get(0);
+        helper.assertTrue(moved.facing == Direction.UP, "the connector is on " + moved.facing);
+        helper.assertTrue(moved.anchor.equals(ShaftConnectorPiece.anchorOn(Direction.UP, be.getGridSize())), "the connector's cells aren't on the face");
+        helper.assertTrue(SubgridTestSupport.stateOf(be, moved.anchor).getValue(RotatedPillarKineticBlock.AXIS) == Direction.Axis.Y,
+                "the connector's axis isn't its face's");
+        helper.succeed();
+    }
+
     private static PlacedPiece plateOn(SubgridBlockEntity be, ServerLevel level, Direction face) {
         if (!ConnectorPlacement.place(be, level, face)) {
             throw new IllegalStateException("could not place a connector plate on " + face + " of " + be.getBlockPos());

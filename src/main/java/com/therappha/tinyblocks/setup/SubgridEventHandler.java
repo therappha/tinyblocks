@@ -252,6 +252,15 @@ public class SubgridEventHandler {
                 // Anything else clicked onto a gear goes next to the clicked face, as onto any piece.
             }
 
+            if (stack.getItem() instanceof com.simibubi.create.content.equipment.wrench.WrenchItem && !player.isShiftKeyDown()
+                    && clickedPlate != null && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                // Not the shaft it stands in as: a wrench would turn that across the face, out of line with it.
+                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.moveToNextFace(existing, serverLevel, clickedPlate)) {
+                    com.simibubi.create.content.equipment.wrench.IWrenchable.playRotateSound(serverLevel, pos);
+                }
+                return;
+            }
+
             // Try interacting with whatever's at the exact clicked cell first — same priority
             // vanilla gives "interact with what you clicked" over "place a new block" — but only
             // defer to it if it actually did something (a lever flips); a non-interactive piece

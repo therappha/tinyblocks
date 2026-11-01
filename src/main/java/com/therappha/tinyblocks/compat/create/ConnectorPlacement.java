@@ -99,6 +99,21 @@ public final class ConnectorPlacement {
         return true;
     }
 
+    /**
+     * A wrench on connector {@code plate}: it moves to the next free face of the grid, in {@link Direction#values()}
+     * order. A connector's axis is its face's, so it has no other way to turn. False, and it stays, if no face is free.
+     */
+    public static boolean moveToNextFace(SubgridBlockEntity be, ServerLevel level, PlacedPiece plate) {
+        Direction from = plate.facing;
+        be.removePieceAt(plate.anchor.getX(), plate.anchor.getY(), plate.anchor.getZ());
+        Direction[] faces = Direction.values();
+        for (int i = 1; i < faces.length; i++) {
+            if (place(be, level, faces[(from.ordinal() + i) % faces.length])) return true;
+        }
+        place(be, level, from);
+        return false;
+    }
+
     /** Places a plate on {@code face} of {@code be}; false if any of its cells is taken. */
     public static boolean place(SubgridBlockEntity be, ServerLevel level, Direction face) {
         PlacedPiece piece = ShaftConnectorPiece.create(be, face);
