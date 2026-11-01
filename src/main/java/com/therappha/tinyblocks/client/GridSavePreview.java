@@ -159,6 +159,8 @@ public final class GridSavePreview {
             if (corner == null) return;
             BlockPos other = mc.hitResult instanceof BlockHitResult hit && hit.getType() != HitResult.Type.MISS
                     ? hit.getBlockPos() : corner;
+            // A corner on a sub-level and one in the world are millions of blocks apart: no box, and no walk across it.
+            if (!com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(mc.level, corner, other)) other = corner;
             BlockPos min = BlockPos.min(corner, other), max = BlockPos.max(corner, other);
             // As GridSaveItem#pickUpBox refuses, but for what only the server asks.
             int grids = 0;

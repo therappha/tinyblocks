@@ -92,5 +92,6 @@
   "block.tinyblocks.grid_box": "装箱的网格",
   "tinyblocks.grid_box.blocked": "有东西挡住了:箱子保持关闭",
   "item.tinyblocks.grid_save.belt_cut": "传送带延伸到未选择的网格:请同时选择两个",
-  "key.tinyblocks.mode": "TinyBlocks 模式切换"
+  "key.tinyblocks.mode": "TinyBlocks 模式切换",
+  "tinyblocks.build.other_space": "两个角必须在同一处:同一艘船上,或都在世界中"
 }

@@ -68,6 +68,11 @@ public class MinimizerItem extends Item {
                 && !stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().getBoolean(OFF_KEY);
     }
 
+    /** Whether {@code stack} is a Minimizer switched off: what is held with it builds whole blocks, even on a grid. */
+    public static boolean isOff(ItemStack stack) {
+        return stack.getItem() instanceof MinimizerItem && !isOn(stack);
+    }
+
     /** The on/off key: switches the Minimizer in hand, the main hand's first, to build normally and back. Says which. */
     public static void toggleOn(Player player) {
         ItemStack stack = player.getMainHandItem().getItem() instanceof MinimizerItem ? player.getMainHandItem() : player.getOffhandItem();

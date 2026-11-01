@@ -92,5 +92,6 @@
   "block.tinyblocks.grid_box": "Grid na Caixa",
   "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada",
   "item.tinyblocks.grid_save.belt_cut": "Uma esteira continua num grid que você não selecionou: selecione os dois",
-  "key.tinyblocks.mode": "Troca de Modo TinyBlocks"
+  "key.tinyblocks.mode": "Troca de Modo TinyBlocks",
+  "tinyblocks.build.other_space": "Os dois cantos precisam estar no mesmo lugar: na mesma nave ou no mundo"
 }

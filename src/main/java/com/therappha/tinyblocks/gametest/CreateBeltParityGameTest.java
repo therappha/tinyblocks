@@ -133,6 +133,22 @@ public class CreateBeltParityGameTest {
         helper.startSequence().thenIdle(5).thenExecute(() -> helper.assertTrue(belts(grid) == 0, belts(grid) + " segments stayed")).thenSucceed();
     }
 
+    /** A corner on a sub-level and one in the world make no box: their positions are millions of blocks apart. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 60)
+    public void aSubLevelAndTheWorldAreDifferentPlaces(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos on = helper.absolutePos(new net.minecraft.core.BlockPos(2, 2, 2));
+        net.minecraft.core.BlockPos floor = helper.absolutePos(new net.minecraft.core.BlockPos(4, 2, 2));
+        level.setBlock(on, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+        Object subLevel = SableSupport.assemble(level, on, List.of(on), on, on);
+        net.minecraft.core.BlockPos plot = SableSupport.plotCenter(subLevel);
+        helper.assertTrue(!com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, plot, floor), "the sub-level and the world count as one place");
+        helper.assertTrue(com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, plot, plot.east()), "one sub-level counts as two places");
+        helper.assertTrue(com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, floor, floor.east()), "the world counts as two places");
+        SableSupport.remove(level, subLevel);
+        helper.succeed();
+    }
+
     @GameTestGenerator
     public Collection<TestFunction> belts() {
         List<TestFunction> tests = new ArrayList<>();

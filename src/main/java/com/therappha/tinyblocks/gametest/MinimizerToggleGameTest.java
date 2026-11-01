@@ -36,4 +36,23 @@ public class MinimizerToggleGameTest {
         helper.assertTrue(!new ItemStack(Blocks.STONE).isEmpty() && !MinimizerItem.isOn(new ItemStack(Blocks.STONE)), "stone counts as a Minimizer");
         helper.succeed();
     }
+
+    /** Off, a block clicked against a grid is a whole block, past the grids in the way, and no piece goes in them. */
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
+    public void aMinimizerSwitchedOffPlacesWholeBlocksAgainstGrids(GameTestHelper helper) {
+        BlockPos low = new BlockPos(2, 2, 2), high = low.above();
+        var lowGrid = SubgridTestSupport.placeSubgrid(helper, low);
+        var highGrid = SubgridTestSupport.placeSubgrid(helper, high);
+        SubgridTestSupport.placePiece(lowGrid, helper.getLevel(), new BlockPos(3, 7, 3), Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(highGrid, helper.getLevel(), new BlockPos(3, 0, 3), Blocks.STONE.defaultBlockState());
+        var player = SubgridTestSupport.serverPlayer(helper, lowGrid);
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Blocks.OAK_PLANKS, 4));
+        MinimizerItem.toggleOn(player);
+        SubgridTestSupport.rightClick(lowGrid, player, SubgridTestSupport.topHit(lowGrid, new BlockPos(3, 7, 3)));
+        helper.assertBlockPresent(Blocks.OAK_PLANKS, high.above());
+        helper.assertTrue(lowGrid.getPieces().size() == 1 && highGrid.getPieces().size() == 1, "a piece went into a grid");
+        helper.succeed();
+    }
 }

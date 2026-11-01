@@ -98,6 +98,12 @@ public final class MinimizerBuild {
         return lift;
     }
 
+    /** Whether {@code target} can end a shape begun at {@code corner}: of its size, and in the same place (SubLevels). */
+    public static boolean sameShape(Level level, Corner corner, Target target) {
+        return corner.gridSize() == target.gridSize() && com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level,
+                realOf(corner.cell(), corner.gridSize()), realOf(target.cell(), target.gridSize()));
+    }
+
     /** The second corner a click on {@code target} picks: the crosshair's cell, raised by the lift. */
     public static BlockPos secondCorner(ItemStack minimizer, Target target) {
         return target.cell().above(lift(minimizer));

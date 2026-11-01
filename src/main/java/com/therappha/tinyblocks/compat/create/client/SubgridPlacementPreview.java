@@ -73,6 +73,7 @@ public final class SubgridPlacementPreview {
         if (mc.level == null || mc.player == null || mc.player.isShiftKeyDown()) return null;
         if (!(mc.hitResult instanceof BlockHitResult ray) || ray.getType() == HitResult.Type.MISS) return null;
         if (!(mc.level.getBlockEntity(ray.getBlockPos()) instanceof SubgridBlockEntity grid)) return null;
+        if (com.therappha.tinyblocks.items.MinimizerItem.isOff(mc.player.getOffhandItem())) return null; // whole blocks
 
         // Only the main hand: that's the hand VanillaBlockPiece#onUse hands to the piece.
         ItemStack held = mc.player.getMainHandItem();

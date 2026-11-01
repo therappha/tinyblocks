@@ -65,6 +65,10 @@ public final class MinimizerShapes {
                     Component.translatable(mode.translationKey())), true);
             return;
         }
+        if (!MinimizerBuild.sameShape(level, corner, target)) {
+            player.displayClientMessage(Component.translatable("tinyblocks.build.other_space"), true);
+            return;
+        }
 
         List<BlockPos> cells = mode.cells(corner.cell(), MinimizerBuild.secondCorner(minimizer, target), corner.faceAxis(), MAX_CELLS);
         if (cells.size() > MAX_CELLS) {

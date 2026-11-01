@@ -51,7 +51,7 @@ public final class MinimizerPreview {
         int size = target.gridSize();
         MinimizerBuild.Corner corner = MinimizerBuild.corner(minimizer);
         BlockPos min = target.cell(), max = target.cell();
-        if (corner != null && corner.gridSize() == size) {
+        if (corner != null && MinimizerBuild.sameShape(mc.level, corner, target)) {
             BlockPos[] bounds = mode.bounds(corner.cell(), MinimizerBuild.secondCorner(minimizer, target), corner.faceAxis());
             min = bounds[0];
             max = bounds[1];
