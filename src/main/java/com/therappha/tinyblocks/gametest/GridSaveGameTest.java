@@ -120,6 +120,35 @@ public class GridSaveGameTest {
                 .thenSucceed();
     }
 
+    /** A piston extended across into the next grid, taken: its head doesn't stay there, as it wouldn't if the piston broke. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void aPistonTakenLeavesNoHeadInTheNextGrid(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos at = new BlockPos(2, 1, 2), next = at.east();
+        helper.setBlock(next, Blocks.AIR.defaultBlockState());
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, at);
+        int max = be.getGridSize() - 1;
+        BlockPos piston = new BlockPos(max, 0, 4);
+        SubgridTestSupport.placePiece(be, level, piston, Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.EAST));
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+
+        helper.startSequence()
+                .thenExecute(() -> SubgridTestSupport.placePiece(be, level, piston.west(), Blocks.REDSTONE_BLOCK.defaultBlockState()))
+                .thenWaitUntil(() -> helper.assertTrue(level.getBlockEntity(helper.absolutePos(next)) instanceof SubgridBlockEntity grid
+                        && grid.getPieceAt(0, 0, 4) != null && SubgridTestSupport.stateOf(grid, new BlockPos(0, 0, 4)).is(Blocks.PISTON_HEAD),
+                        "the head isn't in the next grid yet"))
+                .thenWaitUntil(() -> helper.assertTrue(!be.hasActiveCaptures() && be.pendingDropCount() == 0, "the piston is still moving"))
+                .thenExecute(() -> {
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, piston));
+                    helper.assertTrue(GridSaveItem.isFull(save), "the Grid Save took nothing");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(!(level.getBlockEntity(helper.absolutePos(next)) instanceof SubgridBlockEntity grid)
+                        || grid.getPieceAt(0, 0, 4) == null, "the head stayed in the next grid"))
+                .thenSucceed();
+    }
+
     private static void moved(GameTestHelper helper, int turns, Item frequencyItem) {
         ServerLevel level = helper.getLevel();
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);

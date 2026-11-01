@@ -1295,6 +1295,12 @@ public class SubgridBlockEntity extends BlockEntity {
             if (!against || !pieces.contains(piece)) continue;
             try {
                 piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+                // A piston head goes with its piston, when the grid the piston was in is gone. Not with a grid across:
+                // that one tells its pieces through notifyNeighbors, cell by cell.
+                if (pieces.contains(piece) && piece.definition instanceof com.therappha.tinyblocks.v2.VanillaBlockPiece vanilla
+                        && !(serverLevel.getBlockState(worldPosition.relative(face)).getBlock() instanceof SubgridBlock)) {
+                    vanilla.reshapeAgainst(piece, serverLevel, this, face);
+                }
             } catch (Exception e) {
                 logTickFailure("onNeighborChanged (real neighbour)", piece, e);
             }

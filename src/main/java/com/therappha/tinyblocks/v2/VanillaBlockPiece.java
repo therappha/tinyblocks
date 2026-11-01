@@ -576,6 +576,20 @@ public class VanillaBlockPiece extends PieceDefinition {
         applyChanges(be, fakeLevel, before, level);
     }
 
+    /**
+     * The block across {@code face} of the grid changed: a piston head against that face goes if its piston did. Only
+     * a head: a piece resting on a real block (a lever on the ground) doesn't always read that block from here.
+     */
+    public void reshapeAgainst(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be, Direction face) {
+        if (!(stateOf(piece) != null && stateOf(piece).getBlock() instanceof net.minecraft.world.level.block.piston.PistonHeadBlock)) return;
+        FakeLevel fakeLevel = buildFakeSpace(be, level);
+        BlockPos at = fakeLevel.world(piece.anchor), across = at.relative(face);
+        Map<BlockPos, BlockState> before = snapshot(be);
+        fakeLevel.cells().set(at, fakeLevel.cells().getBlockState(at)
+                .updateShape(face, fakeLevel.getBlockState(across), fakeLevel, at, across));
+        applyChanges(be, fakeLevel, before, level);
+    }
+
     @Override
     public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {
         BlockState state = stateOf(piece);
