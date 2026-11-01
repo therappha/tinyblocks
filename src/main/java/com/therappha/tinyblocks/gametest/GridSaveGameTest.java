@@ -75,6 +75,51 @@ public class GridSaveGameTest {
         moved(helper, 1, Items.HEART_OF_THE_SEA);
     }
 
+    /** A tiny transmitter held on by a redstone block drives a real receiver, stops when saved, and drives it again where placed. */
+    @GameTest(template = "empty_platform", timeoutTicks = 200)
+    public void aSavedTransmitterTransmitsAgainWherePlaced(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);
+        SubgridTestSupport.placePiece(be, level, LINK.below(), Blocks.STONE.defaultBlockState());
+        PlacedPiece link = SubgridTestSupport.placePiece(be, level, LINK,
+                AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
+        SubgridTestSupport.placePiece(be, level, LINK.east(), Blocks.REDSTONE_BLOCK.defaultBlockState());
+        BlockPos receiver = new BlockPos(5, 2, 1);
+        // Placed a transmitter too: a link builds its link behaviour on the tick it finds itself one.
+        var receiverState = AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP);
+        helper.setBlock(receiver, receiverState);
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+        BlockPos floor = helper.absolutePos(TO.below());
+        BlockHitResult onFloor = new BlockHitResult(Vec3.atCenterOf(floor).add(0, 0.5, 0), Direction.UP, floor, false);
+        // Not a frequency other link tests use: they run alongside, in range.
+        ItemStack frequency = new ItemStack(Items.NETHER_STAR);
+
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    helper.assertTrue(linkOf(be, level, link) != null, "the link has no link behaviour yet");
+                    helper.assertTrue(realLink(helper, receiver) != null, "the real link has no link behaviour yet");
+                })
+                .thenExecute(() -> helper.setBlock(receiver, receiverState.setValue(RedstoneLinkBlock.RECEIVER, true)))
+                .thenWaitUntil(() -> helper.assertTrue(realLink(helper, receiver).isListening(), "the real link isn't a receiver yet"))
+                .thenExecute(() -> {
+                    for (LinkBehaviour behaviour : List.of(linkOf(be, level, link), realLink(helper, receiver))) {
+                        behaviour.setFrequency(true, frequency);
+                        behaviour.setFrequency(false, frequency);
+                    }
+                })
+                .thenWaitUntil(() -> helper.assertBlockProperty(receiver, RedstoneLinkBlock.POWERED, true))
+                .thenExecute(() -> player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, LINK)))
+                .thenWaitUntil(() -> helper.assertBlockProperty(receiver, RedstoneLinkBlock.POWERED, false))
+                .thenExecute(() -> {
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor);
+                    helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grid");
+                })
+                .thenWaitUntil(() -> helper.assertBlockProperty(receiver, RedstoneLinkBlock.POWERED, true))
+                .thenSucceed();
+    }
+
     private static void moved(GameTestHelper helper, int turns, Item frequencyItem) {
         ServerLevel level = helper.getLevel();
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);
@@ -378,6 +423,10 @@ public class GridSaveGameTest {
     private static BlockHitResult hitOn(GameTestHelper helper, BlockPos pos, Direction face) {
         BlockPos at = helper.absolutePos(pos);
         return new BlockHitResult(Vec3.atCenterOf(at).add(Vec3.atLowerCornerOf(face.getNormal()).scale(0.5)), face, at, false);
+    }
+
+    private static LinkBehaviour realLink(GameTestHelper helper, BlockPos pos) {
+        return BlockEntityBehaviour.get(helper.getLevel(), helper.absolutePos(pos), LinkBehaviour.TYPE);
     }
 
     private static LinkBehaviour linkOf(SubgridBlockEntity be, ServerLevel level, PlacedPiece link) {

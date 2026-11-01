@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.gametest;
 
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllItems;
 import com.simibubi.create.content.redstone.link.LinkBehaviour;
 import com.simibubi.create.content.redstone.link.RedstoneLinkBlock;
 import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler.Frequency;
@@ -19,6 +20,7 @@ import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -66,6 +68,70 @@ public class SubgridLinkReplaceGameTest {
         }).thenIdle(5);
         expectAnswer(helper, sequence, grid, player, "the receiver after reopening the world");
         sequence.thenSucceed();
+    }
+
+    /** A tiny transmitter broken while on lets a real receiver go, as a real transmitter does. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void aBrokenTinyTransmitterLetsItsReceiverGo(GameTestHelper helper) {
+        SubgridBlockEntity grid = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+        SubgridTestSupport.placePiece(grid, level, RECEIVER.below(), Blocks.STONE.defaultBlockState());
+        PlacedPiece link = SubgridTestSupport.placePiece(grid, level, RECEIVER,
+                AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
+        SubgridTestSupport.placePiece(grid, level, RECEIVER.east(), Blocks.REDSTONE_BLOCK.defaultBlockState());
+        BlockPos real = new BlockPos(5, 2, 1);
+        var realState = AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP);
+        helper.setBlock(real, realState);
+        // Not a frequency other link tests use: they run alongside, in range.
+        ItemStack frequency = new ItemStack(Items.GHAST_TEAR);
+
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    helper.assertTrue(VanillaBlockPiece.boundPhantom(link, grid, level) != null
+                            && BlockEntityBehaviour.get(VanillaBlockPiece.boundPhantom(link, grid, level), LinkBehaviour.TYPE) != null,
+                            "the tiny link has no link behaviour yet");
+                    helper.assertTrue(BlockEntityBehaviour.get(level, helper.absolutePos(real), LinkBehaviour.TYPE) != null,
+                            "the real link has no link behaviour yet");
+                })
+                .thenExecute(() -> helper.setBlock(real, realState.setValue(RedstoneLinkBlock.RECEIVER, true)))
+                .thenWaitUntil(() -> helper.assertTrue(BlockEntityBehaviour.get(level, helper.absolutePos(real), LinkBehaviour.TYPE).isListening(),
+                        "the real link isn't a receiver yet"))
+                .thenExecute(() -> {
+                    for (LinkBehaviour behaviour : List.of(BlockEntityBehaviour.get(VanillaBlockPiece.boundPhantom(link, grid, level), LinkBehaviour.TYPE),
+                            BlockEntityBehaviour.get(level, helper.absolutePos(real), LinkBehaviour.TYPE))) {
+                        behaviour.setFrequency(true, frequency);
+                        behaviour.setFrequency(false, frequency);
+                    }
+                })
+                .thenWaitUntil(() -> helper.assertBlockProperty(real, RedstoneLinkBlock.POWERED, true))
+                .thenExecute(() -> grid.removePieceAt(RECEIVER.getX(), RECEIVER.getY(), RECEIVER.getZ()))
+                .thenWaitUntil(() -> helper.assertBlockProperty(real, RedstoneLinkBlock.POWERED, false))
+                .thenSucceed();
+    }
+
+    /** A wrench switches a link as a sneaking click does: the placed link hears straight away, not after reopening the world. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void aWrenchMakesATinyLinkAReceiver(GameTestHelper helper) {
+        SubgridBlockEntity grid = SubgridTestSupport.placeSubgrid(helper, new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+        SubgridTestSupport.placePiece(grid, level, RECEIVER.below(), Blocks.STONE.defaultBlockState());
+        PlacedPiece link = SubgridTestSupport.placePiece(grid, level, RECEIVER,
+                AllBlocks.REDSTONE_LINK.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
+        Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+        player.setItemInHand(InteractionHand.MAIN_HAND, AllItems.WRENCH.asStack());
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> SubgridTestSupport.rightClick(grid, player, SubgridTestSupport.topHit(grid, RECEIVER)))
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    helper.assertTrue(SubgridTestSupport.stateOf(grid, RECEIVER).getValue(RedstoneLinkBlock.RECEIVER),
+                            "the wrench doesn't switch the link");
+                    LinkBehaviour behaviour = BlockEntityBehaviour.get(
+                            VanillaBlockPiece.boundPhantom(link, grid, level), LinkBehaviour.TYPE);
+                    helper.assertTrue(behaviour.isListening(), "the link switched by the wrench still transmits");
+                })
+                .thenSucceed();
     }
 
     /** Placed as a transmitter, made a receiver with a sneaking click, then tuned to the controller's button. */
