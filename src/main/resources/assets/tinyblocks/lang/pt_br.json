@@ -57,7 +57,7 @@
   "tinyblocks.guide.page.2": "§lOs três itens§r\n\nMinimizer: constrói pequeno.\n\nGrid Save: carrega grids prontos.\n\nShaft Connector: liga o grid às máquinas grandes.",
   "tinyblocks.guide.page.3": "§lMinimizer§r\n\nSegure ele na mão secundária e um bloco na principal.\n\nClique num bloco: o grid é criado ao lado, com a peça dentro.\n\nClique num grid: a peça entra nele.",
   "tinyblocks.guide.page.4": "§lPassou da borda?§r\n\nSe a peça passar da borda do grid, o grid vizinho é criado sozinho, do mesmo tamanho.\n\nAssim dá para construir por vários blocos.",
-  "tinyblocks.guide.page.5": "§lTamanho§r\n\nAgache e role o scroll para abrir o painel, e solte o agachar na célula, de 1/2 a 1/16. O padrão é 1/7.\n\n1/1 coloca blocos normais.\n\nShift+G desliga o Minimizer, para construir normal.",
+  "tinyblocks.guide.page.5": "§lTamanho§r\n\nSegure Z para abrir o painel e solte na célula, de 1/2 a 1/16. O padrão é 1/7.\n\n1/1 coloca blocos normais.\n\nShift+G desliga o Minimizer, para construir normal.",
   "tinyblocks.guide.page.6": "§lPar ou ímpar?§r\n\nTamanhos ímpares têm uma célula central, alinhada com um eixo grande.\n\nPrefira ímpar para ligar máquinas com o Shaft Connector.",
   "tinyblocks.guide.page.7": "§lModos (Shift+H)§r\n\nNormal: uma peça.\nPreencher: a caixa.\nOco: as seis faces.\nParedes: as laterais.\nPlano: uma camada.\nDestruir: quebra um grid.",
   "tinyblocks.guide.page.8": "§lUsando os modos§r\n\nClique dois cantos. O contorno azul mostra o resultado.\n\nCtrl + scroll: altura.\nAgachar e clicar: cancela.\n\nMáximo de 8192 células.",
@@ -81,12 +81,13 @@
   "item.tinyblocks.grid_save.tooltip_cut": "Recortar: tira o grid do lugar (botão direito no ar troca)",
   "item.tinyblocks.grid_save.tooltip_copy": "Copiar: deixa o grid no lugar (botão direito no ar troca)",
   "item.tinyblocks.grid_save.copy_creative": "Copiar só funciona no criativo",
-  "item.tinyblocks.minimizer.tooltip_scroll": "Agache e role o scroll para escolher o tamanho",
+  "item.tinyblocks.minimizer.tooltip_scroll": "Segure Z para escolher o tamanho",
   "tinyblocks.hud.minimizer": "1/%s · %s",
   "tinyblocks.hud.minimizer_locked": "1/%s · %s · travado",
   "key.tinyblocks.minimizer_toggle": "Ligar e desligar o Minimizer",
   "item.tinyblocks.minimizer.tooltip_toggle": "Shift+G desliga para construir normal",
   "tinyblocks.minimizer.on": "Minimizer ligado",
   "tinyblocks.minimizer.off": "Minimizer desligado: construindo normal",
-  "tinyblocks.hud.minimizer_off": "Minimizer desligado"
+  "tinyblocks.hud.minimizer_off": "Minimizer desligado",
+  "key.tinyblocks.minimizer_size": "Escolher o tamanho do Minimizer (segurar)"
 }

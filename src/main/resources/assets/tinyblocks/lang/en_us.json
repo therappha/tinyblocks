@@ -57,7 +57,7 @@
   "tinyblocks.guide.page.2": "§lThe three items§r\n\nMinimizer: builds tiny.\n\nGrid Save: carries finished grids.\n\nShaft Connector: joins a grid to big machines.",
   "tinyblocks.guide.page.3": "§lMinimizer§r\n\nHold it in your off-hand and a block in your main hand.\n\nClick a block: a grid starts next to it, with the piece inside.\n\nClick a grid: the piece goes in.",
   "tinyblocks.guide.page.4": "§lPast the edge?§r\n\nIf a piece goes past a grid's edge, the next grid starts by itself, at the same size.\n\nSo you can build across several blocks.",
-  "tinyblocks.guide.page.5": "§lSize§r\n\nSneak and scroll to open the board, then let go of sneak on a cell, from 1/2 to 1/16. The default is 1/7.\n\n1/1 places normal blocks.\n\nShift+G switches the Minimizer off, to build normally.",
+  "tinyblocks.guide.page.5": "§lSize§r\n\nHold Z to open the board, then let go on a cell, from 1/2 to 1/16. The default is 1/7.\n\n1/1 places normal blocks.\n\nShift+G switches the Minimizer off, to build normally.",
   "tinyblocks.guide.page.6": "§lOdd or even?§r\n\nOdd sizes have a middle cell, lined up with a big shaft.\n\nPrefer odd sizes to join machines with the Shaft Connector.",
   "tinyblocks.guide.page.7": "§lModes (Shift+H)§r\n\nNormal: one piece.\nFill: the whole box.\nHollow: its six faces.\nWalls: its four sides.\nPlane: one layer.\nDestroy: breaks a grid.",
   "tinyblocks.guide.page.8": "§lUsing the modes§r\n\nClick two corners. A blue outline shows the result.\n\nCtrl + scroll: height.\nSneak-click: cancel.\n\nAt most 8192 cells.",
@@ -81,12 +81,13 @@
   "item.tinyblocks.grid_save.tooltip_cut": "Cut: takes the grid away (right-click the air to switch)",
   "item.tinyblocks.grid_save.tooltip_copy": "Copy: leaves the grid there (right-click the air to switch)",
   "item.tinyblocks.grid_save.copy_creative": "Copy is for creative mode only",
-  "item.tinyblocks.minimizer.tooltip_scroll": "Sneak and scroll to pick its size",
+  "item.tinyblocks.minimizer.tooltip_scroll": "Hold Z to pick its size",
   "tinyblocks.hud.minimizer": "1/%s · %s",
   "tinyblocks.hud.minimizer_locked": "1/%s · %s · locked",
   "key.tinyblocks.minimizer_toggle": "Switch the Minimizer on and off",
   "item.tinyblocks.minimizer.tooltip_toggle": "Shift+G switches it off to build normally",
   "tinyblocks.minimizer.on": "Minimizer on",
   "tinyblocks.minimizer.off": "Minimizer off: building normally",
-  "tinyblocks.hud.minimizer_off": "Minimizer off"
+  "tinyblocks.hud.minimizer_off": "Minimizer off",
+  "key.tinyblocks.minimizer_size": "Pick the Minimizer's size (hold)"
 }

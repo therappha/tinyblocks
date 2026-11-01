@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Held in the offhand: makes any BlockItem in the main hand create/place into a subgrid instead of placing
  * normally. Its grid size (1/2 to 1/16, or 1/1 for normal blocks) is kept on the stack and picked on Create's value
- * board, opened by sneaking and scrolling (client MinimizerSizeMenu).
+ * board, opened by holding the size key (client MinimizerSizeMenu).
  */
 public class MinimizerItem extends Item {
 

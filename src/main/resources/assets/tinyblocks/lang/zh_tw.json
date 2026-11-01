@@ -57,7 +57,7 @@
   "tinyblocks.guide.page.2": "§l三個物品§r\n\nMinimizer:建造小方塊。\n\nGrid Save:搬運做好的網格。\n\nShaft Connector:把網格連到大機器。",
   "tinyblocks.guide.page.3": "§lMinimizer§r\n\n副手拿著它,主手拿方塊。\n\n點擊方塊:旁邊生成網格,小方塊在裡面。\n\n點擊網格:小方塊放入其中。",
   "tinyblocks.guide.page.4": "§l超出邊緣?§r\n\n小方塊超出網格邊緣時,會自動生成相同尺寸的相鄰網格。\n\n這樣可以跨多個方塊建造。",
-  "tinyblocks.guide.page.5": "§l尺寸§r\n\n潛行並滾動滾輪打開面板,在想要的格子上放開潛行,從 1/2 到 1/16。預設 1/7。\n\n1/1 放置普通方塊。\n\nShift+G 關閉 Minimizer,以正常建造。",
+  "tinyblocks.guide.page.5": "§l尺寸§r\n\n按住 Z 打開面板,在想要的格子上放開,從 1/2 到 1/16。預設 1/7。\n\n1/1 放置普通方塊。\n\nShift+G 關閉 Minimizer,以正常建造。",
   "tinyblocks.guide.page.6": "§l奇數還是偶數?§r\n\n奇數尺寸有中心格,與大傳動桿對齊。\n\n用 Shaft Connector 連接機器時,建議用奇數尺寸。",
   "tinyblocks.guide.page.7": "§l模式 (Shift+H)§r\n\n普通:一個小方塊。\n填充:整個區域。\n空心:六個面。\n牆壁:四個側面。\n平面:一層。\n破壞:破壞網格。",
   "tinyblocks.guide.page.8": "§l使用模式§r\n\n點擊一個角,再點擊另一個角。藍色輪廓顯示結果。\n\nCtrl + 滾輪:高度。\n潛行點擊:取消。\n\n最多 8192 格。生存模式消耗方塊。",
@@ -81,12 +81,13 @@
   "item.tinyblocks.grid_save.tooltip_cut": "剪下:取走網格(右鍵點擊空氣切換)",
   "item.tinyblocks.grid_save.tooltip_copy": "複製:網格留在原處(右鍵點擊空氣切換)",
   "item.tinyblocks.grid_save.copy_creative": "複製只能在創造模式使用",
-  "item.tinyblocks.minimizer.tooltip_scroll": "潛行並滾動滾輪來選擇尺寸",
+  "item.tinyblocks.minimizer.tooltip_scroll": "按住 Z 選擇尺寸",
   "tinyblocks.hud.minimizer": "1/%s · %s",
   "tinyblocks.hud.minimizer_locked": "1/%s · %s · 已鎖定",
   "key.tinyblocks.minimizer_toggle": "開關 Minimizer",
   "item.tinyblocks.minimizer.tooltip_toggle": "Shift+G 關閉它以正常建造",
   "tinyblocks.minimizer.on": "Minimizer 已開啟",
   "tinyblocks.minimizer.off": "Minimizer 已關閉:正常建造",
-  "tinyblocks.hud.minimizer_off": "Minimizer 已關閉"
+  "tinyblocks.hud.minimizer_off": "Minimizer 已關閉",
+  "key.tinyblocks.minimizer_size": "選擇 Minimizer 尺寸(按住)"
 }

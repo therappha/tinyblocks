@@ -38,6 +38,10 @@ public final class MinimizerKeys {
     public static final KeyMapping TOGGLE = new KeyMapping("key.tinyblocks.minimizer_toggle",
             KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.tinyblocks");
 
+    /** Z (rebindable): held, shows the size board (MinimizerSizeMenu); let go on a size to pick it. */
+    public static final KeyMapping SIZE = new KeyMapping("key.tinyblocks.minimizer_size",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_Z, "key.categories.tinyblocks");
+
     private MinimizerKeys() {}
 
     @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
@@ -50,6 +54,7 @@ public final class MinimizerKeys {
             event.register(MINIMIZE_ME);
             event.register(LOCK);
             event.register(TOGGLE);
+            event.register(SIZE);
         }
     }
 
