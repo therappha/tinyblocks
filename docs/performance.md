@@ -77,9 +77,7 @@ Todos os GameTests passam (`All 96 required tests passed`) e os testes unitário
 - Medido de novo: tudo dentro do ruído (cogs+stone 34 µs, stone 16-grid 26–46 µs, alavanca 2.3 / 2.2 ms,
   outline 16-grid 1.3–1.8 µs).
 
-**Ao juntar com o #74 (transform do #78):** `transform`/`turnMovedQuietly`/`lookAroundMoved`/`emptyQuietly`/
-`loadMoved` precisam bumpar `pieceVersion` (via `markPiecesChanged`, `notifyNeighbors` ou `setChanged`). Qualquer
-código que muda `runtimeState` sem passar por um desses deixa outline, saída de redstone e mesh velhos.
+**Depois do rebase sobre o `master` (com o #74):** girar, colocar e pegar grids já mudam o `pieceVersion`, porque passam por `addToGridNoShape`, `rebuildAfterRemove`, `setChanged` ou `notifyNeighbors`. Código novo que mude `runtimeState` sem passar por um desses deixa outline, saída de redstone e mesh velhos. Os 121 GameTests passam.
 
 ## O que ainda pesa
 

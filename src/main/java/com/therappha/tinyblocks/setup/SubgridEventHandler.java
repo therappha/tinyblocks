@@ -497,11 +497,9 @@ public class SubgridEventHandler {
                     removeAndDrop(be, serverLevel, be.getBlockPos(),
                             new Vec3i(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()), player);
                 } else {
-                    // Its state before, not wasState: this space's own record of the cell starts empty.
-                    BlockState previous = (BlockState) piece.runtimeState;
                     piece.runtimeState = touchedState;
                     // A wrench switching a tiny redstone link: its block entity has to see the new state too.
-                    VanillaBlockPiece.followStateChange(be, piece, previous, touchedState);
+                    VanillaBlockPiece.followStateChange(be, piece, wasState, touchedState);
                     be.notifyNeighbors(piece);
                     be.notifyUpdate();
                 }
