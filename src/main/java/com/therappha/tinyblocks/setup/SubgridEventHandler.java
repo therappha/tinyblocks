@@ -42,11 +42,23 @@ import java.util.List;
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
 public class SubgridEventHandler {
 
+    /** A locked Minimizer in hand (MinimizerItem#mayBreak): no mining starts on what it keeps, on either side. */
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGH)
+    public static void onLeftClickLocked(PlayerInteractEvent.LeftClickBlock event) {
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getEntity(), event.getLevel(), event.getPos())) {
+            event.setCanceled(true);
+        }
+    }
+
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
         // Only a question (may the player take the whole grid?), for the protections to answer.
         if (com.therappha.tinyblocks.items.GridSaveItem.isAskingToBreak()) return;
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getPlayer(), event.getLevel(), event.getPos())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
         event.setCanceled(true);
 
         ServerLevel level = (ServerLevel) event.getLevel();
@@ -94,6 +106,7 @@ public class SubgridEventHandler {
                                         Player player, ServerLevel level) {
         BlockPos pos = payload.pos();
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity subgrid)) return;
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(player, level, pos)) return;
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;

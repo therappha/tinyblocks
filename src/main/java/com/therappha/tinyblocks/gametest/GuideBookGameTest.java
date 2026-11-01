@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.gametest;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.setup.GuideBook;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -15,6 +16,37 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 @GameTestHolder(TinyBlocks.MOD_ID)
 @PrefixGameTestTemplate(false)
 public class GuideBookGameTest {
+
+    /** Locked in the off hand by a click in the air: a grid of its size can go, a real block and another size can't. */
+    @GameTest(template = "empty_platform", timeoutTicks = 20)
+    public void aLockedMinimizerOnlyBreaksGridsOfItsSize(GameTestHelper helper) {
+        var level = helper.getLevel();
+        BlockPos ofItsSize = new BlockPos(2, 1, 2), otherSize = new BlockPos(5, 1, 2), real = new BlockPos(2, 1, 5);
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, ofItsSize);
+        helper.setBlock(otherSize, net.minecraft.world.level.block.Blocks.AIR);
+        SubgridBlockEntity.createAt(level, helper.absolutePos(otherSize), 4);
+        helper.setBlock(real, net.minecraft.world.level.block.Blocks.STONE);
+        var player = SubgridTestSupport.serverPlayer(helper, be);
+        var stack = new net.minecraft.world.item.ItemStack(com.therappha.tinyblocks.setup.Registration.MINIMIZER.get());
+        MinimizerItem.setGridSize(stack, be.getGridSize());
+        player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, stack);
+
+        helper.assertTrue(!stack.hasFoil(), "an unlocked Minimizer glows");
+        helper.assertTrue(MinimizerItem.mayBreak(player, level, helper.absolutePos(real)),
+                "an unlocked Minimizer keeps something; main " + player.getMainHandItem() + " off " + player.getOffhandItem());
+        stack.use(level, player, net.minecraft.world.InteractionHand.OFF_HAND);
+        helper.assertTrue(stack.hasFoil(), "the click in the air didn't lock it");
+        helper.assertTrue(MinimizerItem.mayBreak(player, level, helper.absolutePos(ofItsSize)), "a grid of its size is kept");
+        helper.assertTrue(!MinimizerItem.mayBreak(player, level, helper.absolutePos(otherSize)), "a grid of another size can go");
+        player.gameMode.destroyBlock(helper.absolutePos(real));
+        helper.assertBlockPresent(net.minecraft.world.level.block.Blocks.STONE, real);
+
+        stack.use(level, player, net.minecraft.world.InteractionHand.OFF_HAND);
+        helper.assertTrue(!stack.hasFoil(), "the second click didn't unlock it");
+        player.gameMode.destroyBlock(helper.absolutePos(real));
+        helper.assertBlockNotPresent(net.minecraft.world.level.block.Blocks.STONE, real);
+        helper.succeed();
+    }
 
     @GameTest(template = "empty_platform", timeoutTicks = 20)
     public void theGuideIsHandedOverOnce(GameTestHelper helper) {

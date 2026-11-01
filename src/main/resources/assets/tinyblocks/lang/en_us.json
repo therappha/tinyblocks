@@ -66,10 +66,14 @@
   "tinyblocks.guide.page.2": "§lMinimizer§r\n\nHold it in your off-hand and any block in your main hand. Placing the block makes a tiny piece.\n\nClicking a grid places into it. Reaching past its edge starts the next grid.",
   "tinyblocks.guide.page.3": "§lMinimizer size§r\n\nRight-click the air with it in your main hand to pick the cell size, from 1/2 to 1/16.\n\n1/1 places normal blocks. Odd sizes have a middle cell, which lines up with a full-size shaft.",
   "tinyblocks.guide.page.4": "§lBuild modes§r\n\nShift+G changes mode: Normal, Fill, Hollow, Walls or Plane.\n\nClick one corner, then the other. Ctrl + scroll sets the height. Sneak-click cancels. At most 8192 cells.",
-  "tinyblocks.guide.page.5": "§lMinimize me§r\n\nPress X with a Minimizer in hand to shrink yourself to its size and walk inside your builds. Press it again to return to full size.\n\nThe key can be changed in Controls.",
-  "tinyblocks.guide.page.6": "§lShaft Connector§r\n\nJoins a grid's tiny machines to the big ones outside. It sits on one face of the grid.\n\nClick a tiny shaft with it to place it at the end of that shaft's line.",
-  "tinyblocks.guide.page.7": "§lConnector shapes§r\n\nOdd grid: a funnel. A block clicked onto it goes in its socket, the middle cell.\n\nEven grid: a gear. Small tiny cogwheels go on its sides, and the mechanism runs from them.",
-  "tinyblocks.guide.page.8": "§lUsing a connector§r\n\nA wrench moves it to the next free face. Sneak + wrench takes it apart.\n\nWithout a Minimizer, a block clicked on its wide end goes outside: a big shaft lines up with it, no support needed.",
-  "tinyblocks.guide.page.9": "§lGrid Save§r\n\nCarries a whole grid. Click a grid to take it with all its pieces; nothing drops.\n\nHolding it shows a ghost of the grid. R turns it. Click to place it, and machines and links keep working.",
-  "tinyblocks.guide.page.10": "§lSeveral grids§r\n\nSneak-click one corner with an empty Grid Save, then click the other. It takes up to 4 grids, at most 4 blocks a side.\n\nSneak-click the air to cancel the selection."
+  "tinyblocks.guide.page.5": "§lLocked§r\n\nWith the Minimizer in your off-hand, right-click the air to lock it: it glows.\n\nWith it in either hand, you only break pieces of grids of its size. Right-click the air again to unlock.",
+  "tinyblocks.guide.page.6": "§lMinimize me§r\n\nPress X with a Minimizer in hand to shrink yourself to its size and walk inside your builds. Press it again to return to full size.\n\nThe key can be changed in Controls.",
+  "tinyblocks.guide.page.7": "§lShaft Connector§r\n\nJoins a grid's tiny machines to the big ones outside. It sits on one face of the grid.\n\nClick a tiny shaft with it to place it at the end of that shaft's line.",
+  "tinyblocks.guide.page.8": "§lConnector shapes§r\n\nOdd grid: a funnel. A block clicked onto it goes in its socket, the middle cell.\n\nEven grid: a gear. Small tiny cogwheels go on its sides, and the mechanism runs from them.",
+  "tinyblocks.guide.page.9": "§lUsing a connector§r\n\nA wrench moves it to the next free face. Sneak + wrench takes it apart.\n\nWithout a Minimizer, a block clicked on its wide end goes outside: a big shaft lines up with it, no support needed.",
+  "tinyblocks.guide.page.10": "§lGrid Save§r\n\nCarries a whole grid. Click a grid to take it with all its pieces; nothing drops.\n\nHolding it shows a ghost of the grid. R turns it. Click to place it, and machines and links keep working.",
+  "tinyblocks.guide.page.11": "§lSeveral grids§r\n\nSneak-click one corner with an empty Grid Save, then click the other. It takes up to 4 grids, at most 4 blocks a side.\n\nSneak-click the air to cancel the selection.",
+  "item.tinyblocks.minimizer.tooltip_lock": "Right-click the air with it in your off-hand to lock it: you only break grids of its size",
+  "tinyblocks.minimizer.locked": "Minimizer locked: only grids of its size break",
+  "tinyblocks.minimizer.unlocked": "Minimizer unlocked"
 }
