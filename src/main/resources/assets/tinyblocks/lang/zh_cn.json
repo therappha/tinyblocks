@@ -94,5 +94,6 @@
   "tinyblocks.guide.page.20": "§l偶数网格:齿轮§r\n\n它贴在面上。\n\n小齿轮装在它的侧面,机械由此运转。\n\n它不接小传动杆。",
   "tinyblocks.guide.page.21": "§l外部连接§r\n\n没有 Minimizer 时,用大传动杆点击大端。\n\n传动杆放到网格外面,自动对齐,无需支撑。虚影显示位置。",
   "tinyblocks.guide.page.22": "§l移动和拆除§r\n\n扳手把连接器移到下一个空闲的面。\n\n潜行使用扳手即可拆除。",
-  "tinyblocks.guide.page.23": "§l机械动力和蓝图§r\n\n扳手、机壳、数值设置、护目镜和红石链接都能在网格里使用。\n\n网格可存入蓝图,并连同小方块一起打印。也能随载具移动。"
+  "tinyblocks.guide.page.23": "§l机械动力和蓝图§r\n\n扳手、机壳、数值设置、护目镜和红石链接都能在网格里使用。\n\n网格可存入蓝图,并连同小方块一起打印。也能随载具移动。",
+  "tinyblocks.contraption.in_grid": "装置暂时无法在网格内组装"
 }
