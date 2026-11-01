@@ -1,7 +1,7 @@
 {
   "parent": "item/generated",
   "textures": {
-    "layer0": "minecraft:item/bundle"
+    "layer0": "tinyblocks:item/grid_save"
   },
   "overrides": [
     { "predicate": { "tinyblocks:full": 1 }, "model": "tinyblocks:item/grid_save_full" }

@@ -70,7 +70,6 @@ The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — crafta
 /give @s tinyblocks:subgrid_block
 /give @s tinyblocks:subgrid_block_16
 
-/give @s tinyblocks:piece_remover_stick   # right-click a piece to remove it without vanilla mining (no flicker)
 ```
 
 Commands:

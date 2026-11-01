@@ -3,10 +3,6 @@ package com.therappha.tinyblocks.setup;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.items.MinimizerItem;
-import com.therappha.tinyblocks.items.TinyPistonItem;
-import com.therappha.tinyblocks.items.TinyRedstoneBlockItem;
-import com.therappha.tinyblocks.items.TinyRedstoneDustItem;
-import com.therappha.tinyblocks.items.TinyStoneBlockItem;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.registries.Registries;
@@ -105,75 +101,27 @@ public class Registration {
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_9_ITEM =
             ITEMS.register("subgrid_block_9", () -> new BlockItem(SUBGRID_BLOCK_9.get(), new Item.Properties()));
 
-    // Piece debug items — only obtainable via /give, not in any creative tab
-    public static final DeferredHolder<Item, TinyStoneBlockItem> TINY_STONE_BLOCK_2 =
-            ITEMS.register("tiny_stone_block_2", () -> new TinyStoneBlockItem(new Item.Properties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_2.get(); }
-            });
-
-    public static final DeferredHolder<Item, TinyStoneBlockItem> TINY_STONE_BLOCK_4 =
-            ITEMS.register("tiny_stone_block_4", () -> new TinyStoneBlockItem(new Item.Properties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_4.get(); }
-            });
-
-    public static final DeferredHolder<Item, TinyStoneBlockItem> TINY_STONE_BLOCK =
-            ITEMS.register("tiny_stone_block", () -> new TinyStoneBlockItem(new Item.Properties()));
-
-    public static final DeferredHolder<Item, TinyStoneBlockItem> TINY_STONE_BLOCK_16 =
-            ITEMS.register("tiny_stone_block_16", () -> new TinyStoneBlockItem(new Item.Properties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_16.get(); }
-            });
-
-    // Test tool for the PieceRemoverTool capability — only obtainable via /give
-    public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
-            ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
-
     // Carries a whole grid to somewhere else (GridSaveItem)
     public static final DeferredHolder<Item, GridSaveItem> GRID_SAVE =
             ITEMS.register("grid_save", () -> new GridSaveItem(new Item.Properties()));
 
-    // v2 debug tool: held in the offhand, lets any BlockItem in the main hand create/place into
-    // a subgrid instead of placing normally — only obtainable via /give. Same four grid sizes as
-    // the subgrid blocks themselves; "minimizer" (1/8) is the default.
+    // Held in the offhand, makes any BlockItem in the main hand place into a subgrid. Its size is kept on the stack.
     private static Item.Properties minimizerProperties() {
         // No glint of its own: a glint says it is locked (MinimizerItem#isFoil).
         return new Item.Properties();
     }
 
-    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_2 =
-            ITEMS.register("minimizer_2", () -> new MinimizerItem(minimizerProperties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_2.get(); }
-            });
-
-    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_4 =
-            ITEMS.register("minimizer_4", () -> new MinimizerItem(minimizerProperties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_4.get(); }
-            });
-
     public static final DeferredHolder<Item, MinimizerItem> MINIMIZER =
             ITEMS.register("minimizer", () -> new MinimizerItem(minimizerProperties()));
 
-    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_16 =
-            ITEMS.register("minimizer_16", () -> new MinimizerItem(minimizerProperties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_16.get(); }
-            });
-
-    public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_9 =
-            ITEMS.register("minimizer_9", () -> new MinimizerItem(minimizerProperties()) {
-                @Override public SubgridBlock preferredSubgrid() { return SUBGRID_BLOCK_9.get(); }
-            });
-
-    // Debug pieces for testing neighbor propagation — 1/8 grid, only obtainable via /give
-    public static final DeferredHolder<Item, TinyRedstoneBlockItem> TINY_REDSTONE_BLOCK =
-            ITEMS.register("tiny_redstone_block", () -> new TinyRedstoneBlockItem(new Item.Properties()));
-
-    public static final DeferredHolder<Item, TinyRedstoneDustItem> TINY_REDSTONE_DUST =
-            ITEMS.register("tiny_redstone_dust", () -> new TinyRedstoneDustItem(new Item.Properties()));
-
-    public static final DeferredHolder<Item, TinyPistonItem> TINY_PISTON =
-            ITEMS.register("tiny_piston", () -> new TinyPistonItem(new Item.Properties()));
+    /** The fixed-size Minimizers of older versions: one in a saved world turns into the one Minimizer there is now. */
+    private static final String[] OLD_MINIMIZERS = {"minimizer_2", "minimizer_4", "minimizer_9", "minimizer_16"};
 
     public static void register(IEventBus eventBus) {
+        for (String old : OLD_MINIMIZERS) {
+            ITEMS.addAlias(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, old),
+                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "minimizer"));
+        }
         BLOCKS.register(eventBus);
         ITEMS.register(eventBus);
         BLOCK_ENTITIES.register(eventBus);
