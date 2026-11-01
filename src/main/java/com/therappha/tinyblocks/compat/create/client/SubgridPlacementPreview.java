@@ -130,7 +130,7 @@ public final class SubgridPlacementPreview {
         if (current == null) return;
 
         Minecraft mc = Minecraft.getInstance();
-        Vec3 camera = event.getCamera().getPosition();
+        Vec3 camera = com.therappha.tinyblocks.client.SubLevelView.enter(event, net.minecraft.core.BlockPos.containing(current.corner()));
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         // Create's transparent ghost: breathing, fading in with the placement indicator, a little smaller than the cell.
@@ -154,6 +154,7 @@ public final class SubgridPlacementPreview {
         }
         poseStack.popPose();
         buffers.endBatch(RenderType.translucent());
+        com.therappha.tinyblocks.client.SubLevelView.exit(event);
     }
 
 }
