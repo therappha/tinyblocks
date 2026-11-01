@@ -91,5 +91,6 @@
   "tinyblocks.hud.minimizer_off": "Minimizer 已关闭",
   "key.tinyblocks.minimizer_size": "选择 Minimizer 尺寸(按住)",
   "block.tinyblocks.grid_box": "装箱的网格",
-  "tinyblocks.grid_box.blocked": "有东西挡住了:箱子保持关闭"
+  "tinyblocks.grid_box.blocked": "有东西挡住了:箱子保持关闭",
+  "item.tinyblocks.grid_save.belt_cut": "传送带延伸到未选择的网格:请同时选择两个"
 }

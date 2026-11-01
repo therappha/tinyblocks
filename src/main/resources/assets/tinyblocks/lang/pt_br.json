@@ -91,5 +91,6 @@
   "tinyblocks.hud.minimizer_off": "Minimizer desligado",
   "key.tinyblocks.minimizer_size": "Escolher o tamanho do Minimizer (segurar)",
   "block.tinyblocks.grid_box": "Grid na Caixa",
-  "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada"
+  "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada",
+  "item.tinyblocks.grid_save.belt_cut": "Uma esteira continua num grid que você não selecionou: selecione os dois"
 }

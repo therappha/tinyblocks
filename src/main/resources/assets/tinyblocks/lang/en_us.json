@@ -91,5 +91,6 @@
   "tinyblocks.hud.minimizer_off": "Minimizer off",
   "key.tinyblocks.minimizer_size": "Pick the Minimizer's size (hold)",
   "block.tinyblocks.grid_box": "Boxed Grid",
-  "tinyblocks.grid_box.blocked": "Something is in the way: the box stays closed"
+  "tinyblocks.grid_box.blocked": "Something is in the way: the box stays closed",
+  "item.tinyblocks.grid_save.belt_cut": "A belt runs into a grid you didn't select: select both"
 }

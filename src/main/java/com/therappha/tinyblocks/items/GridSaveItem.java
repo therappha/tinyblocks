@@ -313,7 +313,10 @@ public class GridSaveItem extends Item {
         }
         if (player != null && !mayBreak(level, pos, player)) return false;
         CompoundTag grid = new CompoundTag();
-        if (!copying(stack, player)) com.therappha.tinyblocks.compat.create.BeltCuts.cutLeaving(level, List.of(be));
+        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(List.of(be))) {
+            tell(player, "item.tinyblocks.grid_save.belt_cut");
+            return false;
+        }
         grid.putInt("size", be.getGridSize());
         grid.put("data", be.saveCustomOnly(level.registryAccess()));
         grid.putInt("turns", 0);
@@ -382,7 +385,10 @@ public class GridSaveItem extends Item {
             }
             if (player != null && !mayBreak(level, pos, player)) return false;
         }
-        if (!copying(stack, player)) com.therappha.tinyblocks.compat.create.BeltCuts.cutLeaving(level, grids);
+        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(grids)) {
+            tell(player, "item.tinyblocks.grid_save.belt_cut");
+            return false;
+        }
         // Every one saved before any is removed: a grid removed changes what its neighbours hold (their speed, their
         // links), and those are saved as they were together.
         ListTag entries = new ListTag();
@@ -509,7 +515,7 @@ public class GridSaveItem extends Item {
         for (int i = 0; i < placed.size(); i++) placed.get(i).loadCustomOnly(entries.get(i).data(), level.registryAccess());
         for (SubgridBlockEntity be : placed) be.turnMovedQuietly(rotation, Mirror.NONE);
         for (SubgridBlockEntity be : placed) be.lookAroundMoved();
-        com.therappha.tinyblocks.compat.create.BeltCuts.breakLooseEnds(level, placed);
+        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(placed);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
         return true;
     }

@@ -89,11 +89,11 @@ public class CreateBeltParityGameTest {
         return count;
     }
 
-    /** A belt across two grids, one of them taken away: as a belt with a segment broken in the world, none of it stays. */
+    /** A belt across two grids: taking one is refused and nothing changes, taking both moves the whole belt. */
     @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 200)
-    public void parityBeltCutByTakingOneGridBreaks(net.minecraft.gametest.framework.GameTestHelper helper) {
+    public void parityBeltAcrossGridsIsTakenWholeOrNotAtAll(net.minecraft.gametest.framework.GameTestHelper helper) {
         var level = helper.getLevel();
-        net.minecraft.core.BlockPos westAt = new net.minecraft.core.BlockPos(1, 2, 1), eastAt = westAt.east(), to = new net.minecraft.core.BlockPos(3, 2, 3);
+        net.minecraft.core.BlockPos westAt = new net.minecraft.core.BlockPos(1, 2, 1), eastAt = westAt.east(), to = new net.minecraft.core.BlockPos(1, 2, 4);
         helper.setBlock(westAt, net.minecraft.world.level.block.Blocks.AIR);
         helper.setBlock(eastAt, net.minecraft.world.level.block.Blocks.AIR);
         var west = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(westAt), 8);
@@ -106,15 +106,31 @@ public class CreateBeltParityGameTest {
         var player = SubgridTestSupport.serverPlayer(helper, west);
         var save = new net.minecraft.world.item.ItemStack(com.therappha.tinyblocks.setup.Registration.GRID_SAVE.get());
         helper.startSequence().thenIdle(20).thenExecute(() -> {
-            helper.assertTrue(belts(west) == 4 && belts(east) == 4, "the belt wasn't built: " + belts(west) + " and " + belts(east));
-            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.pickUp(level, helper.absolutePos(eastAt), save, player), "nothing taken");
-        }).thenIdle(20).thenExecute(() -> {
-            helper.assertTrue(belts(west) == 0, belts(west) + " segments of the cut belt stayed in the grid left behind");
+            helper.assertTrue(!com.therappha.tinyblocks.items.GridSaveItem.pickUp(level, helper.absolutePos(eastAt), save, player), "one grid of the belt was taken");
+            helper.assertTrue(!com.therappha.tinyblocks.items.GridSaveItem.isFull(save) && belts(west) == 4 && belts(east) == 4, "a refused take changed something");
+            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.pickUpBox(level, helper.absolutePos(westAt), helper.absolutePos(eastAt), save, player), "the two grids weren't taken");
             helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.place(level, helper.absolutePos(to), Direction.UP, save, player), "nothing placed");
         }).thenIdle(20).thenExecute(() -> {
-            var moved = level.getBlockEntity(helper.absolutePos(to)) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid ? grid : null;
-            helper.assertTrue(moved == null || belts(moved) == 0, (moved == null ? 0 : belts(moved)) + " segments of the cut belt stayed in the grid placed");
+            int total = 0;
+            for (var at : net.minecraft.core.BlockPos.betweenClosed(helper.absolutePos(to).offset(-2, 0, -2), helper.absolutePos(to).offset(2, 0, 2))) {
+                if (level.getBlockEntity(at) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) total += belts(grid);
+            }
+            helper.assertTrue(total == 8, total + " segments arrived, not 8");
         }).thenSucceed();
+    }
+
+    /** A save made before the rule: half a belt, put down, goes away. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 60)
+    public void parityBeltLeadingToNothingGoes(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos at = new net.minecraft.core.BlockPos(1, 2, 1);
+        helper.setBlock(at, net.minecraft.world.level.block.Blocks.AIR);
+        var grid = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(at), 8);
+        for (int x = 4; x < 8; x++) {
+            SubgridTestSupport.placePiece(grid, level, new net.minecraft.core.BlockPos(x, 1, 4), belt(x == 4 ? BeltPart.START : BeltPart.MIDDLE));
+        }
+        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(List.of(grid));
+        helper.startSequence().thenIdle(5).thenExecute(() -> helper.assertTrue(belts(grid) == 0, belts(grid) + " segments stayed")).thenSucceed();
     }
 
     @GameTestGenerator
