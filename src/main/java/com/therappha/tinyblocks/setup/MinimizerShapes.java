@@ -39,9 +39,18 @@ public final class MinimizerShapes {
 
     private MinimizerShapes() {}
 
+    /** Destroy mode: every piece of {@code grid} broken, as when mined one by one, and the grid gone with the last. */
+    public static void destroy(ServerLevel level, Player player, com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) {
+        BlockPos pos = grid.getBlockPos();
+        if (!MinimizerItem.mayBreak(player, level, pos) || !com.therappha.tinyblocks.items.GridSaveItem.mayBreak(level, pos, player)) return;
+        for (var piece : List.copyOf(grid.getPieces())) SubgridEventHandler.removeAndDrop(grid, level, pos, piece.anchor, player);
+        if (grid.getPieces().isEmpty()) level.removeBlock(pos, false);
+    }
+
     public static void click(ServerLevel level, Player player, ItemStack minimizer, MinimizerItem minimizerItem,
                              BlockItem blockItem, ItemStack stack, BlockHitResult hit) {
         BuildMode mode = MinimizerBuild.mode(minimizer);
+        if (mode == BuildMode.DESTROY) return; // it only clicks on grids: SubgridEventHandler
         if (player.isShiftKeyDown()) {
             MinimizerBuild.setCorner(minimizer, null);
             player.displayClientMessage(Component.translatable("tinyblocks.build.corner_cleared"), true);

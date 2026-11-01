@@ -26,7 +26,7 @@ public final class GuideBook {
 
     /** Page {@code n} from 1 to {@link #PAGES}. */
     public static final String PAGE_KEY = "tinyblocks.guide.page.";
-    public static final int PAGES = 20;
+    public static final int PAGES = 22;
 
     /** In a player's persisted data once they were handed the book, so it survives death and isn't given again. */
     private static final String GIVEN_KEY = "tinyblocks_guide_given";

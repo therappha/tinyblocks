@@ -57,6 +57,7 @@ import java.util.List;
 public class GridSaveItem extends Item {
 
     public static final String GRID_KEY = "tinyblocks_grid";
+    private static final String COPY_KEY = "tinyblocks_copy";
 
     /**
      * The first corner of a box being selected, set by a sneaking click on an empty one: x, y, z; and the dimension
@@ -267,10 +268,23 @@ public class GridSaveItem extends Item {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (!player.isSecondaryUseActive() || corner(stack, level) == null) return InteractionResultHolder.pass(stack);
+        if (player.isSecondaryUseActive()) {
+            if (corner(stack, level) == null) return InteractionResultHolder.pass(stack);
+            if (!level.isClientSide) {
+                setCorner(stack, null, level);
+                tell(player, "item.tinyblocks.grid_save.corner_cleared");
+            }
+            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        }
+        // Not sneaking: switches between cutting and copying.
         if (!level.isClientSide) {
-            setCorner(stack, null, level);
-            tell(player, "item.tinyblocks.grid_save.corner_cleared");
+            if (!isCopy(stack) && !player.hasInfiniteMaterials()) {
+                tell(player, "item.tinyblocks.grid_save.copy_creative");
+            } else {
+                boolean copy = !isCopy(stack);
+                CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.putBoolean(COPY_KEY, copy));
+                tell(player, copy ? "item.tinyblocks.grid_save.mode_copy" : "item.tinyblocks.grid_save.mode_cut");
+            }
         }
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
     }
@@ -307,6 +321,7 @@ public class GridSaveItem extends Item {
             return false;
         }
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.put(GRID_KEY, grid));
+        if (copying(stack, player)) return true;
         // Removed as when broken (each piece leaves its Create networks: SubgridBlockEntity#setRemoved), but with
         // no drops: removeBlock drops nothing, and the pieces are in the item now.
         level.removeBlock(pos, false);
@@ -314,7 +329,7 @@ public class GridSaveItem extends Item {
     }
 
     /** Asks the protections (claim mods and such) whether {@code player} may break the grid, as a break would. */
-    private static boolean mayBreak(ServerLevel level, BlockPos pos, Player player) {
+    public static boolean mayBreak(ServerLevel level, BlockPos pos, Player player) {
         askingToBreak = true;
         try {
             return !NeoForge.EVENT_BUS.post(new BlockEvent.BreakEvent(level, pos, level.getBlockState(pos), player)).isCanceled();
@@ -390,6 +405,7 @@ public class GridSaveItem extends Item {
             all.remove(CORNER_KEY);
             all.remove(CORNER_LEVEL_KEY);
         });
+        if (copying(stack, player)) return true;
         // Every one emptied before any is removed: a grid removed tells the ones next to it, and their pieces, already
         // saved, would run (a piston blocked by the one gone pushing out where it was). Then each piece goes as when
         // broken, and the blocks as pickUp removes one, empty.
@@ -458,6 +474,16 @@ public class GridSaveItem extends Item {
         return true;
     }
 
+    /** Whether {@code stack} copies what it takes, leaving it there, rather than cutting it (the default). */
+    public static boolean isCopy(ItemStack stack) {
+        return stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().getBoolean(COPY_KEY);
+    }
+
+    /** Copying makes pieces out of nothing: it only takes for who has no need of items. */
+    private static boolean copying(ItemStack stack, @Nullable Player player) {
+        return isCopy(stack) && player != null && player.hasInfiniteMaterials();
+    }
+
     private static void tell(@Nullable Player player, String key) {
         if (player != null) player.displayClientMessage(Component.translatable(key), true);
     }
@@ -469,6 +495,7 @@ public class GridSaveItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable(isCopy(stack) ? "item.tinyblocks.grid_save.tooltip_copy" : "item.tinyblocks.grid_save.tooltip_cut").withStyle(ChatFormatting.GRAY));
         CustomData data = data(stack);
         if (data == null) {
             tooltip.add(Component.translatable("item.tinyblocks.grid_save.tooltip_empty").withStyle(ChatFormatting.GRAY));

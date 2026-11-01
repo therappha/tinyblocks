@@ -122,7 +122,7 @@ public class SubgridEventHandler {
     }
 
     /** Removes the piece at cell and spawns its drops (if the tool qualifies and player isn't creative). */
-    private static PlacedPiece removeAndDrop(SubgridBlockEntity subgrid, ServerLevel level, BlockPos pos, Vec3i cell, Player player) {
+    static PlacedPiece removeAndDrop(SubgridBlockEntity subgrid, ServerLevel level, BlockPos pos, Vec3i cell, Player player) {
         PlacedPiece removed = subgrid.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return null;
 
@@ -160,6 +160,17 @@ public class SubgridEventHandler {
         Player player = event.getEntity();
         // A click PieceClickDispatch re-posts inside a piece's fake space is for the piece's own listeners.
         if (level instanceof com.therappha.tinyblocks.v2.FakeSpace) return;
+
+        // A Minimizer in Destroy mode breaks the clicked grid, whatever is in the main hand, or nothing.
+        if (event.getHand() == InteractionHand.MAIN_HAND
+                && player.getOffhandItem().getItem() instanceof MinimizerItem
+                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) == com.therappha.tinyblocks.items.BuildMode.DESTROY
+                && level.getBlockEntity(event.getPos()) instanceof SubgridBlockEntity grid) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            if (level instanceof ServerLevel serverLevel) MinimizerShapes.destroy(serverLevel, player, grid);
+            return;
+        }
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
