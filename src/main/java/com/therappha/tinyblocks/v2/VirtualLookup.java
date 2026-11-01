@@ -15,7 +15,7 @@ import java.util.List;
  * someone. Mods address a block entity by position in their packets — Create's value settings name the block a
  * player configured — and for a piece that position is its phantom's virtual one, which the real level knows
  * nothing about. Only real positions near {@code near} are read, so a virtual position (millions of blocks away)
- * never loads a chunk.
+ * never loads a chunk. A grid on a sub-level sits in its plot, so what counts there is where {@code near} falls in it.
  */
 public final class VirtualLookup {
 
@@ -28,6 +28,17 @@ public final class VirtualLookup {
 
     @Nullable
     public static Found find(Level level, BlockPos virtual, Vec3 near) {
+        Found found = findAround(level, virtual, near);
+        if (found != null) return found;
+        for (Vec3 inPlot : com.therappha.tinyblocks.subgrid.SubLevels.inPlotsAround(level, near, MAX_DISTANCE)) {
+            found = findAround(level, virtual, inPlot);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Found findAround(Level level, BlockPos virtual, Vec3 near) {
         for (int size = com.therappha.tinyblocks.setup.Registration.MIN_GRID_SIZE;
              size <= com.therappha.tinyblocks.setup.Registration.MAX_GRID_SIZE; size++) {
             for (BlockPos real : realCandidates(virtual, size, near)) {
