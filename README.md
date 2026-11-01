@@ -3,7 +3,7 @@
 [![CI](https://github.com/therappha/tinyblocks/actions/workflows/ci.yml/badge.svg)](https://github.com/therappha/tinyblocks/actions/workflows/ci.yml)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
-A mod for NeoForge 1.21.1. Craft a Minimizer with a stick and an iron nugget, hold it in your off-hand, then place any block to shrink it down — 1/2, 1/4, 1/8, or 1/16 the size of a normal block, all inside a single block space.
+A mod for NeoForge 1.21.1. Craft a Minimizer from an amethyst shard, a Create electron tube and a stick, hold it in your off-hand, then place any block to shrink it down — 1/2, 1/4, 1/8, or 1/16 the size of a normal block, all inside a single block space.
 
 Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drops, and behave like real blocks — redstone, pistons, and other interactions propagate between neighboring pieces just like in the full-size world.
 
@@ -19,7 +19,7 @@ Right-clicking a solid block face with a placement item places a piece inside a 
 - Right-click interaction (GUI, state changes — defined by the piece)
 - Neighbor propagation between adjacent pieces in the same subgrid
 
-SubgridBlocks come in four grid sizes:
+SubgridBlocks come in every size from 1/2 to 1/16. Common ones:
 
 | Size | Scale | Block |
 |------|-------|-------|
@@ -62,7 +62,7 @@ The constructor auto-registers the definition — no registry call needed. For i
 
 ## Debug commands & items
 
-The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — craftable from a stick and an iron nugget. This is the only item you need: hold it in your off-hand and place *any* real vanilla block (piston, water bucket, crops, doors, hoppers, chests, redstone, ...) to shrink it down. Pieces run the block's own real vanilla logic against a fake position space, so behavior — animation, sound, neighbor propagation, container menus, growth, ticking — matches the full-size block, not a reimplementation of it.
+The TinyBlocks creative tab holds the Minimizer, the Grid Save, the shaft connector and the guide book. The Minimizer is crafted from an amethyst shard, a Create electron tube and a stick. This is the only item you need: hold it in your off-hand and place *any* real vanilla block (piston, water bucket, crops, doors, hoppers, chests, redstone, ...) to shrink it down. Pieces run the block's own real vanilla logic against a fake position space, so behavior — animation, sound, neighbor propagation, container menus, growth, ticking — matches the full-size block, not a reimplementation of it.
 
 ```
 /give @s tinyblocks:subgrid_block_2
@@ -71,6 +71,16 @@ The TinyBlocks creative tab holds the Minimizer (all four grid sizes) — crafta
 /give @s tinyblocks:subgrid_block_16
 
 ```
+
+Controls (all rebindable):
+
+- Hold `Z` with a Minimizer: pick its size, let go to choose
+- `Shift+H`: TinyBlocks Mode Shift, for what is in hand: a Minimizer's build mode, a Grid Save's cut or copy
+- `Shift+G`: switch the Minimizer off to place whole blocks, even against grids
+- `K`: lock it to breaking one size. `X`: shrink yourself to its size
+- `R`: turn a held Grid Save
+
+A full Grid Save puts a closed Create box down, as big as what it holds. Right-click the box to unbox the grid, or break it to get the Grid Save back. A belt running across grids can only be taken with all of them.
 
 Commands:
 
