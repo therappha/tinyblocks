@@ -45,6 +45,7 @@ public final class SpaceDiff {
             facts.put(WORKING + "saida_comparador", Integer.toString(comparator.getOutputSignal()));
         }
         if (be instanceof Container container) facts.put(WORKING + "itens", items(container));
+        if (be != null) com.therappha.tinyblocks.compat.create.CreateFacts.add(be, WORKING, facts);
         return facts;
     }
 

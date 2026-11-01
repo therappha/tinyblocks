@@ -37,7 +37,6 @@ final class ParityRun {
         static final Layout SIXTEEN_8 = new Layout("big8", 8, BlockPos.ZERO, "parity_32", 32);
     }
 
-    private static final int SETTLE_TICKS = 12;
     private static final int MAX_SHOWN = 8;
 
     private final GameTestHelper helper;
@@ -49,7 +48,8 @@ final class ParityRun {
     private final SpaceDiff.Timeline againstTiny = new SpaceDiff.Timeline(), betweenReals = new SpaceDiff.Timeline();
     private final Set<String> undecided = new HashSet<>();
     private final List<String> eventsSeen = new ArrayList<>();
-    private int tick = -SETTLE_TICKS;
+    private int tick;
+    private final ParitySpace.Move move;
     private int lastHash, changesSeen;
     private boolean built;
     private final int gap;
@@ -57,7 +57,13 @@ final class ParityRun {
     boolean reports = true;
 
     ParityRun(GameTestHelper helper, ParityScene scene, Layout layout, String testName) {
+        this(helper, scene, layout, testName, ParitySpace.Move.STAYS);
+    }
+
+    ParityRun(GameTestHelper helper, ParityScene scene, Layout layout, String testName, ParitySpace.Move move) {
         this.helper = helper;
+        this.move = move;
+        this.tick = -scene.settleTicks;
         this.scene = scene;
         this.testName = testName;
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
@@ -142,11 +148,14 @@ final class ParityRun {
     void tick() {
         if (tick > scene.ticks) return;
         if (tick >= 0) compare();
+        // Its next spot is a row over, past the space it was built in.
+        if (tick == -scene.settleTicks / 2 && move != ParitySpace.Move.STAYS) ((ParitySpace.Tiny) tiny).move(move, new BlockPos(0, 0, gap));
         for (ParityScene.Timed step : scene.steps) {
             if (step.tick() != tick) continue;
             eventsSeen.add("tick " + tick + ": " + step.what());
             for (ParitySpace space : all()) step.step().run(space);
         }
+        if (tick == scene.ticks) ((ParitySpace.Tiny) tiny).cleanUp();
         if (tick == scene.ticks && reports) finish();
         tick++;
     }
@@ -213,6 +222,6 @@ final class ParityRun {
     }
 
     static int timeout(ParityScene scene) {
-        return scene.ticks + SETTLE_TICKS + 2000; // most of it only for chunks to start ticking
+        return scene.ticks + scene.settleTicks + 2000; // most of it only for chunks to start ticking
     }
 }

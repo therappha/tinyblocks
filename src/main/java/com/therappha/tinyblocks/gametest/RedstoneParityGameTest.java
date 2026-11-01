@@ -432,9 +432,13 @@ public class RedstoneParityGameTest {
     }
 
     static TestFunction test(ParityScene scene, ParityRun.Layout layout) {
-        String name = "parity_" + scene.name + "_" + layout.name();
+        return test(scene, layout, ParitySpace.Move.STAYS);
+    }
+
+    static TestFunction test(ParityScene scene, ParityRun.Layout layout, ParitySpace.Move move) {
+        String name = "parity_" + scene.name + "_" + layout.name() + (move == ParitySpace.Move.STAYS ? "" : "_" + move.name().toLowerCase());
         return new TestFunction("parity", name, TinyBlocks.MOD_ID + ":" + layout.template(), ParityRun.timeout(scene), 0L, true,
-                helper -> new ParityRun(helper, scene, layout, name).start());
+                helper -> new ParityRun(helper, scene, layout, name, move).start());
     }
 
     @GameTestGenerator

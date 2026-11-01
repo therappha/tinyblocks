@@ -3,10 +3,13 @@ package com.therappha.tinyblocks.gametest;
 import com.therappha.tinyblocks.diff.RealSpaceView;
 import com.therappha.tinyblocks.diff.SpaceView;
 import com.therappha.tinyblocks.diff.TinySpaceView;
+import com.therappha.tinyblocks.items.GridSaveItem;
+import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
+import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -14,10 +17,14 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** A space a scene can be built in and acted on, in each case through the entry points the game itself uses. */
 interface ParitySpace extends SpaceView {
@@ -56,6 +63,11 @@ interface ParitySpace extends SpaceView {
             container.setChanged();
             return;
         }
+    }
+
+    /** What can happen to a tiny copy once it is running. */
+    enum Move {
+        STAYS, GRID_SAVE, SABLE_MOVE, SABLE_ASSEMBLE
     }
 
     final class Real extends RealSpaceView implements ParitySpace {
@@ -99,6 +111,54 @@ interface ParitySpace extends SpaceView {
         Tiny(ServerLevel level, BlockPos origin, int gridSize, BlockPos seam, Player player) {
             super(level, origin, gridSize, seam);
             this.player = player;
+        }
+
+        @javax.annotation.Nullable private Object subLevel;
+
+        /** The grids of this space, by real position, lowest corner first. */
+        private List<BlockPos> grids() {
+            List<BlockPos> grids = new ArrayList<>();
+            for (BlockPos at : BlockPos.betweenClosed(origin, origin.offset(4, 2, 4))) {
+                if (level.getBlockEntity(at) instanceof SubgridBlockEntity) grids.add(at.immutable());
+            }
+            return grids;
+        }
+
+        /** The whole copy goes to {@code by} from here, the way the player's action takes it. */
+        void move(Move how, BlockPos by) {
+            List<BlockPos> grids = grids();
+            BlockPos low = grids.stream().reduce(BlockPos::min).orElseThrow(), high = grids.stream().reduce(BlockPos::max).orElseThrow();
+            BlockPos shift = low.subtract(origin);
+            switch (how) {
+                case STAYS -> {
+                    return;
+                }
+                case GRID_SAVE -> {
+                    ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+                    if (!(grids.size() == 1 ? GridSaveItem.pickUp(level, low, save, player) : GridSaveItem.pickUpBox(level, low, high, save, player))) {
+                        throw new IllegalStateException("the Grid Save took nothing at " + low);
+                    }
+                    BlockPos to = low.offset(by);
+                    if (!GridSaveItem.place(level, to, Direction.UP, save, player)) throw new IllegalStateException("nothing placed at " + to);
+                    origin = to.subtract(shift);
+                }
+                case SABLE_MOVE -> {
+                    BlockPos to = low.offset(by);
+                    SubLevelAssemblyHelper.moveBlocks(level, new SubLevelAssemblyHelper.AssemblyTransform(low, to, 0, Rotation.NONE, level), grids);
+                    origin = to.subtract(shift);
+                }
+                case SABLE_ASSEMBLE -> {
+                    subLevel = SableSupport.assemble(level, low, grids, low, high);
+                    origin = SableSupport.plotCenter(subLevel).subtract(shift);
+                }
+            }
+            grids().forEach(at -> {
+                if (level.getBlockEntity(at) instanceof SubgridBlockEntity be) watch(be);
+            });
+        }
+
+        void cleanUp() {
+            if (subLevel != null) SableSupport.remove(level, subLevel);
         }
 
         private SubgridBlockEntity gridFor(BlockPos cell) {

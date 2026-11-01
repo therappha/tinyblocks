@@ -29,6 +29,8 @@ final class ParityScene {
     final List<Slot> slots = new ArrayList<>();
     final List<Timed> steps = new ArrayList<>();
     int ticks = 60;
+    /** How long it runs before the comparison starts, built and, when a grid is moved, moved halfway through this. */
+    int settleTicks = 12;
     /** Compared tick by tick only around what was built; the whole box still at the end. */
     boolean watchOnlyAround = false;
 

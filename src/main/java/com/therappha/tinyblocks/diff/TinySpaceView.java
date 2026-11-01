@@ -25,7 +25,7 @@ import java.util.Map;
 public class TinySpaceView implements SpaceView {
 
     protected final ServerLevel level;
-    protected final BlockPos origin;
+    protected BlockPos origin;
     protected final int gridSize;
     protected final BlockPos seam;
 
