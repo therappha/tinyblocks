@@ -62,6 +62,11 @@ public class MinimizerItem extends Item {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(SIZE_KEY, clamped));
     }
 
+    /** The next size along: a turn of the scroll wheel while sneaking. Stops at the ends rather than wrapping round. */
+    public void stepGridSize(ItemStack stack, int steps) {
+        setGridSize(stack, gridSize(stack) + steps);
+    }
+
     /** Whether {@code stack} is locked: while held, only grids of its size can be broken, shown by its glint. */
     public static boolean isLocked(ItemStack stack) {
         return stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().getBoolean(LOCKED_KEY);
@@ -106,6 +111,8 @@ public class MinimizerItem extends Item {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_size").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_scroll").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_resize").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_lock").withStyle(ChatFormatting.GRAY));
     }
 }

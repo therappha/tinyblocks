@@ -53,7 +53,7 @@
   "tinyblocks.guide.page.2": "§lOs três itens§r\n\nMinimizer: constrói pequeno.\n\nGrid Save: carrega grids prontos.\n\nShaft Connector: liga o grid às máquinas grandes.",
   "tinyblocks.guide.page.3": "§lMinimizer§r\n\nSegure ele na mão secundária e um bloco na principal.\n\nClique num bloco: o grid é criado ao lado, com a peça dentro.\n\nClique num grid: a peça entra nele.",
   "tinyblocks.guide.page.4": "§lPassou da borda?§r\n\nSe a peça passar da borda do grid, o grid vizinho é criado sozinho, do mesmo tamanho.\n\nAssim dá para construir por vários blocos.",
-  "tinyblocks.guide.page.5": "§lTamanho§r\n\nCom ele na mão principal, botão direito no ar escolhe a célula, de 1/2 a 1/16. O padrão é 1/7.\n\n1/1 coloca blocos normais.",
+  "tinyblocks.guide.page.5": "§lTamanho§r\n\nCom ele na mão principal, botão direito no ar escolhe a célula, de 1/2 a 1/16. O padrão é 1/7.\n\n1/1 coloca blocos normais.\n\nOu agache e role o scroll.\n\nJ muda o grid olhado para esse tamanho, se for só de blocos cheios.",
   "tinyblocks.guide.page.6": "§lPar ou ímpar?§r\n\nTamanhos ímpares têm uma célula central, alinhada com um eixo grande.\n\nPrefira ímpar para ligar máquinas com o Shaft Connector.",
   "tinyblocks.guide.page.7": "§lModos (Shift+G)§r\n\nNormal: uma peça.\nPreencher: a caixa.\nOco: as seis faces.\nParedes: as laterais.\nPlano: uma camada.\nDestruir: quebra um grid.",
   "tinyblocks.guide.page.8": "§lUsando os modos§r\n\nClique dois cantos. O contorno azul mostra o resultado.\n\nCtrl + scroll: altura.\nAgachar e clicar: cancela.\n\nMáximo de 8192 células.",
@@ -76,5 +76,17 @@
   "item.tinyblocks.grid_save.mode_copy": "Modo: Copiar (o grid fica onde está)",
   "item.tinyblocks.grid_save.tooltip_cut": "Recortar: tira o grid do lugar (botão direito no ar troca)",
   "item.tinyblocks.grid_save.tooltip_copy": "Copiar: deixa o grid no lugar (botão direito no ar troca)",
-  "item.tinyblocks.grid_save.copy_creative": "Copiar só funciona no criativo"
+  "item.tinyblocks.grid_save.copy_creative": "Copiar só funciona no criativo",
+  "key.tinyblocks.minimizer_resize": "Mudar o grid olhado para o tamanho do Minimizer",
+  "item.tinyblocks.minimizer.tooltip_scroll": "Agache e role o scroll para mudar o tamanho",
+  "item.tinyblocks.minimizer.tooltip_resize": "J muda o grid olhado para esse tamanho",
+  "tinyblocks.hud.minimizer": "1/%s · %s",
+  "tinyblocks.hud.minimizer_locked": "1/%s · %s · travado",
+  "tinyblocks.resize.done": "Grid agora é 1/%s",
+  "tinyblocks.resize.same": "Este grid já é 1/%s",
+  "tinyblocks.resize.not_a_multiple": "1/%s e 1/%s não se alinham: um tamanho precisa dividir o outro",
+  "tinyblocks.resize.not_plain": "Só blocos cheios e simples mudam de tamanho: %s aqui não é",
+  "tinyblocks.resize.not_uniform": "Para diminuir, precisa de grupos inteiros do mesmo bloco: o de %s não é",
+  "tinyblocks.resize.moving": "Algo neste grid ainda está em movimento",
+  "tinyblocks.resize.no_grid": "Olhe para um subgrid com um Minimizer na mão"
 }

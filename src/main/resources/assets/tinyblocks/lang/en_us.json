@@ -58,7 +58,7 @@
   "tinyblocks.guide.page.2": "§lThe three items§r\n\nMinimizer: builds tiny.\n\nGrid Save: carries finished grids.\n\nShaft Connector: joins a grid to big machines.",
   "tinyblocks.guide.page.3": "§lMinimizer§r\n\nHold it in your off-hand and a block in your main hand.\n\nClick a block: a grid starts next to it, with the piece inside.\n\nClick a grid: the piece goes in.",
   "tinyblocks.guide.page.4": "§lPast the edge?§r\n\nIf a piece goes past a grid's edge, the next grid starts by itself, at the same size.\n\nSo you can build across several blocks.",
-  "tinyblocks.guide.page.5": "§lSize§r\n\nWith it in your main hand, right-click the air to pick the cell, from 1/2 to 1/16. The default is 1/7.\n\n1/1 places normal blocks.",
+  "tinyblocks.guide.page.5": "§lSize§r\n\nWith it in your main hand, right-click the air to pick the cell, from 1/2 to 1/16. The default is 1/7.\n\n1/1 places normal blocks.\n\nOr sneak and scroll.\n\nJ turns the grid you look at to this size, if it's all full blocks.",
   "tinyblocks.guide.page.6": "§lOdd or even?§r\n\nOdd sizes have a middle cell, lined up with a big shaft.\n\nPrefer odd sizes to join machines with the Shaft Connector.",
   "tinyblocks.guide.page.7": "§lModes (Shift+G)§r\n\nNormal: one piece.\nFill: the whole box.\nHollow: its six faces.\nWalls: its four sides.\nPlane: one layer.\nDestroy: breaks a grid.",
   "tinyblocks.guide.page.8": "§lUsing the modes§r\n\nClick two corners. A blue outline shows the result.\n\nCtrl + scroll: height.\nSneak-click: cancel.\n\nAt most 8192 cells.",
@@ -81,5 +81,17 @@
   "item.tinyblocks.grid_save.mode_copy": "Mode: Copy (the grid stays where it is)",
   "item.tinyblocks.grid_save.tooltip_cut": "Cut: takes the grid away (right-click the air to switch)",
   "item.tinyblocks.grid_save.tooltip_copy": "Copy: leaves the grid there (right-click the air to switch)",
-  "item.tinyblocks.grid_save.copy_creative": "Copy is for creative mode only"
+  "item.tinyblocks.grid_save.copy_creative": "Copy is for creative mode only",
+  "key.tinyblocks.minimizer_resize": "Turn the grid looked at to the Minimizer's size",
+  "item.tinyblocks.minimizer.tooltip_scroll": "Sneak and scroll to change its size",
+  "item.tinyblocks.minimizer.tooltip_resize": "J turns the grid you look at to its size",
+  "tinyblocks.hud.minimizer": "1/%s · %s",
+  "tinyblocks.hud.minimizer_locked": "1/%s · %s · locked",
+  "tinyblocks.resize.done": "Grid turned to 1/%s",
+  "tinyblocks.resize.same": "This grid is already 1/%s",
+  "tinyblocks.resize.not_a_multiple": "1/%s and 1/%s don't line up: one size must divide the other",
+  "tinyblocks.resize.not_plain": "Only full plain blocks can be resized: %s here isn't one",
+  "tinyblocks.resize.not_uniform": "Going smaller needs whole groups of the same block: the one at %s isn't",
+  "tinyblocks.resize.moving": "Something in this grid is still moving",
+  "tinyblocks.resize.no_grid": "Look at a subgrid with a Minimizer in hand"
 }

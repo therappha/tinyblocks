@@ -480,6 +480,13 @@ public class SubgridBlockEntity extends BlockEntity {
         return taken;
     }
 
+    /** Into a grid just made, all at once: nothing is told, and the shape is rebuilt once, not per piece (GridResize). */
+    public void addQuietly(List<PlacedPiece> added) {
+        for (PlacedPiece p : added) addToGridNoShape(p);
+        rebuildShape();
+        setChanged();
+    }
+
     /** After emptyQuietly: each piece taken out goes as when broken (onRemoved: Create leaves its networks). */
     public void letGo(List<PlacedPiece> taken) {
         if (!(level instanceof ServerLevel serverLevel)) return;

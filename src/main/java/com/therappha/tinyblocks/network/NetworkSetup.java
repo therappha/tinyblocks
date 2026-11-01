@@ -28,6 +28,9 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+        registrar.playToServer(MinimizerSizeStepPayload.TYPE, MinimizerSizeStepPayload.STREAM_CODEC, NetworkSetup::handleMinimizerSizeStep);
+        registrar.playToServer(MinimizerResizePayload.TYPE, MinimizerResizePayload.STREAM_CODEC,
+                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.subgrid.GridResize.resizeLookedAt(ctx.player())));
         registrar.playToServer(GridSaveTurnPayload.TYPE, GridSaveTurnPayload.STREAM_CODEC, NetworkSetup::handleGridSaveTurn);
         registrar.playToServer(MinimizerLockPayload.TYPE, MinimizerLockPayload.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleLock(ctx.player())));
@@ -37,6 +40,17 @@ public class NetworkSetup {
 
     private static void handleGridSaveTurn(GridSaveTurnPayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> com.therappha.tinyblocks.items.GridSaveItem.turnHeld(ctx.player()));
+    }
+
+    private static void handleMinimizerSizeStep(MinimizerSizeStepPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            var player = ctx.player();
+            var minimizer = player.getMainHandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+                    ? player.getMainHandItem() : player.getOffhandItem();
+            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem item)) return;
+            item.stepGridSize(minimizer, payload.steps());
+            com.therappha.tinyblocks.items.MinimizerBuild.setCorner(minimizer, null); // a corner of the old size
+        });
     }
 
     private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {

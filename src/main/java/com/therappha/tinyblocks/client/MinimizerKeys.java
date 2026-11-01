@@ -34,6 +34,10 @@ public final class MinimizerKeys {
     public static final KeyMapping LOCK = new KeyMapping("key.tinyblocks.minimizer_lock",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "key.categories.tinyblocks");
 
+    /** J (rebindable): turns the grid looked at to the held Minimizer's size (GridResize). */
+    public static final KeyMapping RESIZE = new KeyMapping("key.tinyblocks.minimizer_resize",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, "key.categories.tinyblocks");
+
     private MinimizerKeys() {}
 
     @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
@@ -45,6 +49,7 @@ public final class MinimizerKeys {
             event.register(NEXT_MODE);
             event.register(MINIMIZE_ME);
             event.register(LOCK);
+            event.register(RESIZE);
         }
     }
 
@@ -62,6 +67,23 @@ public final class MinimizerKeys {
                     PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
                 }
             }
+        }
+
+        @SubscribeEvent
+        public static void onResize(ClientTickEvent.Post event) {
+            while (RESIZE.consumeClick()) {
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerResizePayload.INSTANCE);
+            }
+        }
+
+        /** Sneaking with a Minimizer in either hand, the wheel changes its size, not the hotbar slot. */
+        @SubscribeEvent
+        public static void onSizeScroll(net.neoforged.neoforge.client.event.InputEvent.MouseScrollingEvent event) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.screen != null || !mc.options.keyShift.isDown() || event.getScrollDeltaY() == 0) return;
+            if (!(mc.player.getMainHandItem().getItem() instanceof MinimizerItem || mc.player.getOffhandItem().getItem() instanceof MinimizerItem)) return;
+            event.setCanceled(true);
+            PacketDistributor.sendToServer(new com.therappha.tinyblocks.network.MinimizerSizeStepPayload(event.getScrollDeltaY() > 0 ? 1 : -1));
         }
 
         @SubscribeEvent
