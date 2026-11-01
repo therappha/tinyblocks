@@ -17,13 +17,13 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Shift+G (rebindable) switches a held Minimizer's build mode; with a shape's first corner held, Ctrl + scroll
+ * Shift+H (rebindable) switches a held Minimizer's build mode; with a shape's first corner held, Ctrl + scroll
  * raises or lowers the second corner (as Simulated's honey glue grows its box), instead of changing hotbar slot.
  */
 public final class MinimizerKeys {
 
     public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.minimizer_mode",
-            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G,
+            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H,
             "key.categories.tinyblocks");
 
     /** X (rebindable): shrink to the held Minimizer's size, or back to full size (MinimizeMe). */
@@ -34,9 +34,9 @@ public final class MinimizerKeys {
     public static final KeyMapping LOCK = new KeyMapping("key.tinyblocks.minimizer_lock",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "key.categories.tinyblocks");
 
-    /** J (rebindable): turns the grid looked at to the held Minimizer's size (GridResize). */
-    public static final KeyMapping RESIZE = new KeyMapping("key.tinyblocks.minimizer_resize",
-            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, "key.categories.tinyblocks");
+    /** Shift+G (rebindable): switches the held Minimizer off and on, to build normally without putting it away. */
+    public static final KeyMapping TOGGLE = new KeyMapping("key.tinyblocks.minimizer_toggle",
+            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.tinyblocks");
 
     private MinimizerKeys() {}
 
@@ -49,7 +49,7 @@ public final class MinimizerKeys {
             event.register(NEXT_MODE);
             event.register(MINIMIZE_ME);
             event.register(LOCK);
-            event.register(RESIZE);
+            event.register(TOGGLE);
         }
     }
 
@@ -70,20 +70,10 @@ public final class MinimizerKeys {
         }
 
         @SubscribeEvent
-        public static void onResize(ClientTickEvent.Post event) {
-            while (RESIZE.consumeClick()) {
-                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerResizePayload.INSTANCE);
+        public static void onToggle(ClientTickEvent.Post event) {
+            while (TOGGLE.consumeClick()) {
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerTogglePayload.INSTANCE);
             }
-        }
-
-        /** Sneaking with a Minimizer in either hand, the wheel changes its size, not the hotbar slot. */
-        @SubscribeEvent
-        public static void onSizeScroll(net.neoforged.neoforge.client.event.InputEvent.MouseScrollingEvent event) {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null || mc.screen != null || !mc.options.keyShift.isDown() || event.getScrollDeltaY() == 0) return;
-            if (!(mc.player.getMainHandItem().getItem() instanceof MinimizerItem || mc.player.getOffhandItem().getItem() instanceof MinimizerItem)) return;
-            event.setCanceled(true);
-            PacketDistributor.sendToServer(new com.therappha.tinyblocks.network.MinimizerSizeStepPayload(event.getScrollDeltaY() > 0 ? 1 : -1));
         }
 
         @SubscribeEvent

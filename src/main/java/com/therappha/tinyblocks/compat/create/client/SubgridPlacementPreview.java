@@ -81,7 +81,7 @@ public final class SubgridPlacementPreview {
         if (!(held.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof ShaftConnectorBlock) return null;
 
         // Without a Minimizer, a connector's wide end takes a normal block outside the grid (SubgridEventHandler).
-        if (!(mc.player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
+        if (!com.therappha.tinyblocks.items.MinimizerItem.isOn(mc.player.getOffhandItem())
                 && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(grid, blockItem.getBlock(), ray)) {
             BlockPos outside = ray.getBlockPos().relative(ray.getDirection());
             if (!mc.level.getBlockState(outside).canBeReplaced()) return null;

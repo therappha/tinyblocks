@@ -19,7 +19,7 @@ import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
 public final class MinimizerHud {
 
-    private static final int BELOW_CROSSHAIR = 10, COLOUR = 0xFFE8B2FF;
+    private static final int BELOW_CROSSHAIR = 10, COLOUR = 0xFFE8B2FF, OFF_COLOUR = 0xFFFF5555;
 
     private MinimizerHud() {}
 
@@ -33,6 +33,11 @@ public final class MinimizerHud {
         if (mc.player == null) return;
         ItemStack held = mc.player.getMainHandItem().getItem() instanceof MinimizerItem ? mc.player.getMainHandItem() : mc.player.getOffhandItem();
         if (!(held.getItem() instanceof MinimizerItem minimizer)) return;
+        if (!MinimizerItem.isOn(held)) {
+            graphics.drawCenteredString(mc.font, Component.translatable("tinyblocks.hud.minimizer_off"),
+                    graphics.guiWidth() / 2, graphics.guiHeight() / 2 + BELOW_CROSSHAIR, OFF_COLOUR);
+            return;
+        }
         Component mode = Component.translatable(MinimizerBuild.mode(held).translationKey());
         String key = MinimizerItem.isLocked(held) ? "tinyblocks.hud.minimizer_locked" : "tinyblocks.hud.minimizer";
         graphics.drawCenteredString(mc.font, Component.translatable(key, minimizer.gridSize(held), mode),

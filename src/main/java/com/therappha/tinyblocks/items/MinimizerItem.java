@@ -20,13 +20,13 @@ import java.util.List;
 /**
  * Held in the offhand: makes any BlockItem in the main hand create/place into a subgrid instead of placing
  * normally. Its grid size (1/2 to 1/16, or 1/1 for normal blocks) is kept on the stack and picked on Create's value
- * board, opened by a right click in the air with it in the main hand (client MinimizerSizeMenu); the older
- * fixed-size Minimizers start at theirs.
+ * board, opened by sneaking and scrolling (client MinimizerSizeMenu).
  */
 public class MinimizerItem extends Item {
 
     private static final String SIZE_KEY = "tinyblocks_size";
     private static final String LOCKED_KEY = "tinyblocks_locked";
+    private static final String OFF_KEY = "tinyblocks_off";
 
     /** The normal size, 1/1: placing normal blocks (in a shape mode, building with them). No SubgridBlock has it. */
     public static final int NORMAL_SIZE = 1;
@@ -62,9 +62,20 @@ public class MinimizerItem extends Item {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(SIZE_KEY, clamped));
     }
 
-    /** The next size along: a turn of the scroll wheel while sneaking. Stops at the ends rather than wrapping round. */
-    public void stepGridSize(ItemStack stack, int steps) {
-        setGridSize(stack, gridSize(stack) + steps);
+    /** Whether {@code stack} is a Minimizer switched on. Switched off, it does nothing, as if it weren't held. */
+    public static boolean isOn(ItemStack stack) {
+        return stack.getItem() instanceof MinimizerItem
+                && !stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().getBoolean(OFF_KEY);
+    }
+
+    /** The on/off key: switches the Minimizer in hand, the main hand's first, to build normally and back. Says which. */
+    public static void toggleOn(Player player) {
+        ItemStack stack = player.getMainHandItem().getItem() instanceof MinimizerItem ? player.getMainHandItem() : player.getOffhandItem();
+        if (!(stack.getItem() instanceof MinimizerItem)) return;
+        boolean on = !isOn(stack);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putBoolean(OFF_KEY, !on));
+        MinimizerBuild.setCorner(stack, null);
+        player.displayClientMessage(Component.translatable(on ? "tinyblocks.minimizer.on" : "tinyblocks.minimizer.off"), true);
     }
 
     /** Whether {@code stack} is locked: while held, only grids of its size can be broken, shown by its glint. */
@@ -82,8 +93,8 @@ public class MinimizerItem extends Item {
      */
     public static boolean mayBreak(Player player, BlockGetter level, BlockPos pos) {
         ItemStack held = player.getMainHandItem();
-        if (!(held.getItem() instanceof MinimizerItem && isLocked(held))) held = player.getOffhandItem();
-        if (!(held.getItem() instanceof MinimizerItem minimizer && isLocked(held))) return true;
+        if (!(isOn(held) && isLocked(held))) held = player.getOffhandItem();
+        if (!(isOn(held) && isLocked(held) && held.getItem() instanceof MinimizerItem minimizer)) return true;
         int size = minimizer.gridSize(held);
         return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.getGridSize() == size : size == NORMAL_SIZE;
     }
@@ -110,9 +121,8 @@ public class MinimizerItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_size").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_scroll").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_resize").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_toggle").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.tinyblocks.minimizer.tooltip_lock").withStyle(ChatFormatting.GRAY));
     }
 }

@@ -36,7 +36,7 @@ public final class MinimizerPreview {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         ItemStack minimizer = mc.player.getOffhandItem();
-        if (!(minimizer.getItem() instanceof MinimizerItem item)) return;
+        if (!MinimizerItem.isOn(minimizer) || !(minimizer.getItem() instanceof MinimizerItem item)) return;
         BuildMode mode = MinimizerBuild.mode(minimizer);
         if (mode == BuildMode.DESTROY) {
             outlineDoomed(event, mc);
