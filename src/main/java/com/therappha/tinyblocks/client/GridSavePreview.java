@@ -1,21 +1,28 @@
 package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.logging.LogUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing;
 import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.network.GridSaveTurnPayload;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.FakeLevel;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
@@ -25,6 +32,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -40,10 +48,13 @@ import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A full Grid Save in hand (GridSaveItem#heldFull) shows its grids, see-through, where a click would place them (GridSaveItem#target),
@@ -52,6 +63,8 @@ import java.util.List;
  */
 public final class GridSavePreview {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     public static final KeyMapping TURN = new KeyMapping("key.tinyblocks.grid_save_turn",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, "key.categories.tinyblocks");
 
@@ -59,8 +72,8 @@ public final class GridSavePreview {
     private static CustomData cachedData;
     private static List<Part> cachedGhost;
 
-    /** One grid's ghost and where it goes in the turned box. */
-    private record Part(BlockPos offset, Ghost ghost) {}
+    /** One grid's ghost, by the render type it is written back into, and where it goes in the turned box. */
+    private record Part(BlockPos offset, Map<RenderType, Ghost> ghost) {}
 
     private GridSavePreview() {}
 
@@ -114,13 +127,14 @@ public final class GridSavePreview {
 
             Vec3 camera = event.getCamera().getPosition();
             MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
-            VertexConsumer translucent = buffers.getBuffer(RenderType.translucent());
             for (Part part : parts) {
                 BlockPos target = origin.offset(part.offset());
-                part.ghost().replay(translucent, event.getPoseStack().last(),
-                        (float) (target.getX() - camera.x), (float) (target.getY() - camera.y), (float) (target.getZ() - camera.z));
+                part.ghost().forEach((type, ghost) -> {
+                    ghost.replay(buffers.getBuffer(type), event.getPoseStack().last(),
+                            (float) (target.getX() - camera.x), (float) (target.getY() - camera.y), (float) (target.getZ() - camera.z));
+                    buffers.endBatch(type);
+                });
             }
-            buffers.endBatch(RenderType.translucent());
             if (parts.size() > 1) {
                 AABB box = new AABB(origin.getX(), origin.getY(), origin.getZ(), origin.getX() + turnedBox.getX(),
                         origin.getY() + turnedBox.getY(), origin.getZ() + turnedBox.getZ());
@@ -189,8 +203,13 @@ public final class GridSavePreview {
         return parts;
     }
 
-    /** The grid's pieces, turned as placing it turns them (SubgridBlockEntity#transformed), drawn as at the origin. */
-    private static Ghost draw(GridSaveItem.Entry entry, Rotation rotation) {
+    /**
+     * The grid's pieces, turned as placing it turns them (SubgridBlockEntity#transformed), drawn as at the origin, each
+     * as SubgridRenderer draws it: its model and its block entity's renderer. What turns on a Create block (a shaft, a
+     * cogwheel) is in no model: Flywheel draws it in a level, and the renderer draws it instead in a level Flywheel
+     * doesn't visualize, which the fake space the phantoms are bound to here is.
+     */
+    private static Map<RenderType, Ghost> draw(GridSaveItem.Entry entry, Rotation rotation) {
         Minecraft mc = Minecraft.getInstance();
         var registries = mc.level.registryAccess();
         int size = entry.size();
@@ -199,8 +218,13 @@ public final class GridSavePreview {
         SubgridBlockEntity reader = new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), BlockPos.ZERO, block.defaultBlockState());
         reader.loadCustomOnly(entry.data(), registries);
 
-        Ghost ghost = new Ghost();
-        GhostVertexConsumer consumer = new GhostVertexConsumer(ghost, 120);
+        // Whatever samples the block atlas goes see-through into the one translucent buffer; anything else (a chest's
+        // sheet, a font) only means something in its own render type, which draws it as that type draws it.
+        Map<RenderType, Ghost> ghosts = new LinkedHashMap<>();
+        MultiBufferSource source = type -> new GhostVertexConsumer(
+                ghosts.computeIfAbsent(blockAtlas(type) ? RenderType.translucent() : type, t -> new Ghost()), 120);
+        VertexConsumer consumer = source.getBuffer(RenderType.translucent());
+        FakeLevel space = VanillaBlockPiece.buildClientFakeSpace(reader, mc.level);
         var blockRenderer = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
         PoseStack poseStack = new PoseStack();
@@ -213,7 +237,11 @@ public final class GridSavePreview {
             var layers = model.getRenderTypes(state, random, ModelData.EMPTY);
             // As SubgridRenderer draws a piece (PieceTransforms), but see-through, through every render type of
             // its model (a model hands out its quads per type) into the one translucent buffer.
-            for (PieceTransforms.Slice slice : PieceTransforms.slices(piece, size)) {
+            BlockEntity phantom = piece.definition instanceof VanillaBlockPiece
+                    ? VanillaBlockPiece.blockEntityFor(piece, reader, space) : null;
+            List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, size);
+            for (int i = 0; i < slices.size(); i++) {
+                PieceTransforms.Slice slice = slices.get(i);
                 poseStack.pushPose();
                 poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                 poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
@@ -221,10 +249,39 @@ public final class GridSavePreview {
                     blockRenderer.getModelRenderer().renderModel(poseStack.last(), consumer, state, model,
                             1f, 1f, 1f, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, layer);
                 }
+                if (phantom != null) drawBlockEntity(phantom, piece, reader, i, poseStack, source);
                 poseStack.popPose();
             }
         }
-        return ghost;
+        return ghosts;
+    }
+
+    /** As SubgridRenderer#render does, once: a block entity read back from an item in a space of its own can't take the game down with it. */
+    private static void drawBlockEntity(BlockEntity phantom, PlacedPiece piece, SubgridBlockEntity grid, int slice,
+                                        PoseStack poseStack, MultiBufferSource source) {
+        int light = LightTexture.FULL_BRIGHT, overlay = OverlayTexture.NO_OVERLAY;
+        SubgridRenderer.drawingPhantom = true;
+        try {
+            if (SubgridRenderer.isGear(grid, piece)) {
+                if (phantom instanceof KineticBlockEntity gear) {
+                    GearConnectorDrawing.draw(gear, slice, poseStack, source, light, BlockPos.ZERO.relative(piece.facing));
+                }
+                return;
+            }
+            BlockEntityRenderer<BlockEntity> renderer = Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(phantom);
+            if (renderer != null) renderer.render(phantom, 0f, poseStack, source, light, overlay);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Drawing the ghost of a piece at cell {} failed", piece.anchor, e);
+        } finally {
+            SubgridRenderer.drawingPhantom = false;
+        }
+    }
+
+    /** Whether {@code type} draws from the block atlas, as the translucent buffer does. */
+    private static boolean blockAtlas(RenderType type) {
+        return RenderType.chunkBufferLayers().contains(type) || type == Sheets.solidBlockSheet()
+                || type == Sheets.cutoutBlockSheet() || type == Sheets.translucentCullBlockSheet()
+                || type == Sheets.translucentItemSheet();
     }
 
     /**

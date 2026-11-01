@@ -50,6 +50,10 @@ public class ClientSetup {
             if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
                 com.therappha.tinyblocks.client.flywheel.FlywheelCompat.register();
             }
+            // models/item/grid_save.json shows a full Grid Save with its own icon.
+            net.minecraft.client.renderer.item.ItemProperties.register(Registration.GRID_SAVE.get(),
+                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "full"),
+                    (stack, level, entity, seed) -> com.therappha.tinyblocks.items.GridSaveItem.isFull(stack) ? 1f : 0f);
         });
     }
 
