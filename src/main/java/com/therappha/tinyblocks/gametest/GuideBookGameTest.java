@@ -17,7 +17,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 @PrefixGameTestTemplate(false)
 public class GuideBookGameTest {
 
-    /** Locked in the off hand by a click in the air: a grid of its size can go, a real block and another size can't. */
+    /** Locked by its key: a grid of its size can go, a real block and another size can't. */
     @GameTest(template = "empty_platform", timeoutTicks = 20)
     public void aLockedMinimizerOnlyBreaksGridsOfItsSize(GameTestHelper helper) {
         var level = helper.getLevel();
@@ -34,15 +34,15 @@ public class GuideBookGameTest {
         helper.assertTrue(!stack.hasFoil(), "an unlocked Minimizer glows");
         helper.assertTrue(MinimizerItem.mayBreak(player, level, helper.absolutePos(real)),
                 "an unlocked Minimizer keeps something; main " + player.getMainHandItem() + " off " + player.getOffhandItem());
-        stack.use(level, player, net.minecraft.world.InteractionHand.OFF_HAND);
-        helper.assertTrue(stack.hasFoil(), "the click in the air didn't lock it");
+        MinimizerItem.toggleLock(player);
+        helper.assertTrue(stack.hasFoil(), "the key didn't lock it");
         helper.assertTrue(MinimizerItem.mayBreak(player, level, helper.absolutePos(ofItsSize)), "a grid of its size is kept");
         helper.assertTrue(!MinimizerItem.mayBreak(player, level, helper.absolutePos(otherSize)), "a grid of another size can go");
         player.gameMode.destroyBlock(helper.absolutePos(real));
         helper.assertBlockPresent(net.minecraft.world.level.block.Blocks.STONE, real);
 
-        stack.use(level, player, net.minecraft.world.InteractionHand.OFF_HAND);
-        helper.assertTrue(!stack.hasFoil(), "the second click didn't unlock it");
+        MinimizerItem.toggleLock(player);
+        helper.assertTrue(!stack.hasFoil(), "the second press didn't unlock it");
         player.gameMode.destroyBlock(helper.absolutePos(real));
         helper.assertBlockNotPresent(net.minecraft.world.level.block.Blocks.STONE, real);
         helper.succeed();

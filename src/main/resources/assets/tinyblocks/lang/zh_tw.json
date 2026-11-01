@@ -3,14 +3,14 @@
   "tinyblocks.guide.page.2": "§lMinimizer§r\n\n把它拿在副手,主手拿任意方塊。放置時方塊會變成小方塊。\n\n點擊網格會放入其中。超出邊緣會開始下一個網格。",
   "tinyblocks.guide.page.3": "§l尺寸§r\n\n主手拿著它,右鍵點擊空氣選擇格子大小,從 1/2 到 1/16。\n\n1/1 放置普通方塊。奇數尺寸有中心格,與大傳動桿對齊。",
   "tinyblocks.guide.page.4": "§l建造模式§r\n\nShift+G 切換模式:普通、填充、空心、牆壁、平面。\n\n點擊一個角,再點擊另一個角。Ctrl + 滾輪調整高度。潛行點擊取消。最多 8192 格。",
-  "tinyblocks.guide.page.5": "§l鎖定§r\n\n副手拿著 Minimizer,右鍵點擊空氣即可鎖定,它會發光。\n\n任一手拿著它時,只能破壞同尺寸網格裡的小方塊。再次右鍵解鎖。",
+  "tinyblocks.guide.page.5": "§l鎖定§r\n\n手持 Minimizer 按 K 即可鎖定,它會發光。\n\n任一手拿著它時,只能破壞同尺寸網格裡的小方塊。再按 K 解鎖。\n\n按鍵可在控制設定中更改。",
   "tinyblocks.guide.page.6": "§lMinimize me§r\n\n手持 Minimizer 按 X,把自己縮小到它的尺寸,走進你的建築。再按一次恢復原大小。\n\n按鍵可在控制設定中更改。",
   "tinyblocks.guide.page.7": "§lShaft Connector§r\n\n把網格裡的小機器連接到外面的大機器。它位於網格的一個面上。\n\n用它點擊小傳動桿,會放在這條傳動桿線的末端。",
   "tinyblocks.guide.page.8": "§l連接器形狀§r\n\n奇數網格:漏斗。點擊它的方塊會進入插槽,即中心格。\n\n偶數網格:齒輪。小齒輪放在它的側面,機械由此運轉。",
   "tinyblocks.guide.page.9": "§l使用連接器§r\n\n扳手把它移到下一個空閒的面。潛行 + 扳手拆除。\n\n沒有 Minimizer 時,點擊大端的方塊會放到外面:大傳動桿自動對齊,無需支撐。",
   "tinyblocks.guide.page.10": "§lGrid Save§r\n\n搬運整個網格。點擊網格即可連同所有小方塊一起取走,不會掉落。\n\n拿著時會顯示網格虛影。R 旋轉。點擊放置,機器和連結繼續運作。",
   "tinyblocks.guide.page.11": "§l多個網格§r\n\n用空的 Grid Save 潛行點擊一個角,再點擊另一個角。最多 4 個網格,每邊最多 4 格。\n\n潛行點擊空氣取消選擇。",
-  "item.tinyblocks.minimizer.tooltip_lock": "副手拿著時右鍵點擊空氣鎖定:只破壞同尺寸的網格",
+  "item.tinyblocks.minimizer.tooltip_lock": "K 鎖定:只破壞同尺寸的網格",
   "tinyblocks.minimizer.locked": "Minimizer 已鎖定:只破壞同尺寸的網格",
   "tinyblocks.minimizer.unlocked": "Minimizer 已解鎖",
   "item.tinyblocks.piece_remover_stick": "小方塊移除棒",
@@ -66,5 +66,6 @@
   "block.tinyblocks.subgrid_block_12": "子網格方塊 (1/12)",
   "block.tinyblocks.subgrid_block_13": "子網格方塊 (1/13)",
   "block.tinyblocks.subgrid_block_14": "子網格方塊 (1/14)",
-  "block.tinyblocks.subgrid_block_15": "子網格方塊 (1/15)"
+  "block.tinyblocks.subgrid_block_15": "子網格方塊 (1/15)",
+  "key.tinyblocks.minimizer_lock": "鎖定 Minimizer"
 }

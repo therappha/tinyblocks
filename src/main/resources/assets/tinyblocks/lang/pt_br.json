@@ -1,16 +1,16 @@
 {
-  "tinyblocks.guide.page.1": "§lTinyBlocks§r\n\nConstrua com blocos menores que um bloco. Cada bloco real pode ter um grid de peças pequenas que funcionam como blocos normais: redstone, máquinas do Create e mais.\n\nEste guia explica cada item.",
+  "tinyblocks.guide.page.1": "§lTinyBlocks§r\n\nConstrua com blocos menores que um bloco. Cada bloco pode ter um grid de peças que funcionam como blocos normais: redstone, Create e mais.\n\nEste guia explica cada item.",
   "tinyblocks.guide.page.2": "§lMinimizer§r\n\nSegure ele na mão secundária e um bloco na principal. Ao colocar o bloco, ele vira uma peça pequena.\n\nClicar num grid coloca dentro dele. Passar da borda começa o grid seguinte.",
-  "tinyblocks.guide.page.3": "§lTamanho§r\n\nCom ele na mão principal, clique com o botão direito no ar para escolher o tamanho da célula, de 1/2 a 1/16.\n\n1/1 coloca blocos normais. Tamanhos ímpares têm célula central, alinhada a um eixo grande.",
+  "tinyblocks.guide.page.3": "§lTamanho§r\n\nCom ele na mão principal, botão direito no ar escolhe o tamanho da célula, de 1/2 a 1/16.\n\n1/1 coloca blocos normais. Tamanhos ímpares têm célula central, alinhada a um eixo grande.",
   "tinyblocks.guide.page.4": "§lModos de construção§r\n\nShift+G troca o modo: Normal, Preencher, Oco, Paredes ou Plano.\n\nClique um canto e depois o outro. Ctrl + scroll ajusta a altura. Agachar e clicar cancela. Máximo de 8192 células.",
-  "tinyblocks.guide.page.5": "§lTravado§r\n\nCom o Minimizer na mão secundária, clique com o botão direito no ar para travar: ele fica encantado.\n\nCom ele em qualquer mão, você só quebra peças de grids do tamanho dele. Clique de novo para destravar.",
+  "tinyblocks.guide.page.5": "§lTravado§r\n\nAperte K com um Minimizer na mão para travar: ele fica encantado.\n\nCom ele na mão, você só quebra grids do tamanho dele. Aperte K para destravar.",
   "tinyblocks.guide.page.6": "§lMinimize me§r\n\nAperte X com um Minimizer na mão para encolher até o tamanho dele e andar nas suas construções. Aperte de novo para voltar ao normal.\n\nA tecla pode ser trocada em Controles.",
   "tinyblocks.guide.page.7": "§lShaft Connector§r\n\nLiga as máquinas pequenas do grid às grandes de fora. Ele fica numa face do grid.\n\nClique num eixo pequeno com ele para colocá-lo na ponta da linha desse eixo.",
   "tinyblocks.guide.page.8": "§lFormas do conector§r\n\nGrid ímpar: um funil. Um bloco clicado nele vai para o encaixe, a célula central.\n\nGrid par: uma engrenagem. Cogs pequenos vão nos lados dela, e o mecanismo segue a partir deles.",
   "tinyblocks.guide.page.9": "§lUsando o conector§r\n\nA chave inglesa move ele para a próxima face livre. Agachar + chave desmonta.\n\nSem Minimizer, um bloco clicado no lado grande vai para fora: um eixo grande alinha com ele, sem apoio.",
-  "tinyblocks.guide.page.10": "§lGrid Save§r\n\nCarrega um grid inteiro. Clique num grid para pegar ele com todas as peças; nada dropa.\n\nCom ele na mão aparece um ghost do grid. R gira. Clique para colocar, e máquinas e links continuam funcionando.",
+  "tinyblocks.guide.page.10": "§lVários grids§r\n\nCom o Grid Save vazio, agache e clique um canto, depois clique o outro. Pega até 4 grids, com até 4 blocos por lado.\n\nAgache e clique no ar para cancelar.",
   "tinyblocks.guide.page.11": "§lVários grids§r\n\nCom o Grid Save vazio, agache e clique um canto, depois clique o outro. Ele pega até 4 grids, com no máximo 4 blocos por lado.\n\nAgache e clique no ar para cancelar a seleção.",
-  "item.tinyblocks.minimizer.tooltip_lock": "Botão direito no ar com ele na mão secundária para travar: só quebra grids do tamanho dele",
+  "item.tinyblocks.minimizer.tooltip_lock": "K trava: só quebra grids do tamanho dele",
   "tinyblocks.minimizer.locked": "Minimizer travado: só quebra grids do tamanho dele",
   "tinyblocks.minimizer.unlocked": "Minimizer destravado",
   "item.tinyblocks.piece_remover_stick": "Vara de Remover Peças",
@@ -66,5 +66,6 @@
   "block.tinyblocks.subgrid_block_12": "Bloco Subgrid (1/12)",
   "block.tinyblocks.subgrid_block_13": "Bloco Subgrid (1/13)",
   "block.tinyblocks.subgrid_block_14": "Bloco Subgrid (1/14)",
-  "block.tinyblocks.subgrid_block_15": "Bloco Subgrid (1/15)"
+  "block.tinyblocks.subgrid_block_15": "Bloco Subgrid (1/15)",
+  "key.tinyblocks.minimizer_lock": "Travar o Minimizer"
 }

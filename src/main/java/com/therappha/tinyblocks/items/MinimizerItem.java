@@ -2,11 +2,8 @@ package com.therappha.tinyblocks.items;
 
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.Level;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import net.minecraft.ChatFormatting;
@@ -86,17 +83,13 @@ public class MinimizerItem extends Item {
         return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.getGridSize() == size : size == NORMAL_SIZE;
     }
 
-    /** A right click in the air in the off hand locks or unlocks it; in the main hand it picks the size (MinimizerSizeMenu). */
-    @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
-        if (hand != InteractionHand.OFF_HAND) return InteractionResultHolder.pass(stack);
-        if (!level.isClientSide()) {
-            boolean locked = !isLocked(stack);
-            setLocked(stack, locked);
-            player.displayClientMessage(Component.translatable(locked ? "tinyblocks.minimizer.locked" : "tinyblocks.minimizer.unlocked"), true);
-        }
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+    /** The lock key (MinimizerKeys#LOCK): locks or unlocks the Minimizer in hand, the main hand's first. Says which. */
+    public static void toggleLock(Player player) {
+        ItemStack stack = player.getMainHandItem().getItem() instanceof MinimizerItem ? player.getMainHandItem() : player.getOffhandItem();
+        if (!(stack.getItem() instanceof MinimizerItem)) return;
+        boolean locked = !isLocked(stack);
+        setLocked(stack, locked);
+        player.displayClientMessage(Component.translatable(locked ? "tinyblocks.minimizer.locked" : "tinyblocks.minimizer.unlocked"), true);
     }
 
     @Override

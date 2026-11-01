@@ -3,14 +3,14 @@
   "tinyblocks.guide.page.2": "§lMinimizer§r\n\n把它拿在副手,主手拿任意方块。放置时方块会变成小方块。\n\n点击网格会放入其中。超出边缘会开始下一个网格。",
   "tinyblocks.guide.page.3": "§l尺寸§r\n\n主手拿着它,右键点击空气选择格子大小,从 1/2 到 1/16。\n\n1/1 放置普通方块。奇数尺寸有中心格,与大传动杆对齐。",
   "tinyblocks.guide.page.4": "§l建造模式§r\n\nShift+G 切换模式:普通、填充、空心、墙壁、平面。\n\n点击一个角,再点击另一个角。Ctrl + 滚轮调整高度。潜行点击取消。最多 8192 格。",
-  "tinyblocks.guide.page.5": "§l锁定§r\n\n副手拿着 Minimizer,右键点击空气即可锁定,它会发光。\n\n任一手拿着它时,只能破坏同尺寸网格里的小方块。再次右键解锁。",
+  "tinyblocks.guide.page.5": "§l锁定§r\n\n手持 Minimizer 按 K 即可锁定,它会发光。\n\n任一手拿着它时,只能破坏同尺寸网格里的小方块。再按 K 解锁。\n\n按键可在控制设置中更改。",
   "tinyblocks.guide.page.6": "§lMinimize me§r\n\n手持 Minimizer 按 X,把自己缩小到它的尺寸,走进你的建筑。再按一次恢复原大小。\n\n按键可在控制设置中更改。",
   "tinyblocks.guide.page.7": "§lShaft Connector§r\n\n把网格里的小机器连接到外面的大机器。它位于网格的一个面上。\n\n用它点击小传动杆,会放在这条传动杆线的末端。",
   "tinyblocks.guide.page.8": "§l连接器形状§r\n\n奇数网格:漏斗。点击它的方块会进入插槽,即中心格。\n\n偶数网格:齿轮。小齿轮放在它的侧面,机械由此运转。",
   "tinyblocks.guide.page.9": "§l使用连接器§r\n\n扳手把它移到下一个空闲的面。潜行 + 扳手拆除。\n\n没有 Minimizer 时,点击大端的方块会放到外面:大传动杆自动对齐,无需支撑。",
   "tinyblocks.guide.page.10": "§lGrid Save§r\n\n搬运整个网格。点击网格即可连同所有小方块一起取走,不会掉落。\n\n拿着时会显示网格虚影。R 旋转。点击放置,机器和链接继续工作。",
   "tinyblocks.guide.page.11": "§l多个网格§r\n\n用空的 Grid Save 潜行点击一个角,再点击另一个角。最多 4 个网格,每边最多 4 格。\n\n潜行点击空气取消选择。",
-  "item.tinyblocks.minimizer.tooltip_lock": "副手拿着时右键点击空气锁定:只破坏同尺寸的网格",
+  "item.tinyblocks.minimizer.tooltip_lock": "K 锁定:只破坏同尺寸的网格",
   "tinyblocks.minimizer.locked": "Minimizer 已锁定:只破坏同尺寸的网格",
   "tinyblocks.minimizer.unlocked": "Minimizer 已解锁",
   "item.tinyblocks.piece_remover_stick": "小方块移除棒",
@@ -66,5 +66,6 @@
   "block.tinyblocks.subgrid_block_12": "子网格方块 (1/12)",
   "block.tinyblocks.subgrid_block_13": "子网格方块 (1/13)",
   "block.tinyblocks.subgrid_block_14": "子网格方块 (1/14)",
-  "block.tinyblocks.subgrid_block_15": "子网格方块 (1/15)"
+  "block.tinyblocks.subgrid_block_15": "子网格方块 (1/15)",
+  "key.tinyblocks.minimizer_lock": "锁定 Minimizer"
 }

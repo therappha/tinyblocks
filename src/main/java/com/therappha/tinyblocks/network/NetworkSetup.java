@@ -29,6 +29,8 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
         registrar.playToServer(GridSaveTurnPayload.TYPE, GridSaveTurnPayload.STREAM_CODEC, NetworkSetup::handleGridSaveTurn);
+        registrar.playToServer(MinimizerLockPayload.TYPE, MinimizerLockPayload.STREAM_CODEC,
+                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleLock(ctx.player())));
         registrar.playToServer(MinimizeMePayload.TYPE, MinimizeMePayload.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizeMe.toggle(ctx.player())));
     }
