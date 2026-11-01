@@ -53,7 +53,9 @@ final class SubgridFluidView implements BlockAndTintGetter {
     @Nullable
     @Override
     public BlockEntity getBlockEntity(BlockPos pos) {
-        return null;
+        if (!be.inBounds(pos.getX(), pos.getY(), pos.getZ())) return null;
+        var piece = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
+        return piece != null && piece.runtimeBlockEntity instanceof BlockEntity blockEntity ? blockEntity : null;
     }
 
     @Override

@@ -74,8 +74,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             // doc comment) — the scale has to be applied by wrapping the buffer instead.
             FluidState fluidState = state.getFluidState();
             if (!fluidState.isEmpty()) {
-                // The grid's own level: a schematic's preview or a contraption draws it from a level of their own.
-                if (fluidView == null) fluidView = new SubgridFluidView(be, be.getLevel() != null ? be.getLevel() : Minecraft.getInstance().level);
+                if (fluidView == null) fluidView = viewOf(be);
                 RenderType fluidRenderType = ItemBlockRenderTypes.getRenderLayer(fluidState);
                 var fluidBuffer = new ScaledVertexConsumer(bufferSource.getBuffer(fluidRenderType), cell, basePose);
                 blockRenderer.renderLiquid(piece.anchor, fluidView, fluidBuffer, state, fluidState);
@@ -83,6 +82,13 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
             if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece && be.getLevel() != null) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
+            }
+            // What the piece's block entity tells its model, gathered as a chunk does for a real block.
+            var modelData = net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
+            var entityData = staticDrawn ? null : modelDataOf(piece);
+            if (entityData != null) {
+                if (fluidView == null) fluidView = viewOf(be);
+                modelData = blockRenderer.getBlockModel(state).getModelData(fluidView, piece.anchor, state, entityData);
             }
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
             List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece));
@@ -107,7 +113,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                 poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
 
-                if (!staticDrawn) blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+                if (!staticDrawn) blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay, modelData, null);
 
                 // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
                 // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
@@ -141,12 +147,29 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                         "textures/block/destroy_stage_" + crackStage + ".png");
                     RenderType crumbleType = RenderType.crumbling(crackTex);
                     MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
-                    blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
+                    blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay, modelData, null);
                 }
 
                 poseStack.popPose();
             }
         }
+    }
+
+    /** The cells of a grid, as a model or a fluid reads its neighbours. */
+    private static SubgridFluidView viewOf(SubgridBlockEntity be) {
+        // The grid's own level: a schematic's preview or a contraption draws it from a level of their own.
+        return new SubgridFluidView(be, be.getLevel() != null ? be.getLevel() : Minecraft.getInstance().level);
+    }
+
+    /**
+     * What a piece's block entity hands its model, or null if nothing: in a chunk a model gets this from the block
+     * entity at its position, and a model built on it (a block taking the look of another) can have no quads without.
+     */
+    @org.jetbrains.annotations.Nullable
+    private static net.neoforged.neoforge.client.model.data.ModelData modelDataOf(PlacedPiece piece) {
+        if (!(piece.runtimeBlockEntity instanceof BlockEntity blockEntity)) return null;
+        var data = blockEntity.getModelData();
+        return data.getProperties().isEmpty() ? null : data;
     }
 
     /**
@@ -155,7 +178,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      * and without the faces a neighbouring piece in the grid hides (PieceFaceCulling) — in a dense grid most of them.
      * Exactly what renderSingleBlock drew for a MODEL piece: its model's quads per render type, tinted with the
      * block's colour, in the piece's cell. A piece with a block entity, a fluid, another render shape or more than one
-     * slice still takes the per-frame path ({@link #dynamic}); one with a block entity keeps its model here.
+     * slice still takes the per-frame path ({@link #dynamic}); one with a block entity keeps its model here, unless
+     * that model reads the block entity's model data, which changes without the pieces changing.
      */
     static final class StaticMesh {
         private record PieceQuads(org.joml.Vector3f translation, org.joml.Vector3f scale, float r, float g, float b,
@@ -182,10 +206,14 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 boolean single = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) == null;
                 boolean model = state.getRenderShape() == net.minecraft.world.level.block.RenderShape.MODEL;
                 boolean hasEntity = state.getBlock() instanceof net.minecraft.world.level.block.EntityBlock;
+                // Built here, not left to the first frame: whether its model can be cached depends on it.
+                if (hasEntity && piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece && be.getLevel() != null) {
+                    VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
+                }
                 if (!single || !state.getFluidState().isEmpty() || !model || hasEntity || piece.runtimeBlockEntity != null) {
                     dynamic.add(piece);
                 }
-                if (!single || !model || !state.getFluidState().isEmpty()) continue;
+                if (!single || !model || !state.getFluidState().isEmpty() || modelDataOf(piece) != null) continue;
 
                 var bakedModel = blockRenderer.getBlockModel(state);
                 if (sentinel == null) {
