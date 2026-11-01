@@ -10,7 +10,7 @@ public final class CreatePhantomTransform {
     private CreatePhantomTransform() {}
 
     /**
-     * A kinetic block entity's speed, source and network are dropped: the source is a position, where some other cell
+     * A kinetic block entity's speed, source and network are dropped, even for a grid only moved, not turned: the source is a position, where some other cell
      * now is, and the network was built for the old layout. Read without them, it starts at rest and joins whatever
      * drives it on its first tick, as Create does with a block a contraption has moved (KineticBlockEntity#wasMoved).
      * IRotate, not KineticBlock: it is what Create's propagation itself asks of a kinetic block, and some (other mods'
@@ -21,5 +21,11 @@ public final class CreatePhantomTransform {
         data.remove("Speed");
         data.remove("Source");
         data.remove("Network");
+        // A belt keeps its controller as a position too, and with a length left it never asks again: past the segment
+        // given power nothing turned. With no length, its next tick works the whole belt out as a new one (initBelt).
+        if (state.getBlock() instanceof com.simibubi.create.content.kinetics.belt.BeltBlock) {
+            data.remove("Controller");
+            data.putInt("Length", 0);
+        }
     }
 }

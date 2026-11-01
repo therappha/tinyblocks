@@ -44,7 +44,38 @@ public class TinyBlocksCommand {
                 .then(Commands.literal("v2test2").executes(TinyBlocksCommand::executeV2Test2))
                 .then(Commands.literal("v2test3").executes(TinyBlocksCommand::executeV2Test3))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
+                .then(Commands.literal("diff").requires(source -> source.hasPermission(2))
+                    .then(Commands.argument("real", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                    .then(Commands.argument("grid", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                    .then(Commands.argument("gridSize", com.mojang.brigadier.arguments.IntegerArgumentType.integer(2, 16))
+                    .then(Commands.argument("width", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
+                    .then(Commands.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
+                    .then(Commands.argument("depth", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
+                        .executes(TinyBlocksCommand::executeDiff))))))))
         );
+    }
+
+    private static final int DIFF_LINES = 12;
+
+    /**
+     * Compares a box of real blocks, from corner {@code real}, with a box of cells of the same size starting at cell
+     * (0,0,0) of the grid at {@code grid}, and says what differs: see com.therappha.tinyblocks.diff.SpaceDiff.
+     */
+    private static int executeDiff(CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerLevel level = ctx.getSource().getLevel();
+        var real = new com.therappha.tinyblocks.diff.RealSpaceView(level,
+                net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(ctx, "real"));
+        var tiny = new com.therappha.tinyblocks.diff.TinySpaceView(level,
+                net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(ctx, "grid"),
+                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "gridSize"), BlockPos.ZERO);
+        var cells = com.therappha.tinyblocks.diff.SpaceDiff.box(com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "width"),
+                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height"),
+                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "depth"));
+        var differences = com.therappha.tinyblocks.diff.SpaceDiff.compare(real, tiny, cells);
+        ctx.getSource().sendSuccess(() -> Component.literal("[diff] " + cells.size() + " células, " + differences.size() + " diferenças"), false);
+        differences.stream().limit(DIFF_LINES).forEach(d -> ctx.getSource().sendSuccess(
+                () -> Component.literal(com.therappha.tinyblocks.diff.SpaceDiff.describe(d, "mundo", "tiny")), false));
+        return differences.size();
     }
 
     /**

@@ -46,6 +46,9 @@ public class FakeLevel extends Level implements FakeSpace {
      * world coordinates.
      */
     private final BlockPos realPos;
+    private final net.minecraft.world.ticks.LevelTickAccess<Block> blockTicks;
+    private final net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.material.Fluid> fluidTicks;
+    private final FakeNeighborUpdater updater;
 
     public FakeLevel(Level real, FakeCellGetter cells, BlockPos realPos) {
         super(
@@ -62,6 +65,55 @@ public class FakeLevel extends Level implements FakeSpace {
         this.real = real;
         this.cells = cells;
         this.realPos = realPos;
+        this.blockTicks = new FakeTicks<>(cells);
+        this.fluidTicks = new FakeTicks<>(cells);
+        this.updater = new FakeNeighborUpdater(this, cells, 1000000);
+    }
+
+    // Level leaves these four to ServerLevel, as empty methods: a block updating its neighbours from here did nothing.
+    // The fake level's own updater: Level's field is final and holds a plain one.
+
+    @Override
+    public void updateNeighborsAt(BlockPos pos, Block block) {
+        updater.updateNeighborsAtExceptFromFacing(pos, block, null);
+    }
+
+    @Override
+    public void updateNeighborsAtExceptFromFacing(BlockPos pos, Block block, net.minecraft.core.Direction skip) {
+        updater.updateNeighborsAtExceptFromFacing(pos, block, skip);
+    }
+
+    @Override
+    public void neighborChanged(BlockPos pos, Block block, BlockPos from) {
+        updater.neighborChanged(pos, block, from);
+    }
+
+    @Override
+    public void neighborChanged(BlockState state, BlockPos pos, Block block, BlockPos from, boolean moved) {
+        updater.neighborChanged(state, pos, block, from, moved);
+    }
+
+    @Override
+    public void neighborShapeChanged(net.minecraft.core.Direction direction, BlockState state, BlockPos pos, BlockPos neighborPos,
+                                     int flags, int recursionLeft) {
+        updater.shapeUpdate(direction, state, pos, neighborPos, flags, recursionLeft);
+    }
+
+    @Override
+    public void blockUpdated(BlockPos pos, Block block) {
+        updateNeighborsAt(pos, block);
+    }
+
+    /** A block entity's contents changed: comparators hear of it, in a space whose writes will be applied. */
+    @Override
+    public void updateNeighbourForOutputSignal(BlockPos pos, Block block) {
+        if (!cells.afterItsCall(live -> live.updateNeighbourForOutputSignal(pos, block))) super.updateNeighbourForOutputSignal(pos, block);
+    }
+
+    /** Asked of the real chunk the grid is in: a chunk at this virtual position would be loaded, or made, for nothing. */
+    @Override
+    public void blockEntityChanged(BlockPos pos) {
+        real.blockEntityChanged(realPos);
     }
 
     @Override
@@ -105,12 +157,12 @@ public class FakeLevel extends Level implements FakeSpace {
      */
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        if (!cells.scheduleTick(pos, block, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        scheduleTick(pos, block, delay, TickPriority.NORMAL);
     }
 
     /**
@@ -123,12 +175,12 @@ public class FakeLevel extends Level implements FakeSpace {
      */
     @Override
     public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        if (!cells.scheduleTick(pos, fluid, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
     public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        scheduleTick(pos, fluid, delay, TickPriority.NORMAL);
     }
 
     // --- Redirected to the fake cell space ---
@@ -153,8 +205,7 @@ public class FakeLevel extends Level implements FakeSpace {
 
     @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
-        cells.set(pos, state);
-        return true;
+        return FakeWrites.setBlock(this, cells, pos, state, flags, recursionLeft);
     }
 
     @Nullable
@@ -231,6 +282,11 @@ public class FakeLevel extends Level implements FakeSpace {
      */
     @Override
     public void blockEvent(BlockPos pos, Block block, int id, int param) {
+        if (!cells.blockEvent(pos, block, id, param)) runBlockEvent(pos, block, id, param);
+    }
+
+    /** Runs a block event now and tells the clients: when the level gets to it (GridTickScheduler). */
+    public void runBlockEvent(BlockPos pos, Block block, int id, int param) {
         // Unconditional diagnostic (issue #34's live investigation): confirms whether
         // triggerEvent's own internal logic (e.g. PistonBaseBlock's moveBlocks) actually changed
         // anything, since Level#blockEvent's return type is void and discards triggerEvent's own
@@ -300,7 +356,9 @@ public class FakeLevel extends Level implements FakeSpace {
     @Override
     public void gameEvent(Holder<net.minecraft.world.level.gameevent.GameEvent> event,
                            net.minecraft.world.phys.Vec3 pos,
-                           net.minecraft.world.level.gameevent.GameEvent.Context context) {}
+                           net.minecraft.world.level.gameevent.GameEvent.Context context) {
+        cells.gameEvent(event, pos, context);
+    }
 
     @Override
     public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
@@ -310,12 +368,12 @@ public class FakeLevel extends Level implements FakeSpace {
 
     @Override
     public net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.block.Block> getBlockTicks() {
-        return net.minecraft.world.ticks.BlackholeTickAccess.emptyLevelList();
+        return blockTicks;
     }
 
     @Override
     public net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.material.Fluid> getFluidTicks() {
-        return net.minecraft.world.ticks.BlackholeTickAccess.emptyLevelList();
+        return fluidTicks;
     }
 
     @Override

@@ -91,9 +91,6 @@ public final class ConnectorPlacement {
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, cell, facing);
         piece.runtimeState = target.state();
         if (!be.placePiece(piece)) return false;
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(target.state(), fakeLevel, fakeLevel.world(cell), Blocks.AIR.defaultBlockState(), false);
-        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         BlockPos subgridPos = be.getBlockPos();
         level.sendBlockUpdated(subgridPos, level.getBlockState(subgridPos), level.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
         return true;
@@ -146,11 +143,6 @@ public final class ConnectorPlacement {
     public static boolean place(SubgridBlockEntity be, ServerLevel level, Direction face) {
         PlacedPiece piece = ShaftConnectorPiece.create(be, face);
         if (piece == null || !be.placePiece(piece)) return false;
-        // Same as a one-cell placement: tell the block it was placed, so Create attaches it to the network.
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(ShaftConnectorPiece.stateFor(face, be.getGridSize()), fakeLevel, fakeLevel.world(piece.anchor),
-                Blocks.AIR.defaultBlockState(), false);
-        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         BlockPos subgridPos = be.getBlockPos();
         level.sendBlockUpdated(subgridPos, level.getBlockState(subgridPos), level.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
         return true;

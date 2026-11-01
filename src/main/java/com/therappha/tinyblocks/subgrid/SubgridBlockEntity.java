@@ -47,7 +47,16 @@ public class SubgridBlockEntity extends BlockEntity {
     public Object renderCache;
 
     /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
-    public record ScheduledPieceTick(int x, int y, int z, long targetGameTime) {}
+    public record ScheduledPieceTick(int x, int y, int z, long targetGameTime, int priority, long order,
+                                     @Nullable Object type) {
+        ScheduledPieceTick(int x, int y, int z, long targetGameTime) {
+            this(x, y, z, targetGameTime, 0, GridTickScheduler.nextOrder(), null);
+        }
+
+        boolean at(int x, int y, int z, @Nullable Object type) {
+            return this.x == x && this.y == y && this.z == z && (type == null || this.type == null || this.type == type);
+        }
+    }
     private final List<ScheduledPieceTick> scheduledTicks = new ArrayList<>();
 
     /**
@@ -154,8 +163,74 @@ public class SubgridBlockEntity extends BlockEntity {
      * and throws ArrayIndexOutOfBoundsException the next server tick.
      */
     public void scheduleTick(int x, int y, int z, long targetGameTime) {
-        if (outOfBounds(x, y, z)) return;
-        scheduledTicks.add(new ScheduledPieceTick(x, y, z, targetGameTime));
+        scheduleTick(x, y, z, targetGameTime, 0, null);
+    }
+
+    /**
+     * Like a level's tick list, one tick at a time per cell and {@code type} (a Block or a Fluid): asking again while one
+     * is pending does nothing. A repeater hearing its input twice ticks once.
+     */
+    public void scheduleTick(int x, int y, int z, long targetGameTime, int priority, @Nullable Object type) {
+        if (outOfBounds(x, y, z) || tickPending(x, y, z, type)) return;
+        scheduledTicks.add(new ScheduledPieceTick(x, y, z, targetGameTime, priority, GridTickScheduler.nextOrder(), type));
+        GridTickScheduler.wake(this);
+    }
+
+    public boolean tickPending(int x, int y, int z, @Nullable Object type) {
+        for (ScheduledPieceTick tick : scheduledTicks) {
+            if (tick.at(x, y, z, type)) return true;
+        }
+        return false;
+    }
+
+    /** Whether such a tick is taken for this tick and still to run, which a level answers with willTickThisTick. */
+    public boolean tickDue(int x, int y, int z, @Nullable Object type) {
+        for (ScheduledPieceTick tick : dueTicks) {
+            if (tick.at(x, y, z, type)) return true;
+        }
+        return false;
+    }
+
+    boolean hasScheduledTicks() {
+        return !scheduledTicks.isEmpty();
+    }
+
+    private final List<ScheduledPieceTick> dueTicks = new ArrayList<>();
+
+    /** Hands {@code due} the ticks whose time has come, which stop being pending in the queue and wait in dueTicks. */
+    void takeDue(long now, java.util.function.Consumer<ScheduledPieceTick> due) {
+        scheduledTicks.removeIf(tick -> {
+            if (tick.targetGameTime() > now) return false;
+            dueTicks.add(tick);
+            due.accept(tick);
+            return true;
+        });
+    }
+
+    /** As ServerLevel#tickBlock: a tick for a block no longer there is dropped. */
+    void runDue(ServerLevel level, ScheduledPieceTick tick) {
+        dueTicks.remove(tick);
+        PlacedPiece piece = getPieceAt(tick.x(), tick.y(), tick.z());
+        if (piece == null) return;
+        try {
+            piece.definition.scheduledTick(piece, level, worldPosition, this, tick.type());
+        } catch (Exception e) {
+            logTickFailure("scheduledTick", piece, e);
+        }
+    }
+
+    void runBlockEvent(ServerLevel level, GridTickScheduler.BlockEvent event) {
+        try {
+            com.therappha.tinyblocks.v2.VanillaBlockPiece.INSTANCE.blockEvent(level, this, event);
+        } catch (Exception e) {
+            LOGGER.error("v2 block event at {} in grid {} failed", event.pos(), worldPosition, e);
+        }
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (hasScheduledTicks()) GridTickScheduler.wake(this);
     }
 
     public SubgridBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
@@ -175,6 +250,22 @@ public class SubgridBlockEntity extends BlockEntity {
 
     // --- Public API ---
 
+    /**
+     * Above zero while the result of a fake space's call is written into pieces: every update that follows from it ran
+     * in that call (FakeWrites), and telling the neighbours again would be a second update vanilla doesn't send. Shared
+     * by all grids, since such a write can land in the next one; the server thread is the only one here.
+     */
+    private static int applyingSettled = 0;
+
+    public static void whileApplyingSettled(Runnable write) {
+        applyingSettled++;
+        try {
+            write.run();
+        } finally {
+            applyingSettled--;
+        }
+    }
+
     public boolean placePiece(PlacedPiece piece) {
         if (!canFit(piece)) return false;
         addToGrid(piece);
@@ -183,15 +274,14 @@ public class SubgridBlockEntity extends BlockEntity {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
                     new net.minecraft.world.level.ChunkPos(worldPosition),
                     new com.therappha.tinyblocks.network.SubgridPieceAddedPayload(worldPosition, piece.save()));
+            if (syncObserver != null) syncObserver.accept(piece.anchor);
         }
-        notifyNeighbors(piece);
-        // The piece also needs to react to the neighbors it was just placed next to —
-        // notifyNeighbors() only informs the pieces around it, not itself.
-        if (level instanceof ServerLevel serverLevel) {
+        pieceVersion++;
+        if (level instanceof ServerLevel serverLevel && applyingSettled == 0) {
             try {
-                piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
+                piece.definition.afterPlaced(piece, serverLevel, this);
             } catch (Exception e) {
-                logTickFailure("onNeighborChanged (self)", piece, e);
+                logTickFailure("afterPlaced", piece, e);
             }
         }
         return true;
@@ -318,9 +408,11 @@ public class SubgridBlockEntity extends BlockEntity {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
                     new net.minecraft.world.level.ChunkPos(worldPosition),
                     new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+            if (syncObserver != null) syncObserver.accept(new BlockPos(x, y, z));
             removed.definition.onRemoved(removed, serverLevel, this);
+            if (applyingSettled == 0) removed.definition.afterRemoved(removed, serverLevel, this);
+            else pieceVersion++;
         }
-        notifyNeighbors(removed);
         return removed;
     }
 
@@ -617,7 +709,6 @@ public class SubgridBlockEntity extends BlockEntity {
         }
         if (dirty) notifyUpdate();
 
-        drainScheduledTicks(level);
         sampleRandomTicks(level);
         tickPendingDrops(level);
         flushPhantomData(level);
@@ -654,27 +745,6 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     private static void logTickFailure(String phase, PlacedPiece piece, Exception e) {
         LOGGER.error("v2 piece {} at {} threw during {}", piece.definition.id(), piece.anchor, phase, e);
-    }
-
-    /** Fires piece.definition.scheduledTick(...) for every request whose target tick has arrived. */
-    private void drainScheduledTicks(ServerLevel level) {
-        if (scheduledTicks.isEmpty()) return;
-        long now = level.getGameTime();
-        List<ScheduledPieceTick> due = new ArrayList<>();
-        scheduledTicks.removeIf(st -> {
-            if (st.targetGameTime() > now) return false;
-            due.add(st);
-            return true;
-        });
-        for (ScheduledPieceTick st : due) {
-            PlacedPiece piece = getPieceAt(st.x(), st.y(), st.z());
-            if (piece == null) continue;
-            try {
-                piece.definition.scheduledTick(piece, level, worldPosition, this);
-            } catch (Exception e) {
-                logTickFailure("scheduledTick", piece, e);
-            }
-        }
     }
 
     /**
@@ -780,6 +850,8 @@ public class SubgridBlockEntity extends BlockEntity {
     public CellRef resolve(int x, int y, int z) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
         if (!(level instanceof ServerLevel serverLevel)) return logResolve(null, x, y, z, new CellRef.OutOfScope());
+        CellRef direct = directlyInGrid(serverLevel, x, y, z);
+        if (direct != null) return logResolve(null, x, y, z, direct);
 
         SubgridBlockEntity grid = this;
         int lx = x, ly = y, lz = z;
@@ -809,6 +881,18 @@ public class SubgridBlockEntity extends BlockEntity {
         if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
         CellRef result = grid == this ? new CellRef.Local(lx, ly, lz) : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
         return logResolve(firstHop, x, y, z, result);
+    }
+
+    /**
+     * The cell where a grid of this size holds it, whatever stands between here and there. Walking there axis by axis
+     * gives up at a gap: a cell diagonal to this grid, past a corner with no grid on the way, came out as the real block
+     * there, which is that very grid's SubgridBlock answering with its whole face. Null when no such grid is there.
+     */
+    @Nullable
+    private CellRef directlyInGrid(ServerLevel level, int x, int y, int z) {
+        BlockPos target = worldPosition.offset(Math.floorDiv(x, gridSize), Math.floorDiv(y, gridSize), Math.floorDiv(z, gridSize));
+        if (!(level.getBlockEntity(target) instanceof SubgridBlockEntity grid) || grid.gridSize != gridSize) return null;
+        return new CellRef.InAdjacentGrid(grid, Math.floorMod(x, gridSize), Math.floorMod(y, gridSize), Math.floorMod(z, gridSize));
     }
 
     /** One hop's worth of wrap — subtracts/adds exactly one gridSize, may still be out of bounds. */
@@ -868,6 +952,8 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     public CellRef resolveOrCreate(int x, int y, int z, ServerLevel realLevel) {
         if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
+        CellRef direct = directlyInGrid(realLevel, x, y, z);
+        if (direct != null) return logResolve(null, x, y, z, direct);
 
         SubgridBlockEntity grid = this;
         int lx = x, ly = y, lz = z;
@@ -959,7 +1045,7 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     public void notifyNeighbors(PlacedPiece changed) {
         pieceVersion++;
-        if (!(level instanceof ServerLevel)) return;
+        if (!(level instanceof ServerLevel) || applyingSettled > 0) return;
         for (Neighbor neighbor : neighborsOf(changed)) {
             if (neighbor.be().level instanceof ServerLevel neighborLevel) {
                 try {
@@ -1055,10 +1141,17 @@ public class SubgridBlockEntity extends BlockEntity {
         };
     }
 
+    /**
+     * Told of what this grid sends its clients, for a comparison of what they draw (TinySpaceView): the cell of a piece
+     * added or removed, or null when all of them went. Holds nothing unless something is comparing.
+     */
+    @Nullable public java.util.function.Consumer<BlockPos> syncObserver;
+
     public void notifyUpdate() {
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+            if (syncObserver != null) syncObserver.accept(null);
             markNeighbouringPhantomsDirty();
         }
     }
@@ -1278,7 +1371,8 @@ public class SubgridBlockEntity extends BlockEntity {
         level.updateNeighborsAt(worldPosition, block);
         for (Direction face : Direction.values()) {
             if (strongFaceBefore[face.ordinal()] != strongFace[face.ordinal()]) {
-                level.updateNeighborsAt(worldPosition.relative(face), block); // what that block now powers in turn
+                // What that block now powers in turn; not back to this grid, whose pieces have nothing new to hear.
+                level.updateNeighborsAtExceptFromFacing(worldPosition.relative(face), block, face.getOpposite());
             }
         }
     }

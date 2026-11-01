@@ -133,7 +133,7 @@ Return `InteractionResult.PASS` to fall through to SubgridBlock's default behavi
 
 ### Neighbor propagation
 
-Mirrors vanilla `neighborChanged`. Fires when a piece adjacent to this one (touching face-to-face, within the same subgrid) is placed, removed, or has its `tick()` return `true`:
+Mirrors vanilla `neighborChanged`. For a custom `PieceDefinition`, fires when a piece adjacent to this one (touching face-to-face) is placed, removed, or has its `tick()` return `true`. Vanilla blocks held by `VanillaBlockPiece` don't go through this: a write in a fake space runs what `Level#setBlock` runs (`onRemove`, `onPlace`, neighbour and shape updates, in vanilla's order) inside the same call.
 
 ```java
 @Override
@@ -160,6 +160,33 @@ public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridP
 ```
 
 ---
+
+## Comparing a grid with the real world
+
+`SpaceDiff` compares a box of real blocks with a box of cells, cell by cell, and says in words what differs: *estado* (block and properties, redstone level included), *funcionamento* (comparator output, analog signal, what a container holds) and *visual* (what the grid last sent its clients).
+
+The real world is the reference: a scene never states what should happen.
+
+- **Fixed scenes:** `RedstoneParityGameTest` builds a scene once, in cells, and runs it in the world, in three more real copies, and in tiny grids cut in several ways, comparing every tick. The other real copies are a control: where any of them disagrees with the first, vanilla has no single answer and that field is left out.
+- **Random scenes:** `RandomRedstoneScene` walks connected circuits from a seed.
+- **Reports:** one per test in `run/space-diff/`.
+
+```bash
+./gradlew runGameTestServer -PgameTestFilter=parity_                  # only these tests
+./gradlew runGameTestServer -PgameTestFilter=parity_ -PrandomSeeds=1000   # a longer hunt
+./gradlew runGameTestServer -PgameTestFilter=shrink_ -PshrinkSeed=11 -Psprint=true   # cut a failing seed down
+```
+
+Don't compare with `-Psprint=true`: chunks lag behind the game and even the real copies disagree. It is only for the shrinker, which waits between attempts.
+
+In game, from a real corner and a grid corner:
+
+```
+/tinyblocks diff <real> <grid> <gridSize> <width> <height> <depth>
+/tinyblocksclient diff <real> <grid> <gridSize> <width> <height> <depth>
+```
+
+The first runs on the server. The second runs on the client and compares the pieces it holds with the real blocks it holds and with the integrated server: GameTests never see a client, so this is what covers client-level state. Neither compares pixels.
 
 ## Runtime state
 
