@@ -20,7 +20,6 @@
   "itemGroup.tinyblocks.main": "TinyBlocks",
   "block.tinyblocks.shaft_connector": "Conector de Eixo",
   "key.categories.tinyblocks": "TinyBlocks",
-  "key.tinyblocks.minimizer_mode": "Modo de construção do Minimizer",
   "tinyblocks.build_mode.place": "Normal",
   "tinyblocks.build_mode.fill": "Preencher",
   "tinyblocks.build_mode.hollow": "Oco",
@@ -66,7 +65,7 @@
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\nAperte X com ele na mão para encolher até o tamanho dele.\n\nO alcance continua normal. Aperte X de novo para voltar. Sair do mundo não desfaz.",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\nGuarda um grid inteiro no item.\n\nClique num grid: ele sai do mundo com tudo dentro, sem dropar nada.",
   "tinyblocks.guide.page.13": "§lColocando de volta§r\n\nCom ele na mão, um fantasma mostra onde o grid vai ficar.\n\nR gira um quarto.\n\nClique para colocar a caixa e botão direito nela para abrir. Quebrar a caixa devolve o Grid Save.",
-  "tinyblocks.guide.page.14": "§lRecortar ou copiar§r\n\nBotão direito no ar troca.\n\nRecortar, o padrão: o grid sai do mundo.\n\nCopiar, só no criativo: o grid fica, e o item guarda uma cópia.",
+  "tinyblocks.guide.page.14": "§lRecortar ou copiar§r\n\nShift+H troca, a mesma tecla dos modos do Minimizer.\n\nRecortar, o padrão: o grid sai do mundo.\n\nCopiar, só no criativo: o grid fica e o item guarda uma cópia.",
   "tinyblocks.guide.page.15": "§lModo seleção§r\n\nCom ele vazio, agache e clique um canto. Clique o outro.\n\nVerde: dá para pegar.\nAmarelo: não dá.\n\nAté 4 grids, 4 blocos por lado.",
   "tinyblocks.guide.page.16": "§lQuando recusa§r\n\nAlgo no grid ainda se move, como um pistão.\n\nO grid guarda coisa demais.\n\nNa hora de colocar, o lugar está ocupado.",
   "tinyblocks.guide.page.17": "§lShaft Connector§r\n\nLiga o giro do Create entre o mundo grande e o grid.\n\nClique numa peça do grid: ele vai para a face mais próxima. Num eixo pequeno, vai para a ponta da linha.",
@@ -78,8 +77,8 @@
   "tinyblocks.build_mode.destroy": "Destruir",
   "item.tinyblocks.grid_save.mode_cut": "Modo: Recortar",
   "item.tinyblocks.grid_save.mode_copy": "Modo: Copiar (o grid fica onde está)",
-  "item.tinyblocks.grid_save.tooltip_cut": "Recortar: tira o grid do lugar (botão direito no ar troca)",
-  "item.tinyblocks.grid_save.tooltip_copy": "Copiar: deixa o grid no lugar (botão direito no ar troca)",
+  "item.tinyblocks.grid_save.tooltip_cut": "Recortar: tira o grid do lugar (Shift+H troca)",
+  "item.tinyblocks.grid_save.tooltip_copy": "Copiar: deixa o grid no lugar (Shift+H troca)",
   "item.tinyblocks.grid_save.copy_creative": "Copiar só funciona no criativo",
   "item.tinyblocks.minimizer.tooltip_scroll": "Segure Z para escolher o tamanho",
   "tinyblocks.hud.minimizer": "1/%s · %s",
@@ -92,5 +91,6 @@
   "key.tinyblocks.minimizer_size": "Escolher o tamanho do Minimizer (segurar)",
   "block.tinyblocks.grid_box": "Grid na Caixa",
   "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada",
-  "item.tinyblocks.grid_save.belt_cut": "Uma esteira continua num grid que você não selecionou: selecione os dois"
+  "item.tinyblocks.grid_save.belt_cut": "Uma esteira continua num grid que você não selecionou: selecione os dois",
+  "key.tinyblocks.mode": "Modo TinyBlocks (do item na mão)"
 }

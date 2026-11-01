@@ -17,12 +17,12 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Shift+H (rebindable) switches a held Minimizer's build mode; with a shape's first corner held, Ctrl + scroll
+ * Shift+H (rebindable) switches the mode of what is in hand: a Minimizer's build mode, a Grid Save's cut or copy; with a shape's first corner held, Ctrl + scroll
  * raises or lowers the second corner (as Simulated's honey glue grows its box), instead of changing hotbar slot.
  */
 public final class MinimizerKeys {
 
-    public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.minimizer_mode",
+    public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.mode",
             KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H,
             "key.categories.tinyblocks");
 
@@ -67,10 +67,7 @@ public final class MinimizerKeys {
             Minecraft mc = Minecraft.getInstance();
             while (NEXT_MODE.consumeClick()) {
                 if (mc.player == null) return;
-                if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem
-                        || mc.player.getMainHandItem().getItem() instanceof MinimizerItem) {
-                    PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
-                }
+                PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
             }
         }
 

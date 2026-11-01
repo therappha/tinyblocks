@@ -168,11 +168,11 @@ public class GridSaveGameTest {
         ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
         player.setItemInHand(InteractionHand.MAIN_HAND, save);
 
-        save.use(level, player, InteractionHand.MAIN_HAND);
+        GridSaveItem.switchMode(save, player);
         helper.assertTrue(!GridSaveItem.isCopy(save), "survival switched to copying");
 
         player.getAbilities().instabuild = true;
-        save.use(level, player, InteractionHand.MAIN_HAND);
+        GridSaveItem.switchMode(save, player);
         helper.assertTrue(GridSaveItem.isCopy(save), "the click in the air didn't switch to copying");
         player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, LINK.below()));
         helper.assertTrue(GridSaveItem.isFull(save), "the Grid Save copied nothing");

@@ -20,7 +20,6 @@
   "itemGroup.tinyblocks.main": "TinyBlocks",
   "block.tinyblocks.shaft_connector": "Shaft Connector",
   "key.categories.tinyblocks": "TinyBlocks",
-  "key.tinyblocks.minimizer_mode": "Minimizer build mode",
   "tinyblocks.build_mode.place": "Normal",
   "tinyblocks.build_mode.fill": "Fill",
   "tinyblocks.build_mode.hollow": "Hollow",
@@ -66,7 +65,7 @@
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\nPress X with it in hand to shrink to its size.\n\nYour reach stays the same. Press X again to go back. Leaving the world doesn't undo it.",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\nKeeps a whole grid in the item.\n\nClick a grid: it leaves the world with everything inside, and nothing drops.",
   "tinyblocks.guide.page.13": "§lPlacing it back§r\n\nWith it in hand, a ghost shows where the grid will go.\n\nR turns it a quarter.\n\nClick to put the box down, then right-click the box to unbox it. Breaking the box gives the Grid Save back.",
-  "tinyblocks.guide.page.14": "§lCut or copy§r\n\nRight-click the air to switch.\n\nCut, the default: the grid leaves the world.\n\nCopy, creative only: the grid stays and the item keeps a copy.",
+  "tinyblocks.guide.page.14": "§lCut or copy§r\n\nShift+H switches, the same key as the Minimizer's modes.\n\nCut, the default: the grid leaves the world.\n\nCopy, creative only: the grid stays and the item keeps a copy.",
   "tinyblocks.guide.page.15": "§lSelection mode§r\n\nEmpty, sneak-click one corner, then click the other.\n\nGreen: it can take it.\nYellow: it can't.\n\nUp to 4 grids, 4 blocks a side. Sneak-click the air to cancel.",
   "tinyblocks.guide.page.16": "§lWhen it refuses§r\n\nSomething in the grid is still moving, like a piston.\n\nThe grid holds too much.\n\nWhen placing, the spot is taken.",
   "tinyblocks.guide.page.17": "§lShaft Connector§r\n\nJoins Create's rotation between the big world and a grid.\n\nClick a piece of the grid: it goes on the nearest face. On a tiny shaft, at the end of its line.",
@@ -78,8 +77,8 @@
   "tinyblocks.build_mode.destroy": "Destroy",
   "item.tinyblocks.grid_save.mode_cut": "Mode: Cut",
   "item.tinyblocks.grid_save.mode_copy": "Mode: Copy (the grid stays where it is)",
-  "item.tinyblocks.grid_save.tooltip_cut": "Cut: takes the grid away (right-click the air to switch)",
-  "item.tinyblocks.grid_save.tooltip_copy": "Copy: leaves the grid there (right-click the air to switch)",
+  "item.tinyblocks.grid_save.tooltip_cut": "Cut: takes the grid away (Shift+H to switch)",
+  "item.tinyblocks.grid_save.tooltip_copy": "Copy: leaves the grid there (Shift+H to switch)",
   "item.tinyblocks.grid_save.copy_creative": "Copy is for creative mode only",
   "item.tinyblocks.minimizer.tooltip_scroll": "Hold Z to pick its size",
   "tinyblocks.hud.minimizer": "1/%s · %s",
@@ -92,5 +91,6 @@
   "key.tinyblocks.minimizer_size": "Pick the Minimizer's size (hold)",
   "block.tinyblocks.grid_box": "Boxed Grid",
   "tinyblocks.grid_box.blocked": "Something is in the way: the box stays closed",
-  "item.tinyblocks.grid_save.belt_cut": "A belt runs into a grid you didn't select: select both"
+  "item.tinyblocks.grid_save.belt_cut": "A belt runs into a grid you didn't select: select both",
+  "key.tinyblocks.mode": "TinyBlocks mode (of the item in hand)"
 }

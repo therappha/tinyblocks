@@ -20,7 +20,6 @@
   "itemGroup.tinyblocks.main": "TinyBlocks",
   "block.tinyblocks.shaft_connector": "傳動軸連接器",
   "key.categories.tinyblocks": "TinyBlocks",
-  "key.tinyblocks.minimizer_mode": "Minimizer 建造模式",
   "tinyblocks.build_mode.place": "普通",
   "tinyblocks.build_mode.fill": "填充",
   "tinyblocks.build_mode.hollow": "空心",
@@ -66,7 +65,7 @@
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\n手持它按 X,縮小到它的尺寸。\n\n觸及距離不變。再按 X 恢復。退出世界不會恢復。",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\n把整個網格存進物品。\n\n點擊網格:它連同所有內容離開世界,不會掉落。",
   "tinyblocks.guide.page.13": "§l放回§r\n\n拿在手中時,虛影顯示網格的位置。\n\nR 旋轉四分之一圈。\n\n點擊放下箱子,再右鍵打開箱子。破壞箱子會返還 Grid Save。",
-  "tinyblocks.guide.page.14": "§l剪下或複製§r\n\n右鍵點擊空氣切換。\n\n剪下(預設):網格離開世界。\n\n複製(僅創造模式):網格留下,物品保存副本。",
+  "tinyblocks.guide.page.14": "§l剪下或複製§r\n\nShift+H 切換,與 Minimizer 的模式相同的按鍵。\n\n剪下(預設):網格離開世界。\n\n複製(僅創造):網格保留,物品存一份副本。",
   "tinyblocks.guide.page.15": "§l選取模式§r\n\n物品為空時,潛行點擊一個角,再點擊另一個角。\n\n綠色:可以取走。\n黃色:不可以。\n\n最多 4 個網格,每邊 4 格。潛行點擊空氣取消。",
   "tinyblocks.guide.page.16": "§l何時拒絕§r\n\n網格裡還有東西在移動,比如活塞。\n\n網格內容太多。\n\n放置時位置被佔用。",
   "tinyblocks.guide.page.17": "§lShaft Connector§r\n\n在大世界和網格之間傳遞機械動力的旋轉。\n\n點擊網格裡的小方塊:它放在最近的面。點擊小傳動桿:放在該線末端。",
@@ -78,8 +77,8 @@
   "tinyblocks.build_mode.destroy": "破壞",
   "item.tinyblocks.grid_save.mode_cut": "模式:剪下",
   "item.tinyblocks.grid_save.mode_copy": "模式:複製(網格留在原處)",
-  "item.tinyblocks.grid_save.tooltip_cut": "剪下:取走網格(右鍵點擊空氣切換)",
-  "item.tinyblocks.grid_save.tooltip_copy": "複製:網格留在原處(右鍵點擊空氣切換)",
+  "item.tinyblocks.grid_save.tooltip_cut": "剪下:移走網格(Shift+H 切換)",
+  "item.tinyblocks.grid_save.tooltip_copy": "複製:保留網格(Shift+H 切換)",
   "item.tinyblocks.grid_save.copy_creative": "複製只能在創造模式使用",
   "item.tinyblocks.minimizer.tooltip_scroll": "按住 Z 選擇尺寸",
   "tinyblocks.hud.minimizer": "1/%s · %s",
@@ -92,5 +91,6 @@
   "key.tinyblocks.minimizer_size": "選擇 Minimizer 尺寸(按住)",
   "block.tinyblocks.grid_box": "裝箱的網格",
   "tinyblocks.grid_box.blocked": "有東西擋住了:箱子保持關閉",
-  "item.tinyblocks.grid_save.belt_cut": "輸送帶延伸到未選擇的網格:請同時選擇兩個"
+  "item.tinyblocks.grid_save.belt_cut": "輸送帶延伸到未選擇的網格:請同時選擇兩個",
+  "key.tinyblocks.mode": "TinyBlocks 模式(手中物品)"
 }

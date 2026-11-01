@@ -276,17 +276,18 @@ public class GridSaveItem extends Item {
             }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         }
-        // Not sneaking: switches between cutting and copying.
-        if (!level.isClientSide) {
-            if (!isCopy(stack) && !player.hasInfiniteMaterials()) {
-                tell(player, "item.tinyblocks.grid_save.copy_creative");
-            } else {
-                boolean copy = !isCopy(stack);
-                CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.putBoolean(COPY_KEY, copy));
-                tell(player, copy ? "item.tinyblocks.grid_save.mode_copy" : "item.tinyblocks.grid_save.mode_cut");
-            }
+        return InteractionResultHolder.pass(stack);
+    }
+
+    /** The mode key: switches between cutting and copying. Copying makes pieces out of nothing, so it's creative only. */
+    public static void switchMode(ItemStack stack, Player player) {
+        if (!isCopy(stack) && !player.hasInfiniteMaterials()) {
+            tell(player, "item.tinyblocks.grid_save.copy_creative");
+            return;
         }
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        boolean copy = !isCopy(stack);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.putBoolean(COPY_KEY, copy));
+        tell(player, copy ? "item.tinyblocks.grid_save.mode_copy" : "item.tinyblocks.grid_save.mode_cut");
     }
 
     /** Put away, or taken to another dimension, it forgets the corner it was selecting from. */
