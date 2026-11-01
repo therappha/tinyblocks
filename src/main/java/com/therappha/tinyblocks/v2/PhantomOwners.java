@@ -34,10 +34,14 @@ public final class PhantomOwners {
         OWNERS.put(phantom, new Owner(new WeakReference<>(grid), piece.anchor.immutable()));
     }
 
-    /** Where in the real world a live phantom is (its SubgridBlock's position), or null for anything else. */
+    /**
+     * Where in the real world a phantom is (its SubgridBlock's position), or null for anything else. Still answered
+     * for one on its way out, its piece or grid already gone: a tiny link leaving tells its network from here, and
+     * from its virtual position every link in the network would be out of range and stay powered.
+     */
     @Nullable
     public static BlockPos realPosOf(BlockEntity be) {
-        Owner owner = of(be);
+        Owner owner = OWNERS.get(be);
         SubgridBlockEntity grid = owner == null ? null : owner.grid();
         return grid == null ? null : grid.getBlockPos();
     }

@@ -11,6 +11,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -96,6 +98,13 @@ public abstract class PieceDefinition {
 
     /** Called before a piece is saved. Flush runtimeState into extraData here. */
     public void onSaving(PlacedPiece piece, HolderLookup.Provider registries) {}
+
+    /**
+     * Called on a piece SubgridBlockEntity#transform has just moved to its new cell and facing (after onLoaded):
+     * turn whatever else it keeps that has a direction (its block state, its block entity data) the same way.
+     * The mirror applies first, as in a vanilla structure.
+     */
+    public void transform(PlacedPiece piece, Rotation rotation, Mirror mirror, HolderLookup.Provider registries) {}
 
     /** True if this piece needs a server-side tick every game tick. */
     public boolean requiresTick() { return false; }

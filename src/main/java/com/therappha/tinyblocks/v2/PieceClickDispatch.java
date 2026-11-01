@@ -37,6 +37,11 @@ public final class PieceClickDispatch {
 
     private PieceClickDispatch() {}
 
+    /** True for the stand-in a click on a piece is posted with: it aims where the real player did. */
+    public static boolean isStandIn(Player player) {
+        return player instanceof FakePlayer && PROXY.getId().equals(player.getUUID());
+    }
+
     /** True if a listener took the click (cancelled the event). */
     public static boolean dispatch(SubgridBlockEntity be, PlacedPiece piece, FakeServerLevel space, Player player,
                                    InteractionHand hand, BlockHitResult hit) {

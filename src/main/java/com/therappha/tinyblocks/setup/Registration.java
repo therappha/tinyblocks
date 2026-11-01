@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPistonItem;
 import com.therappha.tinyblocks.items.TinyRedstoneBlockItem;
@@ -126,6 +127,10 @@ public class Registration {
     // Test tool for the PieceRemoverTool capability — only obtainable via /give
     public static final DeferredHolder<Item, Item> PIECE_REMOVER_STICK =
             ITEMS.register("piece_remover_stick", () -> new Item(new Item.Properties()));
+
+    // Carries a whole grid to somewhere else (GridSaveItem)
+    public static final DeferredHolder<Item, GridSaveItem> GRID_SAVE =
+            ITEMS.register("grid_save", () -> new GridSaveItem(new Item.Properties()));
 
     // v2 debug tool: held in the offhand, lets any BlockItem in the main hand create/place into
     // a subgrid instead of placing normally — only obtainable via /give. Same four grid sizes as

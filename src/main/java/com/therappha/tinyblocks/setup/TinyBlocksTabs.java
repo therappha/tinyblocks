@@ -21,6 +21,7 @@ public class TinyBlocksTabs {
                         // One Minimizer: its size is picked on it (the fixed-size ones stay registered for old worlds).
                         output.accept(Registration.MINIMIZER.get());
                         output.accept(com.therappha.tinyblocks.compat.create.CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
+                        output.accept(Registration.GRID_SAVE.get());
                     })
                     .build());
 

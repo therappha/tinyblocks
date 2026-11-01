@@ -45,6 +45,8 @@ public class SubgridEventHandler {
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
+        // Only a question (may the player take the whole grid?), for the protections to answer.
+        if (com.therappha.tinyblocks.items.GridSaveItem.isAskingToBreak()) return;
         event.setCanceled(true);
 
         ServerLevel level = (ServerLevel) event.getLevel();
@@ -148,6 +150,8 @@ public class SubgridEventHandler {
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
+        // A Grid Save takes or places the whole grid (its onItemUseFirst), not a piece in it.
+        if (stack.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) return;
         // Only a real BlockItem can ever PLACE a new piece; other items (hoe, axe, shovel, ...)
         // can still MODIFY an existing piece via their own useOn — see runItemInteraction below.
         BlockItem blockItem = stack.getItem() instanceof BlockItem bi && !(bi.getBlock() instanceof SubgridBlock)
@@ -337,11 +341,20 @@ public class SubgridEventHandler {
         BlockPos fakeAnchor = new BlockPos(nx, ny, nz); // local cell
         FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
         BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
-        BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, hit.isInside());
-        BlockPlaceContext placeCtx = new BlockPlaceContext(
-                new UseOnContext(fakeLevel, player, event.getHand(), stack, fakeHit));
+        // Handed to vanilla as a click on the cell behind the clicked face, at the spot that was hit, as a real
+        // placement would be: a wall torch, a button or a lever attaches to the face (not the ground), a slab or
+        // stairs takes its half from where the face was hit.
+        BlockHitResult fakeHit = new BlockHitResult(clickOnCell(at, face, hit.getLocation(), be.gridSize), face,
+                at.relative(face.getOpposite()), hit.isInside());
+        BlockPlaceContext placeCtx = new BlockPlaceContext(fakeLevel, player, event.getHand(), stack, fakeHit) {{
+            // The clicked cell is never replaced: the piece goes into the empty cell at, even when the clicked
+            // cell reads as replaceable (an empty cell past the grid's edge).
+            replaceClicked = false;
+        }};
 
-        BlockState state = blockItem.getBlock().getStateForPlacement(placeCtx);
+        // The item's placement state, not just the block's: the item picks between two blocks (a torch or a wall
+        // torch, a sign or a wall sign) by the clicked face.
+        BlockState state = ((com.therappha.tinyblocks.mixin.BlockItemAccessor) blockItem).tinyblocks$getPlacementState(placeCtx);
         if (state == null || !state.canSurvive(fakeLevel, at)) return;
 
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
@@ -382,6 +395,23 @@ public class SubgridEventHandler {
             serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
             serverLevel.getBlockTicks().schedule(new ScheduledTick<>(serverLevel.getBlockState(subgridPos).getBlock(), subgridPos, serverLevel.getGameTime() + 2, 0L));
         }
+    }
+
+    /**
+     * The real hit, moved onto the face of the cell at (in the grid's virtual world frame) it was placed against.
+     * Cells are 1/gridSize of a block and every grid sits on whole blocks, so the hit's place within a cell is the
+     * fractional part of its position times gridSize; along the face's axis it lies on the side of at facing the
+     * clicked cell.
+     */
+    static Vec3 clickOnCell(BlockPos at, Direction face, Vec3 hit, int gridSize) {
+        double[] in = new double[3];
+        for (Direction.Axis axis : Direction.Axis.values()) {
+            double scaled = hit.get(axis) * gridSize;
+            in[axis.ordinal()] = axis == face.getAxis()
+                    ? (face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 0 : 1)
+                    : scaled - Math.floor(scaled);
+        }
+        return new Vec3(at.getX() + in[0], at.getY() + in[1], at.getZ() + in[2]);
     }
 
     /**
@@ -467,7 +497,11 @@ public class SubgridEventHandler {
                     removeAndDrop(be, serverLevel, be.getBlockPos(),
                             new Vec3i(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()), player);
                 } else {
+                    // Its state before, not wasState: this space's own record of the cell starts empty.
+                    BlockState previous = (BlockState) piece.runtimeState;
                     piece.runtimeState = touchedState;
+                    // A wrench switching a tiny redstone link: its block entity has to see the new state too.
+                    VanillaBlockPiece.followStateChange(be, piece, previous, touchedState);
                     be.notifyNeighbors(piece);
                     be.notifyUpdate();
                 }

@@ -76,8 +76,8 @@ public class SubgridCreateInteractionGameTest {
                     LinkBehaviour behaviour = BlockEntityBehaviour.get(phantom, LinkBehaviour.TYPE);
                     helper.assertTrue(behaviour != null, "the tiny link has no link behaviour: " + phantom);
                     var key = behaviour.getNetworkKey();
-                    helper.assertTrue(key.getFirst().getStack().is(Items.DIAMOND) || key.getSecond().getStack().is(Items.DIAMOND),
-                            "no frequency was set by the click: " + key.getFirst().getStack() + " / " + key.getSecond().getStack());
+                    helper.assertTrue(key.getFirst().getStack().is(Items.DIAMOND) != key.getSecond().getStack().is(Items.DIAMOND),
+                            "the click did not set exactly one frequency: " + key.getFirst().getStack() + " / " + key.getSecond().getStack());
                 })
                 .thenSucceed();
     }
