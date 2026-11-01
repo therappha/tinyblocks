@@ -4,6 +4,7 @@
   "package": "com.therappha.tinyblocks.mixin.sable",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "PhysicsBlockPropertyHelperMixin",
     "SubLevelAssemblyHelperMixin",
     "VoxelNeighborhoodStateMixin"
   ],
