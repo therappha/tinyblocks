@@ -35,11 +35,8 @@ final class SubgridTestSupport {
     }
 
     /**
-     * Places a single-cell VanillaBlockPiece holding state at anchor, firing onPlace like a real
-     * placement would — including draining any scheduleTick it makes (e.g. LiquidBlock.onPlace
-     * scheduling water's very first spread step) into be's own persistent queue, same as
-     * SubgridEventHandler's real placement flow does. Skipping that drain would leave a
-     * freshly-placed water/growing piece permanently inert — nothing would ever fire its first tick.
+     * Places a single-cell VanillaBlockPiece holding state at anchor. SubgridBlockEntity#placePiece runs what follows a
+     * real placement: onPlace, its first ticks, the updates to what is around it.
      */
     static PlacedPiece placePiece(SubgridBlockEntity be, ServerLevel level, BlockPos anchor, BlockState state) {
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, anchor, Direction.NORTH);
@@ -47,9 +44,6 @@ final class SubgridTestSupport {
         if (!be.placePiece(piece)) {
             throw new IllegalStateException("cell " + anchor + " in subgrid at " + be.getBlockPos() + " is already occupied");
         }
-        FakeLevel fakeLevel = VanillaBlockPiece.buildFakeSpace(be, level);
-        BlockAccess.onPlace(state, fakeLevel, fakeLevel.world(anchor), Blocks.AIR.defaultBlockState(), false);
-        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, level.getGameTime());
         return piece;
     }
 

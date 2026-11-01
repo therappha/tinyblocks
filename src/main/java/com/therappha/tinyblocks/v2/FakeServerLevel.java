@@ -15,7 +15,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.level.redstone.CollectingNeighborUpdater;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.ticks.TickPriority;
@@ -55,6 +54,8 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // Not initialized inline — field initializers are compiled into the constructor, which never
     // runs for a reflection-allocated instance. Set explicitly in create() instead.
     private List<ScheduledEntry> scheduled;
+    private FakeTicks<Block> blockTicks;
+    private FakeTicks<net.minecraft.world.level.material.Fluid> fluidTicks;
 
     @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
@@ -122,6 +123,8 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             instance.delegate = delegateLevel;
             instance.realServer = (ServerLevel) real;
             instance.scheduled = new ArrayList<>();
+            instance.blockTicks = new FakeTicks<>(cells);
+            instance.fluidTicks = new FakeTicks<>(cells);
 
             // Reflection allocation skips the *entire* constructor chain, not just ServerLevel's
             // part — none of Level's own fields (levelData, worldBorder, threadSafeRandom, ...)
@@ -135,7 +138,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             // neighborUpdater specifically gets rebound to `instance` itself (not delegateLevel)
             // so every redstone/shape-update cascade it drives operates through the object
             // actually passed around as the ServerLevel, not a sibling reference to it.
-            Reflection.NEIGHBOR_UPDATER.set(instance, new CollectingNeighborUpdater(instance, 1000000));
+            Reflection.NEIGHBOR_UPDATER.set(instance, new FakeNeighborUpdater(instance, cells, 1000000));
 
             // ServerLevel-declared fields (server, entityManager, ...) aren't covered by the
             // Level-field transplant above — there's no sibling ServerLevel to borrow them from.
@@ -199,6 +202,10 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     @Override
     public boolean isLoaded(BlockPos pos) { return true; }
 
+    /** A vibration reaching a sensor asks this of the chunks along its way; see the chunk checks above. */
+    @Override
+    public boolean shouldTickBlocksAt(long chunkPos) { return true; }
+
     @Override
     public int getMinBuildHeight() { return -65536; }
 
@@ -224,7 +231,19 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
     @Override
     public boolean setBlock(BlockPos pos, BlockState state, int flags, int recursionLeft) {
-        return delegate.setBlock(pos, state, flags, recursionLeft);
+        return FakeWrites.setBlock(this, cells(), pos, state, flags, recursionLeft);
+    }
+
+    /** A block entity's contents changed: comparators hear of it, in a space whose writes will be applied. */
+    @Override
+    public void updateNeighbourForOutputSignal(BlockPos pos, Block block) {
+        if (!cells().afterItsCall(live -> live.updateNeighbourForOutputSignal(pos, block))) super.updateNeighbourForOutputSignal(pos, block);
+    }
+
+    /** See FakeLevel. */
+    @Override
+    public void blockEntityChanged(BlockPos pos) {
+        delegate.blockEntityChanged(pos);
     }
 
     @Nullable
@@ -398,6 +417,11 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
         delegate.blockEvent(pos, block, eventId, eventParam);
     }
 
+    /** See FakeLevel#runBlockEvent. */
+    public void runBlockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {
+        delegate.runBlockEvent(pos, block, eventId, eventParam);
+    }
+
     @Override
     public net.minecraft.server.ServerScoreboard getScoreboard() {
         return (net.minecraft.server.ServerScoreboard) delegate.getScoreboard();
@@ -424,7 +448,9 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     @Override
     public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event,
                            net.minecraft.world.phys.Vec3 pos,
-                           net.minecraft.world.level.gameevent.GameEvent.Context context) {}
+                           net.minecraft.world.level.gameevent.GameEvent.Context context) {
+        cells().gameEvent(event, pos, context);
+    }
 
     @Override
     public net.minecraft.server.level.ServerChunkCache getChunkSource() {
@@ -433,12 +459,12 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
     @Override
     public net.minecraft.world.ticks.LevelTicks<Block> getBlockTicks() {
-        return new net.minecraft.world.ticks.LevelTicks<>(l -> false, () -> net.minecraft.util.profiling.InactiveProfiler.INSTANCE);
+        return blockTicks;
     }
 
     @Override
     public net.minecraft.world.ticks.LevelTicks<net.minecraft.world.level.material.Fluid> getFluidTicks() {
-        return new net.minecraft.world.ticks.LevelTicks<>(l -> false, () -> net.minecraft.util.profiling.InactiveProfiler.INSTANCE);
+        return fluidTicks;
     }
 
     @Override
@@ -459,12 +485,12 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        if (!cells().scheduleTick(pos, block, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
     public void scheduleTick(BlockPos pos, Block block, int delay) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        scheduleTick(pos, block, delay, TickPriority.NORMAL);
     }
 
     // ServerLevel does NOT re-override these two (verified via javap) — they'd otherwise fall
@@ -473,11 +499,11 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // overloads, needed here too since FakeServerLevel is a sibling, not a subclass, of FakeLevel.
     @Override
     public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        if (!cells().scheduleTick(pos, fluid, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
     public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
-        scheduled.add(new ScheduledEntry(pos, delay));
+        scheduleTick(pos, fluid, delay, TickPriority.NORMAL);
     }
 }

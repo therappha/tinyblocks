@@ -400,15 +400,8 @@ public class SubgridEventHandler {
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
         if (be.placePiece(piece)) {
-            // Real placement goes through Level.setBlock, which (inside LevelChunk.setBlockState)
-            // unconditionally fires newState.onPlace(...) — that's what e.g. FallingBlock relies
-            // on to schedule its very first fall check. be.placePiece writes the piece directly,
-            // bypassing setBlock entirely, so nothing ever told a freshly placed piece "you were
-            // just placed." Rebuild the fake space (now including this piece) and fire onPlace
-            // explicitly so any block relying on it behaves the same as it would in the real world.
-            FakeLevel placedFakeLevel = VanillaBlockPiece.buildFakeSpace(be, serverLevel);
-            com.therappha.tinyblocks.v2.BlockAccess.onPlace(state, placedFakeLevel, placedFakeLevel.world(fakeAnchor), Blocks.AIR.defaultBlockState(), false);
-            VanillaBlockPiece.scheduleCaptured(be, placedFakeLevel, serverLevel.getGameTime());
+            fakeLevel.gameEvent(net.minecraft.world.level.gameevent.GameEvent.BLOCK_PLACE, at,
+                    net.minecraft.world.level.gameevent.GameEvent.Context.of(player, state));
             state.getBlock().setPlacedBy(fakeLevel, at, state, player, stack);
             // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
             // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
@@ -423,9 +416,7 @@ public class SubgridEventHandler {
                         || be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()) != null) {
                     continue;
                 }
-                if (be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel) != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touched.getValue(), fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
-                }
+                be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touched.getValue(), serverLevel);
             }
             if (!player.isCreative()) stack.shrink(1);
             // Same NeoForge post-cancel resync race onBlockBreak/onLeftClickBlock already work
@@ -540,14 +531,11 @@ public class SubgridEventHandler {
                     piece.runtimeState = touchedState;
                     // A wrench switching a tiny redstone link: its block entity has to see the new state too.
                     VanillaBlockPiece.followStateChange(be, piece, wasState, touchedState);
-                    be.notifyNeighbors(piece);
+                    if (!fakeLevel.cells().isSettled(touchedPos)) be.notifyNeighbors(piece);
                     be.notifyUpdate();
                 }
             } else if (piece == null && (wasState == null || wasState.isAir()) && !touchedState.isAir()) {
-                SubgridBlockEntity.PlacementResult placed = be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
-                if (placed != null) {
-                    com.therappha.tinyblocks.v2.BlockAccess.onPlace(touchedState, fakeLevel, fakeLevel.world(touchedPos), Blocks.AIR.defaultBlockState(), false);
-                }
+                be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
             }
         }
         // #TODO remove before release — water-placement investigation. Mirrors onBlockBreak/

@@ -100,10 +100,6 @@ public final class MinimizerShapes {
             PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, cell, hit.getDirection());
             piece.runtimeState = state;
             if (!grid.placePiece(piece)) continue;
-            // As one placed by hand (SubgridEventHandler): told it was placed, its first ticks scheduled.
-            FakeLevel space = VanillaBlockPiece.buildFakeSpace(grid, level);
-            BlockAccess.onPlace(state, space, space.world(cell), Blocks.AIR.defaultBlockState(), false);
-            VanillaBlockPiece.scheduleCaptured(grid, space, level.getGameTime());
             touched.add(grid);
             placed++;
             if (!player.isCreative()) stack.shrink(1);

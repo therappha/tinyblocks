@@ -146,6 +146,8 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
         if (level.isClientSide || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
         BlockPos diff = fromPos.subtract(pos);
         if (diff.distManhattan(BlockPos.ZERO) != 1) return;
+        // A grid of this size runs on cell by cell, and its updates reach these pieces directly: this would be a second one.
+        if (level.getBlockEntity(fromPos) instanceof SubgridBlockEntity other && other.gridSize == be.gridSize) return;
         be.notifyFace(net.minecraft.core.Direction.getNearest(diff.getX(), diff.getY(), diff.getZ()));
     }
 

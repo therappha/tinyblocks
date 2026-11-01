@@ -33,6 +33,10 @@ neoForge {
         gameTestServer {
             type = "gameTestServer"
             systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+            systemProperty 'tinyblocks.gameTestFilter', providers.gradleProperty('gameTestFilter').getOrElse('')
+            systemProperty 'tinyblocks.randomSeeds', providers.gradleProperty('randomSeeds').getOrElse('')
+            systemProperty 'tinyblocks.shrinkSeed', providers.gradleProperty('shrinkSeed').getOrElse('')
+            systemProperty 'tinyblocks.sprint', providers.gradleProperty('sprint').getOrElse('false')
         }
     }
 

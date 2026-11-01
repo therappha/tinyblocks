@@ -132,6 +132,25 @@ public abstract class PieceDefinition {
      */
     public void onRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {}
 
+    /** A queued tick of {@code type} (null: unknown, it was saved and loaded) reached this piece. */
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @javax.annotation.Nullable Object type) {
+        scheduledTick(piece, level, subgridPos, be);
+    }
+
+    /** The piece has just been added to its grid: everything around it, and the piece itself, hears of that. */
+    public void afterPlaced(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
+        be.notifyNeighbors(piece);
+        onNeighborChanged(piece, level, be.getBlockPos(), be, piece);
+    }
+
+    /** The piece has left its grid: everything around it hears of that. */
+    public void afterRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
+        be.notifyNeighbors(piece);
+    }
+
+    /** A queued block event reached this grid. */
+    public void blockEvent(ServerLevel level, SubgridBlockEntity be, GridTickScheduler.BlockEvent event) {}
+
     /**
      * Called on the server when a piece adjacent to this one (within the same subgrid) is
      * placed, removed, or reports a state change from tick(). Mirrors vanilla neighborChanged.

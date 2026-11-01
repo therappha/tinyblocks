@@ -29,6 +29,8 @@ public class FakeCellGetter implements BlockGetter {
     private final Set<BlockPos> removedBlockEntities = new HashSet<>();
     /** What each written cell held right before its first write this use (null: nothing worth diffing against). */
     private final Map<BlockPos, BlockState> originals = new HashMap<>();
+    /** Local cells written through a level's setBlock, whose onRemove, onPlace and updates have run (FakeWrites). */
+    private final Set<BlockPos> settled = new HashSet<>();
     private final LevelHeightAccessor heightAccessor = LevelHeightAccessor.create(0, 16);
 
     /** Forgets every write and captured block entity, so the space can be used again from scratch. */
@@ -37,6 +39,49 @@ public class FakeCellGetter implements BlockGetter {
         blockEntities.clear();
         removedBlockEntities.clear();
         originals.clear();
+        settled.clear();
+    }
+
+    /** {@code world} was written through a level's setBlock: everything that follows from the write has run. */
+    public void markSettled(BlockPos world) {
+        settled.add(resolveLocal(world));
+    }
+
+    public boolean isSettled(BlockPos local) {
+        return settled.contains(local);
+    }
+
+    /**
+     * A phantom keeps the last space it was bound to as its level, long after the call using that space ended. Something
+     * done through such a space (a player's item going into a chest, a hopper filling a chest that never ticks) would be
+     * written to a space nobody reads again. {@code work} then runs in a space of the grid, applied right after, and this
+     * answers true. While the space's own call is running this answers false: the caller just goes on in it.
+     */
+    public boolean afterItsCall(java.util.function.Consumer<net.minecraft.world.level.Level> work) {
+        return false;
+    }
+
+    /** Whether {@code world} is a block of the real world, not a cell of this grid or of one running on from it. */
+    public boolean outsideGrids(BlockPos world) {
+        return false;
+    }
+
+    /** Queues a tick of {@code type} (a Block or a Fluid) with whoever owns this space; false if nobody does. */
+    public boolean scheduleTick(BlockPos world, Object type, int delay, int priority) {
+        return false;
+    }
+
+    public boolean tickPending(BlockPos world, Object type) {
+        return false;
+    }
+
+    public boolean tickDue(BlockPos world, Object type) {
+        return false;
+    }
+
+    /** Queues a block event to run when the level runs them; false if nobody owns this space. */
+    public boolean blockEvent(BlockPos world, net.minecraft.world.level.block.Block block, int id, int param) {
+        return false;
     }
 
     public void set(BlockPos pos, BlockState state) {
@@ -121,6 +166,10 @@ public class FakeCellGetter implements BlockGetter {
     public Integer outsideSignal(BlockPos world, net.minecraft.core.Direction direction, boolean strong) {
         return null;
     }
+
+    /** A game event at a vanilla-visible position: whoever owns this space passes it to what listens. */
+    public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event,
+                          net.minecraft.world.phys.Vec3 pos, net.minecraft.world.level.gameevent.GameEvent.Context context) {}
 
     /** A block entity at this vanilla-visible position asked its clients to resync; no-op without an owning grid. */
     public void blockUpdatedAt(BlockPos world) {}

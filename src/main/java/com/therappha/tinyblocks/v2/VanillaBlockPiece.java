@@ -172,8 +172,11 @@ public class VanillaBlockPiece extends PieceDefinition {
         // a fake space — against the real level that position holds the SubgridBlockEntity, so the
         // menu would close on the very next tick. Only a not-yet-built phantom goes through
         // blockEntityFor (once); onUse/the full path below set the fake level when it matters.
+        //
+        // Built in a space of its grid, not on the real level, where its position means nothing: a change to a phantom that
+        // never ticks (a chest a hopper fills) would tell the real level, and no comparator next to it would hear.
         BlockEntity candidate = piece.runtimeBlockEntity instanceof BlockEntity cached
-                ? cached : blockEntityFor(piece, be, level);
+                ? cached : blockEntityFor(piece, be, operatingServerSpace(piece, be, level));
         if (candidate == null || !hasServerTicker(entityBlock, level, state, candidate)) return false;
 
         // The ticker runs at the phantom's own unique virtual position (see SubgridBlockEntity#virtualOrigin);
@@ -233,6 +236,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                 if (!(be.tickSpace instanceof TickSpace cached && cached.busy)) be.tickSpace = space;
             }
             space.busy = true;
+            space.cells.live = true;
             return space;
         }
 
@@ -240,6 +244,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         void release() {
             cells.reuseFor(null);
             level.clearScheduledTicks();
+            cells.live = false;
             busy = false;
         }
     }
@@ -568,9 +573,10 @@ public class VanillaBlockPiece extends PieceDefinition {
             // to). That's a separate vanilla hook — real placement already runs it once via
             // getStateForPlacement, but we don't have vanilla's automatic post-placement
             // shape-update cascade, so ongoing neighbor changes need it called explicitly too.
-            BlockState reshaped = fakeLevel.cells().getBlockState(at)
-                    .updateShape(dir, neighborState, fakeLevel, at, fakeNeighborPos);
-            fakeLevel.cells().set(at, reshaped);
+            BlockState current = fakeLevel.cells().getBlockState(at);
+            BlockState reshaped = current.updateShape(dir, neighborState, fakeLevel, at, fakeNeighborPos);
+            net.minecraft.world.level.block.Block.updateOrDestroy(current, reshaped, fakeLevel, at,
+                    net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
 
         applyChanges(be, fakeLevel, before, level);
@@ -592,14 +598,33 @@ public class VanillaBlockPiece extends PieceDefinition {
 
     @Override
     public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {
+        scheduledTick(piece, level, subgridPos, be, null);
+    }
+
+    /**
+     * On the grid's one reused space, not a new one: besides being cheaper, a redstone torch keeps its recent toggles
+     * per level instance, and on a new level each time it never burned out.
+     */
+    @Override
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @javax.annotation.Nullable Object type) {
         BlockState state = stateOf(piece);
         if (state == null) return;
+        boolean blockTick = type == null || (type instanceof net.minecraft.world.level.block.Block block && state.is(block));
+        boolean fluidTick = type == null || (type instanceof net.minecraft.world.level.material.Fluid fluid && state.getFluidState().is(fluid));
+        if (!blockTick && !fluidTick) return;
 
-        FakeServerLevel fakeLevel = buildFakeServerSpace(be, level);
-        Map<BlockPos, BlockState> before = snapshot(be);
-        BlockPos at = fakeLevel.world(piece.anchor);
+        TickSpace space = TickSpace.acquire(be, level, null);
+        try {
+            FakeServerLevel fakeLevel = space.level;
+            runScheduledTick(fakeLevel, fakeLevel.world(piece.anchor), level, blockTick, fluidTick);
+            applyChanges(be, fakeLevel, null, level);
+        } finally {
+            space.release();
+        }
+    }
 
-        fakeLevel.cells().getBlockState(at).tick(fakeLevel, at, level.getRandom());
+    private static void runScheduledTick(FakeServerLevel fakeLevel, BlockPos at, ServerLevel level, boolean blockTick, boolean fluidTick) {
+        if (blockTick) fakeLevel.cells().getBlockState(at).tick(fakeLevel, at, level.getRandom());
         // LiquidBlock doesn't override the regular block tick above at all — water/lava spread
         // exclusively through the SEPARATE fluid-tick schedule (LiquidBlock.onPlace/
         // neighborChanged, both already reached, call level.scheduleTick(pos, fluid, delay), now
@@ -611,14 +636,97 @@ public class VanillaBlockPiece extends PieceDefinition {
         // own FlowingFluid.tick/spread is running, at INFO — see
         // SubgridBlockEntity.setTracingFluid's doc for why this needs its own narrow window
         // instead of just enabling the general [xgrid] DEBUG line.
+        if (!fluidTick) return;
         SubgridBlockEntity.setTracingFluid(true);
         try {
             fakeLevel.cells().getBlockState(at).getFluidState().tick(fakeLevel, at);
         } finally {
             SubgridBlockEntity.setTracingFluid(false);
         }
+    }
 
-        applyChanges(be, fakeLevel, before, level);
+    /**
+     * What a chunk and Level#setBlock do when a block arrives, for a piece just added to its grid: its onPlace, then the
+     * updates and the shape updates, which reach diagonals (dust climbing a step reshapes the dust below it).
+     */
+    @Override
+    public void afterPlaced(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
+        BlockState state = stateOf(piece);
+        if (state == null) return;
+        BlockState air = Blocks.AIR.defaultBlockState();
+        int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
+        TickSpace space = TickSpace.acquire(be, level, null);
+        try {
+            FakeServerLevel fakeLevel = space.level;
+            BlockPos at = fakeLevel.world(piece.anchor);
+            BlockAccess.onPlace(state, fakeLevel, at, air, false);
+            if (fakeLevel.getBlockState(at) == state) { // as in FakeWrites: changed by its own onPlace, nothing is told
+                fakeLevel.blockUpdated(at, air.getBlock());
+                if (state.hasAnalogOutputSignal()) fakeLevel.updateNeighbourForOutputSignal(at, state.getBlock());
+                air.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
+                state.updateNeighbourShapes(fakeLevel, at, flags, 511);
+                state.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
+            }
+            applyChanges(be, fakeLevel, null, level);
+        } finally {
+            space.release();
+        }
+        tellOtherDefinitions(piece, level, be);
+    }
+
+    /** The updates above stay among vanilla blocks; a piece of another kind, or a cell of a larger piece, is told apart. */
+    private static void tellOtherDefinitions(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
+        boolean large = piece.footprint.getX() * piece.footprint.getY() * piece.footprint.getZ() > 1;
+        for (SubgridBlockEntity.Neighbor neighbor : be.neighborsOf(piece)) {
+            if ((large || !(neighbor.piece().definition instanceof VanillaBlockPiece))
+                    && neighbor.be().getLevel() instanceof ServerLevel neighborLevel) {
+                neighbor.piece().definition.onNeighborChanged(neighbor.piece(), neighborLevel, neighbor.be().getBlockPos(), neighbor.be(), piece);
+            }
+        }
+    }
+
+    /**
+     * What a chunk and Level#setBlock do when a block goes, for a piece that left its grid: its onRemove with the cell
+     * empty, then the updates, which reach as far as the block makes them (a torch tells what the block above it
+     * powers). Everything about it hearing the change runs here in one call. What isn't a VanillaBlockPiece hears the
+     * old way.
+     */
+    @Override
+    public void afterRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
+        BlockState state = stateOf(piece);
+        if (state == null) return;
+        BlockState air = Blocks.AIR.defaultBlockState();
+        int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
+        TickSpace space = TickSpace.acquire(be, level, null);
+        try {
+            FakeServerLevel fakeLevel = space.level;
+            BlockPos at = fakeLevel.world(piece.anchor);
+            BlockAccess.onRemove(state, fakeLevel, at, air, false);
+            fakeLevel.blockUpdated(at, state.getBlock());
+            if (state.hasAnalogOutputSignal()) fakeLevel.updateNeighbourForOutputSignal(at, state.getBlock());
+            state.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
+            air.updateNeighbourShapes(fakeLevel, at, flags, 511);
+            air.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
+            fakeLevel.gameEvent(net.minecraft.world.level.gameevent.GameEvent.BLOCK_DESTROY, at,
+                    net.minecraft.world.level.gameevent.GameEvent.Context.of(state));
+            applyChanges(be, fakeLevel, null, level);
+        } finally {
+            space.release();
+        }
+        tellOtherDefinitions(piece, level, be);
+        be.markPiecesChanged();
+    }
+
+    /** A block event's turn came (GridTickScheduler): it runs like any other call into the grid. */
+    @Override
+    public void blockEvent(ServerLevel level, SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.GridTickScheduler.BlockEvent event) {
+        TickSpace space = TickSpace.acquire(be, level, null);
+        try {
+            space.level.runBlockEvent(event.pos(), event.block(), event.id(), event.param());
+            applyChanges(be, space.level, null, level);
+        } finally {
+            space.release();
+        }
     }
 
     @Override
@@ -768,6 +876,78 @@ public class VanillaBlockPiece extends PieceDefinition {
         }
 
         @Override
+        public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event, Vec3 pos,
+                              net.minecraft.world.level.gameevent.GameEvent.Context context) {
+            GridGameEvents.post(be, event, pos, context);
+        }
+
+        /** False once the call this space was made for has been applied. */
+        boolean live = true;
+
+        @Override
+        public boolean afterItsCall(java.util.function.Consumer<Level> work) {
+            if (live || !(be.getLevel() instanceof ServerLevel level)) return false;
+            TickSpace space = TickSpace.acquire(be, level, null);
+            try {
+                work.accept(space.level);
+                applyChanges(be, space.level, null, level);
+            } finally {
+                space.release();
+            }
+            return true;
+        }
+
+        @Override
+        public boolean outsideGrids(BlockPos world) {
+            BlockPos local = toLocal(world);
+            return !be.inBounds(local.getX(), local.getY(), local.getZ())
+                    && !(be.resolve(local.getX(), local.getY(), local.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid);
+        }
+
+        /** A cell past the edge belongs to the next grid: its tick goes in that grid's queue. */
+        @Override
+        public boolean scheduleTick(BlockPos world, Object type, int delay, int priority) {
+            if (be.getLevel() == null) return false;
+            long target = com.therappha.tinyblocks.subgrid.GridTickScheduler.gameTime(be.getLevel()) + delay;
+            BlockPos local = toLocal(world);
+            if (be.inBounds(local.getX(), local.getY(), local.getZ())) {
+                be.scheduleTick(local.getX(), local.getY(), local.getZ(), target, priority, type);
+            } else if (be.resolve(local.getX(), local.getY(), local.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a) {
+                a.grid().scheduleTick(a.x(), a.y(), a.z(), target, priority, type);
+            }
+            return true;
+        }
+
+        @Override
+        public boolean tickPending(BlockPos world, Object type) {
+            return askQueue(world, (grid, x, y, z) -> grid.tickPending(x, y, z, type));
+        }
+
+        @Override
+        public boolean tickDue(BlockPos world, Object type) {
+            return askQueue(world, (grid, x, y, z) -> grid.tickDue(x, y, z, type));
+        }
+
+        private interface QueueQuestion {
+            boolean ask(SubgridBlockEntity grid, int x, int y, int z);
+        }
+
+        private boolean askQueue(BlockPos world, QueueQuestion question) {
+            BlockPos local = toLocal(world);
+            if (be.inBounds(local.getX(), local.getY(), local.getZ())) return question.ask(be, local.getX(), local.getY(), local.getZ());
+            return be.resolve(local.getX(), local.getY(), local.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a
+                    && question.ask(a.grid(), a.x(), a.y(), a.z());
+        }
+
+        @Override
+        public boolean blockEvent(BlockPos world, net.minecraft.world.level.block.Block block, int id, int param) {
+            if (!(be.getLevel() instanceof ServerLevel level)) return false;
+            com.therappha.tinyblocks.subgrid.GridTickScheduler.blockEvent(level,
+                    new com.therappha.tinyblocks.subgrid.GridTickScheduler.BlockEvent(be, world.immutable(), block, id, param));
+            return true;
+        }
+
+        @Override
         public void blockUpdatedAt(BlockPos world) {
             BlockPos local = toLocal(world);
             if (be.resolve(local.getX(), local.getY(), local.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a
@@ -895,6 +1075,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         }
         piece.runtimeBlockEntity = created;
         PhantomOwners.register(created, be, piece);
+        GridGameEvents.register(created, be);
         return created;
     }
 
@@ -935,6 +1116,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         populateCells(cells, be);
         FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, be.getBlockPos());
         cells.attachLevel(fakeLevel);
+        cells.live = false; // only a phantom's binding: nothing applies what is written to it
         return fakeLevel;
     }
 
@@ -1018,7 +1200,8 @@ public class VanillaBlockPiece extends PieceDefinition {
                     p.runtimeState = now;
                     syncBlockEntity(be, p, p.anchor, p.anchor, cells, (Level) fakeSpace, realLevel);
                     followStateChange(be, p, before.get(p.anchor), now, cells);
-                    be.notifyNeighbors(p);
+                    if (cells.isSettled(p.anchor)) be.markPiecesChanged();
+                    else be.notifyNeighbors(p);
                     // This piece's new state might be the delayed arrival of a block that vacated
                     // some OTHER cell several ticks ago (see the deferred-drop comment below) — a
                     // sticky piston retract, for instance, sets the pulled block's old cell to air
@@ -1068,7 +1251,11 @@ public class VanillaBlockPiece extends PieceDefinition {
             // to the whole SubgridBlock's shared center regardless of where inside it the piece
             // actually was.
             Vec3 dropPos = be.realPositionOf(p.anchor);
-            PlacedPiece removed = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
+            PlacedPiece[] removedPiece = new PlacedPiece[1];
+            Runnable remove = () -> removedPiece[0] = be.removePieceAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ());
+            if (cells.isSettled(p.anchor)) SubgridBlockEntity.whileApplyingSettled(remove);
+            else remove.run();
+            PlacedPiece removed = removedPiece[0];
             if (removed != null && !movedElsewhere) {
                 // Deferred, not dropped immediately: the "moved elsewhere" scan above only sees
                 // positions touched THIS SAME call, but a piston's own move sequence can span
@@ -1095,6 +1282,16 @@ public class VanillaBlockPiece extends PieceDefinition {
         for (Map.Entry<BlockPos, BlockState> touched : cells.touchedCells().entrySet()) {
             BlockPos pos = touched.getKey();
             BlockState touchedState = touched.getValue();
+            if (touchedState.isAir() && !be.inBounds(pos.getX(), pos.getY(), pos.getZ())) {
+                // Gone from the next grid: what ran here was its block's own logic, on a cell of that grid.
+                if (be.resolve(pos.getX(), pos.getY(), pos.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a
+                        && a.grid().getPieceAt(a.x(), a.y(), a.z()) instanceof PlacedPiece gone
+                        && gone.definition instanceof VanillaBlockPiece && gone.anchor.equals(new BlockPos(a.x(), a.y(), a.z()))) {
+                    SubgridBlockEntity.whileApplyingSettled(() -> a.grid().removePieceAt(a.x(), a.y(), a.z()));
+                    anyChanged = true;
+                }
+                continue;
+            }
             if (touchedState.isAir() || before.containsKey(pos) || be.getPieceAt(pos.getX(), pos.getY(), pos.getZ()) != null) {
                 continue;
             }
@@ -1103,7 +1300,12 @@ public class VanillaBlockPiece extends PieceDefinition {
             // placePieceCrossBoundary finds/creates an adjacent same-size SubgridBlockEntity when
             // pos overflows past exactly one edge (e.g. water/a falling block/a growing tree
             // crossing this subgrid's boundary), instead of the write just being silently dropped.
-            SubgridBlockEntity.PlacementResult result = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
+            boolean settled = cells.isSettled(pos);
+            SubgridBlockEntity.PlacementResult[] placement = new SubgridBlockEntity.PlacementResult[1];
+            Runnable place = () -> placement[0] = be.placePieceCrossBoundary(INSTANCE, pos, Direction.UP, touchedState, realLevel);
+            if (settled) SubgridBlockEntity.whileApplyingSettled(place);
+            else place.run();
+            SubgridBlockEntity.PlacementResult result = placement[0];
             if (result != null) {
                 PlacedPiece placed = result.piece();
                 be.cancelPendingDrop(touchedState);
@@ -1130,7 +1332,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                 // SubgridBlockEntity, whose position semantics fakeSpace knows nothing about; that
                 // piece will still react normally to its own future onNeighborChanged calls, just
                 // not this exact tick.
-                if (withinBounds) {
+                if (withinBounds && !settled) {
                     BlockAccess.onPlace(touchedState, (Level) fakeSpace, fakeSpace.world(pos), Blocks.AIR.defaultBlockState(), false);
                 }
                 anyChanged = true;
@@ -1141,6 +1343,7 @@ public class VanillaBlockPiece extends PieceDefinition {
             anyChanged = true;
         }
         if (anyChanged) be.notifyUpdate();
+        if (cells instanceof SubgridFakeCellGetter own && own.be == be) own.live = false;
     }
 
     /**
