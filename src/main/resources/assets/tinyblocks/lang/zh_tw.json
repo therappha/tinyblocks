@@ -94,5 +94,6 @@
   "tinyblocks.guide.page.20": "§l偶數網格:齒輪§r\n\n它貼在面上。\n\n小齒輪裝在它的側面,機械由此運轉。\n\n它不接小傳動桿。",
   "tinyblocks.guide.page.21": "§l外部連接§r\n\n沒有 Minimizer 時,用大傳動桿點擊大端。\n\n傳動桿放到網格外面,自動對齊,無需支撐。虛影顯示位置。",
   "tinyblocks.guide.page.22": "§l移動和拆除§r\n\n扳手把連接器移到下一個空閒的面。\n\n潛行使用扳手即可拆除。",
-  "tinyblocks.guide.page.23": "§l機械動力和藍圖§r\n\n扳手、機殼、數值設定、護目鏡和紅石連結都能在網格裡使用。\n\n網格可存入藍圖,並連同小方塊一起列印。也能隨載具移動。"
+  "tinyblocks.guide.page.23": "§l機械動力和藍圖§r\n\n扳手、機殼、數值設定、護目鏡和紅石連結都能在網格裡使用。\n\n網格可存入藍圖,並連同小方塊一起列印。也能隨載具移動。",
+  "tinyblocks.contraption.in_grid": "裝置暫時無法在網格內組裝"
 }

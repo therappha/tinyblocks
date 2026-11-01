@@ -94,5 +94,6 @@
   "tinyblocks.guide.page.20": "§lGrid par: engrenagem§r\n\nEla fica encostada na face.\n\nCogs pequenos encaixam nos lados dela, e o mecanismo segue a partir deles.\n\nEla não recebe eixo pequeno.",
   "tinyblocks.guide.page.21": "§lLigar por fora§r\n\nSem Minimizer, clique no lado grande com um eixo grande.\n\nEle vai para fora do grid, alinhado e sem apoio. O ghost mostra onde vai ficar.",
   "tinyblocks.guide.page.22": "§lMover e remover§r\n\nA chave inglesa move o conector para a próxima face livre.\n\nAgache e use a chave para desmontar.",
-  "tinyblocks.guide.page.23": "§lCreate e schematics§r\n\nNo grid funcionam chave, casing, ajuste de valores, óculos e redstone link.\n\nGrids entram em schematics e são impressos com as peças. Também andam em veículos."
+  "tinyblocks.guide.page.23": "§lCreate e schematics§r\n\nNo grid funcionam chave, casing, ajuste de valores, óculos e redstone link.\n\nGrids entram em schematics e são impressos com as peças. Também andam em veículos.",
+  "tinyblocks.contraption.in_grid": "Contraptions ainda não montam dentro de um grid"
 }
