@@ -94,5 +94,6 @@
   "tinyblocks.guide.page.20": "§lEven grid: gear§r\n\nIt sits against the face.\n\nSmall tiny cogwheels fit on its sides, and the mechanism runs from them.\n\nIt takes no tiny shaft.",
   "tinyblocks.guide.page.21": "§lJoining outside§r\n\nWithout a Minimizer, click the wide end with a big shaft.\n\nIt goes outside the grid, lined up, with no support. A ghost shows where.",
   "tinyblocks.guide.page.22": "§lMoving, removing§r\n\nA wrench moves the connector to the next free face.\n\nSneak and use the wrench to take it apart.",
-  "tinyblocks.guide.page.23": "§lCreate, schematics§r\n\nWrenches, casings, value settings, goggles and redstone links work in a grid.\n\nGrids go in schematics and print with their pieces. They ride vehicles too."
+  "tinyblocks.guide.page.23": "§lCreate, schematics§r\n\nWrenches, casings, value settings, goggles and redstone links work in a grid.\n\nGrids go in schematics and print with their pieces. They ride vehicles too.",
+  "tinyblocks.contraption.in_grid": "Contraptions can't assemble inside a grid yet"
 }
