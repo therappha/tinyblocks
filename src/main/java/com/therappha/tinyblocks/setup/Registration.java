@@ -136,8 +136,8 @@ public class Registration {
     // a subgrid instead of placing normally — only obtainable via /give. Same four grid sizes as
     // the subgrid blocks themselves; "minimizer" (1/8) is the default.
     private static Item.Properties minimizerProperties() {
-        return new Item.Properties()
-                .component(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+        // No glint of its own: a glint says it is locked (MinimizerItem#isFoil).
+        return new Item.Properties();
     }
 
     public static final DeferredHolder<Item, MinimizerItem> MINIMIZER_2 =

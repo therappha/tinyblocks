@@ -42,11 +42,23 @@ import java.util.List;
 @EventBusSubscriber(modid = TinyBlocks.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
 public class SubgridEventHandler {
 
+    /** A locked Minimizer in hand (MinimizerItem#mayBreak): no mining starts on what it keeps, on either side. */
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGH)
+    public static void onLeftClickLocked(PlayerInteractEvent.LeftClickBlock event) {
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getEntity(), event.getLevel(), event.getPos())) {
+            event.setCanceled(true);
+        }
+    }
+
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
         // Only a question (may the player take the whole grid?), for the protections to answer.
         if (com.therappha.tinyblocks.items.GridSaveItem.isAskingToBreak()) return;
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getPlayer(), event.getLevel(), event.getPos())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (!(event.getState().getBlock() instanceof SubgridBlock)) return;
         event.setCanceled(true);
 
         ServerLevel level = (ServerLevel) event.getLevel();
@@ -94,6 +106,7 @@ public class SubgridEventHandler {
                                         Player player, ServerLevel level) {
         BlockPos pos = payload.pos();
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity subgrid)) return;
+        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(player, level, pos)) return;
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
@@ -109,7 +122,7 @@ public class SubgridEventHandler {
     }
 
     /** Removes the piece at cell and spawns its drops (if the tool qualifies and player isn't creative). */
-    private static PlacedPiece removeAndDrop(SubgridBlockEntity subgrid, ServerLevel level, BlockPos pos, Vec3i cell, Player player) {
+    static PlacedPiece removeAndDrop(SubgridBlockEntity subgrid, ServerLevel level, BlockPos pos, Vec3i cell, Player player) {
         PlacedPiece removed = subgrid.removePieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (removed == null) return null;
 
@@ -147,6 +160,17 @@ public class SubgridEventHandler {
         Player player = event.getEntity();
         // A click PieceClickDispatch re-posts inside a piece's fake space is for the piece's own listeners.
         if (level instanceof com.therappha.tinyblocks.v2.FakeSpace) return;
+
+        // A Minimizer in Destroy mode breaks the clicked grid, whatever is in the main hand, or nothing.
+        if (event.getHand() == InteractionHand.MAIN_HAND
+                && player.getOffhandItem().getItem() instanceof MinimizerItem
+                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) == com.therappha.tinyblocks.items.BuildMode.DESTROY
+                && level.getBlockEntity(event.getPos()) instanceof SubgridBlockEntity grid) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            if (level instanceof ServerLevel serverLevel) MinimizerShapes.destroy(serverLevel, player, grid);
+            return;
+        }
 
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
@@ -196,7 +220,6 @@ public class SubgridEventHandler {
             BlockState targetState = level.getBlockState(targetPos);
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
         }
-
         event.setCanceled(true);
         // Without this, a cancelled RightClickBlock defaults its result to PASS (see NeoForge's
         // own PlayerInteractEvent.RightClickBlock javadoc: "if result equals PASS, we proceed to
@@ -222,6 +245,14 @@ public class SubgridEventHandler {
         if (clickedIsSubgrid) {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
+
+            // A connector's wide end meets what is outside: without a Minimizer, a block clicked onto it is a normal
+            // block out there. SubgridPlacementPreview shows it.
+            if (minimizer == null && blockItem != null
+                    && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(existing, blockItem.getBlock(), hit)) {
+                com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeOutside(serverLevel, player, event.getHand(), stack, blockItem, hit);
+                return;
+            }
 
             if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
                 // Before the clicked piece's own use: a tiny shaft would otherwise run Create's shaft placement
@@ -250,6 +281,15 @@ public class SubgridEventHandler {
                     return;
                 }
                 // Anything else clicked onto a gear goes next to the clicked face, as onto any piece.
+            }
+
+            if (stack.getItem() instanceof com.simibubi.create.content.equipment.wrench.WrenchItem && !player.isShiftKeyDown()
+                    && clickedPlate != null && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                // Not the shaft it stands in as: a wrench would turn that across the face, out of line with it.
+                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.moveToNextFace(existing, serverLevel, clickedPlate)) {
+                    com.simibubi.create.content.equipment.wrench.IWrenchable.playRotateSound(serverLevel, pos);
+                }
+                return;
             }
 
             // Try interacting with whatever's at the exact clicked cell first — same priority
@@ -439,7 +479,7 @@ public class SubgridEventHandler {
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
-        java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        java.util.Map<BlockPos, BlockState> before = VanillaBlockPiece.snapshotStates(be); // the fake space no longer holds every piece
         BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
@@ -497,11 +537,9 @@ public class SubgridEventHandler {
                     removeAndDrop(be, serverLevel, be.getBlockPos(),
                             new Vec3i(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()), player);
                 } else {
-                    // Its state before, not wasState: this space's own record of the cell starts empty.
-                    BlockState previous = (BlockState) piece.runtimeState;
                     piece.runtimeState = touchedState;
                     // A wrench switching a tiny redstone link: its block entity has to see the new state too.
-                    VanillaBlockPiece.followStateChange(be, piece, previous, touchedState);
+                    VanillaBlockPiece.followStateChange(be, piece, wasState, touchedState);
                     be.notifyNeighbors(piece);
                     be.notifyUpdate();
                 }

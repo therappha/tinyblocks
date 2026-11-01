@@ -20,7 +20,9 @@ public enum BuildMode {
     /** The box's four sides, no floor or ceiling. */
     WALLS,
     /** One cell thick, in the plane of the face the first corner was clicked on. */
-    PLANE;
+    PLANE,
+    /** Not a shape: a click breaks the whole grid under the crosshair, outlined red (MinimizerShapes#destroy). */
+    DESTROY;
 
     public BuildMode next() {
         return values()[(ordinal() + 1) % values().length];
@@ -52,7 +54,7 @@ public enum BuildMode {
                 for (int z = minZ; z <= maxZ; z++) {
                     boolean sideX = x == minX || x == maxX, sideY = y == minY || y == maxY, sideZ = z == minZ || z == maxZ;
                     boolean in = switch (this) {
-                        case PLACE, FILL, PLANE -> true;
+                        case PLACE, FILL, PLANE, DESTROY -> true;
                         case HOLLOW -> sideX || sideY || sideZ;
                         case WALLS -> sideX || sideZ;
                     };

@@ -63,7 +63,7 @@ final class SubgridTestSupport {
     static boolean useItemOn(SubgridBlockEntity be, ServerLevel level, net.minecraft.world.entity.player.Player player,
                               net.minecraft.world.item.ItemStack stack, BlockPos anchor) {
         com.therappha.tinyblocks.v2.FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, level);
-        java.util.Map<BlockPos, BlockState> before = new java.util.HashMap<>(fakeLevel.cells().touchedCells());
+        java.util.Map<BlockPos, BlockState> before = VanillaBlockPiece.snapshotStates(be); // the fake space no longer holds every piece
         BlockPos at = fakeLevel.world(anchor); // world frame, see FakeSpace#world
         net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
                 net.minecraft.world.phys.Vec3.atCenterOf(at), Direction.UP, at, false);

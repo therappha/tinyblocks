@@ -120,6 +120,78 @@ public class GridSaveGameTest {
                 .thenSucceed();
     }
 
+    /** A piston extended across into the next grid, taken: its head doesn't stay there, as it wouldn't if the piston broke. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void aPistonTakenLeavesNoHeadInTheNextGrid(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos at = new BlockPos(2, 1, 2), next = at.east();
+        helper.setBlock(next, Blocks.AIR.defaultBlockState());
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, at);
+        int max = be.getGridSize() - 1;
+        BlockPos piston = new BlockPos(max, 0, 4);
+        SubgridTestSupport.placePiece(be, level, piston, Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.EAST));
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+
+        helper.startSequence()
+                .thenExecute(() -> SubgridTestSupport.placePiece(be, level, piston.west(), Blocks.REDSTONE_BLOCK.defaultBlockState()))
+                .thenWaitUntil(() -> helper.assertTrue(level.getBlockEntity(helper.absolutePos(next)) instanceof SubgridBlockEntity grid
+                        && grid.getPieceAt(0, 0, 4) != null && SubgridTestSupport.stateOf(grid, new BlockPos(0, 0, 4)).is(Blocks.PISTON_HEAD),
+                        "the head isn't in the next grid yet"))
+                .thenWaitUntil(() -> helper.assertTrue(!be.hasActiveCaptures() && be.pendingDropCount() == 0, "the piston is still moving"))
+                .thenExecute(() -> {
+                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, piston));
+                    helper.assertTrue(GridSaveItem.isFull(save), "the Grid Save took nothing");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(!(level.getBlockEntity(helper.absolutePos(next)) instanceof SubgridBlockEntity grid)
+                        || grid.getPieceAt(0, 0, 4) == null, "the head stayed in the next grid"))
+                .thenSucceed();
+    }
+
+    /** A right click in the air makes it copy: in creative the grid stays and the item holds it; in survival it refuses. */
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
+    public void aGridSaveCopiesInCreativeOnly(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);
+        SubgridTestSupport.placePiece(be, level, LINK.below(), Blocks.STONE.defaultBlockState());
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        player.setItemInHand(InteractionHand.MAIN_HAND, save);
+
+        save.use(level, player, InteractionHand.MAIN_HAND);
+        helper.assertTrue(!GridSaveItem.isCopy(save), "survival switched to copying");
+
+        player.getAbilities().instabuild = true;
+        save.use(level, player, InteractionHand.MAIN_HAND);
+        helper.assertTrue(GridSaveItem.isCopy(save), "the click in the air didn't switch to copying");
+        player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, LINK.below()));
+        helper.assertTrue(GridSaveItem.isFull(save), "the Grid Save copied nothing");
+        helper.assertTrue(level.getBlockEntity(be.getBlockPos()) == be && be.getPieces().size() == 1, "copying took the grid away");
+        player.getAbilities().instabuild = false;
+        helper.succeed();
+    }
+
+    /** In Destroy mode, a click with the Minimizer in the off hand breaks the whole grid, with an empty main hand too. */
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
+    public void aMinimizerInDestroyModeBreaksTheWholeGrid(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);
+        for (int x = 1; x <= 3; x++) SubgridTestSupport.placePiece(be, level, new BlockPos(x, 2, 2), Blocks.STONE.defaultBlockState());
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        ItemStack minimizer = new ItemStack(Registration.MINIMIZER.get());
+        while (com.therappha.tinyblocks.items.MinimizerBuild.mode(minimizer) != com.therappha.tinyblocks.items.BuildMode.DESTROY) {
+            com.therappha.tinyblocks.items.MinimizerBuild.cycle(minimizer);
+        }
+        player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+        player.setItemInHand(InteractionHand.OFF_HAND, minimizer);
+
+        SubgridTestSupport.rightClick(be, player, SubgridTestSupport.topHit(be, new BlockPos(2, 2, 2)));
+
+        helper.assertBlockPresent(Blocks.AIR, FROM);
+        helper.succeed();
+    }
+
     private static void moved(GameTestHelper helper, int turns, Item frequencyItem) {
         ServerLevel level = helper.getLevel();
         SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, FROM);

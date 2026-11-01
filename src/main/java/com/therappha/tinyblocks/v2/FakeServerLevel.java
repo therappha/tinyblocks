@@ -59,6 +59,15 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
 
+    /**
+     * Forgets the ticks captured by this space and by its delegate (a blockEvent runs through the delegate, which
+     * captures its own), so a space reused tick after tick (VanillaBlockPiece.TickSpace) doesn't pile them up.
+     */
+    public void clearScheduledTicks() {
+        scheduled.clear();
+        delegate.scheduledTicks().clear();
+    }
+
     // Never actually invoked — see create(). Exists only so FakeServerLevel type-checks as a
     // ServerLevel subclass; the real constructor's heavy side effects never run.
     private FakeServerLevel(MinecraftServer server, Executor executor, LevelStorageSource.LevelStorageAccess storage,

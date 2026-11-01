@@ -11,11 +11,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Sable decides once per block state whether a block is solid, from its collision shape, and gives a block
- * that is not solid no mass. A SubgridBlock's collision shape comes from its block entity, which that one-off
- * check never has, so every SubgridBlock was weightless. It is a solid cube to Sable — the same full cube
- * SubgridBlock#getSubLevelCollisionShape gives it — and so weighs what an untagged full block does, a Create
- * chassis among them, whatever its pieces are.
+ * Sable decides once per block state whether a block is solid, from its collision shape. A SubgridBlock's collision
+ * shape comes from its block entity, which that one-off check never has. It is a solid cube to Sable, the same full
+ * cube SubgridBlock#getSubLevelCollisionShape gives it. Solid blocks have mass: PhysicsBlockPropertyHelperMixin takes
+ * nearly all of a SubgridBlock's away for the beta.
  */
 @Mixin(VoxelNeighborhoodState.class)
 public abstract class VoxelNeighborhoodStateMixin {

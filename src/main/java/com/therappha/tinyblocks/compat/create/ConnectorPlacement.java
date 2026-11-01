@@ -99,6 +99,49 @@ public final class ConnectorPlacement {
         return true;
     }
 
+    /**
+     * Whether {@code block} clicked at {@code hit}, without a Minimizer, goes outside the grid: {@code hit} is on the wide
+     * end of a connector, the side on the grid's face. Not another connector, nor a small cogwheel a gear takes.
+     */
+    public static boolean goesOutside(SubgridBlockEntity be, Block block, net.minecraft.world.phys.BlockHitResult hit) {
+        if (block instanceof ShaftConnectorBlock) return false;
+        net.minecraft.core.Vec3i cell = com.therappha.tinyblocks.subgrid.GridRay.cellAt(be.getBlockPos(), hit.getLocation(), hit.getDirection(), be.getGridSize());
+        PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+        if (piece == null || ShaftConnectorPiece.faceOf(piece) != hit.getDirection()) return false;
+        return !ShaftConnectorPiece.isGear(be.getGridSize()) || targetOn(be, piece, block, hit.getLocation()) == null;
+    }
+
+    /** {@code state} as it stands outside a connector on {@code face}: a shaft runs along the connector, wherever one looks from. */
+    public static net.minecraft.world.level.block.state.BlockState alignedOutside(net.minecraft.world.level.block.state.BlockState state, Direction face) {
+        return state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)
+                ? state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, face.getAxis()) : state;
+    }
+
+    /** Places {@code item} past the grid's face at {@code hit}, as onto any block, aligned with the connector. */
+    public static void placeOutside(ServerLevel level, net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand,
+                                    net.minecraft.world.item.ItemStack stack, net.minecraft.world.item.BlockItem item, net.minecraft.world.phys.BlockHitResult hit) {
+        if (!item.place(new net.minecraft.world.item.context.BlockPlaceContext(player, hand, stack, hit)).consumesAction()) return;
+        BlockPos outside = hit.getBlockPos().relative(hit.getDirection());
+        net.minecraft.world.level.block.state.BlockState placed = level.getBlockState(outside);
+        net.minecraft.world.level.block.state.BlockState aligned = alignedOutside(placed, hit.getDirection());
+        if (aligned != placed) com.simibubi.create.content.kinetics.base.KineticBlockEntity.switchToBlockState(level, outside, aligned);
+    }
+
+    /**
+     * A wrench on connector {@code plate}: it moves to the next free face of the grid, in {@link Direction#values()}
+     * order. A connector's axis is its face's, so it has no other way to turn. False, and it stays, if no face is free.
+     */
+    public static boolean moveToNextFace(SubgridBlockEntity be, ServerLevel level, PlacedPiece plate) {
+        Direction from = plate.facing;
+        be.removePieceAt(plate.anchor.getX(), plate.anchor.getY(), plate.anchor.getZ());
+        Direction[] faces = Direction.values();
+        for (int i = 1; i < faces.length; i++) {
+            if (place(be, level, faces[(from.ordinal() + i) % faces.length])) return true;
+        }
+        place(be, level, from);
+        return false;
+    }
+
     /** Places a plate on {@code face} of {@code be}; false if any of its cells is taken. */
     public static boolean place(SubgridBlockEntity be, ServerLevel level, Direction face) {
         PlacedPiece piece = ShaftConnectorPiece.create(be, face);

@@ -22,6 +22,7 @@ public class TinyBlocksTabs {
                         output.accept(Registration.MINIMIZER.get());
                         output.accept(com.therappha.tinyblocks.compat.create.CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
                         output.accept(Registration.GRID_SAVE.get());
+                        output.accept(GuideBook.create());
                     })
                     .build());
 

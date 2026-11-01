@@ -27,10 +27,38 @@ public class FakeCellGetter implements BlockGetter {
     private final Map<BlockPos, BlockState> cells = new HashMap<>();
     private final Map<BlockPos, BlockEntity> blockEntities = new HashMap<>();
     private final Set<BlockPos> removedBlockEntities = new HashSet<>();
+    /** What each written cell held right before its first write this use (null: nothing worth diffing against). */
+    private final Map<BlockPos, BlockState> originals = new HashMap<>();
     private final LevelHeightAccessor heightAccessor = LevelHeightAccessor.create(0, 16);
 
+    /** Forgets every write and captured block entity, so the space can be used again from scratch. */
+    public void clear() {
+        cells.clear();
+        blockEntities.clear();
+        removedBlockEntities.clear();
+        originals.clear();
+    }
+
     public void set(BlockPos pos, BlockState state) {
+        if (!originals.containsKey(pos)) originals.put(pos, originalAt(pos));
         cells.put(pos, state);
+    }
+
+    /**
+     * The state local cell {@code pos} held before this use first wrote it, or null when it wasn't written or held
+     * nothing worth diffing against. A caller diffing the writes compares with this rather than with what the cell
+     * holds when the diff runs: a write that reached the cell from outside in the meantime (another grid's call
+     * placing a piece here) must not look like this use's own change and be undone.
+     */
+    @Nullable
+    public BlockState originalState(BlockPos pos) {
+        return originals.get(pos);
+    }
+
+    /** What local cell {@code pos} holds outside this space, recorded on its first write; null here. */
+    @Nullable
+    protected BlockState originalAt(BlockPos pos) {
+        return null;
     }
 
     /**

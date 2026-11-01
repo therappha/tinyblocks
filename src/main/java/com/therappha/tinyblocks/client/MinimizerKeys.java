@@ -30,6 +30,10 @@ public final class MinimizerKeys {
     public static final KeyMapping MINIMIZE_ME = new KeyMapping("key.tinyblocks.minimize_me",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_X, "key.categories.tinyblocks");
 
+    /** K (rebindable): locks the Minimizer in hand (MinimizerItem#mayBreak). A key: a click in the air is the held item's. */
+    public static final KeyMapping LOCK = new KeyMapping("key.tinyblocks.minimizer_lock",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "key.categories.tinyblocks");
+
     private MinimizerKeys() {}
 
     @EventBusSubscriber(modid = TinyBlocks.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
@@ -40,6 +44,7 @@ public final class MinimizerKeys {
         public static void onRegisterKeys(RegisterKeyMappingsEvent event) {
             event.register(NEXT_MODE);
             event.register(MINIMIZE_ME);
+            event.register(LOCK);
         }
     }
 
@@ -56,6 +61,13 @@ public final class MinimizerKeys {
                         || mc.player.getMainHandItem().getItem() instanceof MinimizerItem) {
                     PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
                 }
+            }
+        }
+
+        @SubscribeEvent
+        public static void onLock(ClientTickEvent.Post event) {
+            while (LOCK.consumeClick()) {
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerLockPayload.INSTANCE);
             }
         }
 

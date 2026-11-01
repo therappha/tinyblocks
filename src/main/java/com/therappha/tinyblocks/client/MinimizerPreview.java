@@ -36,8 +36,13 @@ public final class MinimizerPreview {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         ItemStack minimizer = mc.player.getOffhandItem();
-        if (!(minimizer.getItem() instanceof MinimizerItem item) || !(mc.player.getMainHandItem().getItem() instanceof BlockItem)) return;
+        if (!(minimizer.getItem() instanceof MinimizerItem item)) return;
         BuildMode mode = MinimizerBuild.mode(minimizer);
+        if (mode == BuildMode.DESTROY) {
+            outlineDoomed(event, mc);
+            return;
+        }
+        if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) return;
         if (mode == BuildMode.PLACE) return;
         if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
         MinimizerBuild.Target target = MinimizerBuild.target(mc.level, hit, minimizer);
@@ -64,6 +69,19 @@ public final class MinimizerPreview {
                 (max.getX() + 1 - min.getX()) * cell, (max.getY() + 1 - min.getY()) * cell, (max.getZ() + 1 - min.getZ()) * cell,
                 0.3f, 0.9f, 1f, 1f);
         poseStack.popPose();
+        buffers.endBatch(RenderType.lines());
+    }
+
+    /** Destroy mode: the grid a click would break, in red, the whole block as it all goes. Nothing on one it keeps. */
+    private static void outlineDoomed(RenderLevelStageEvent event, Minecraft mc) {
+        if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
+        BlockPos pos = hit.getBlockPos();
+        if (!(mc.level.getBlockState(pos).getBlock() instanceof com.therappha.tinyblocks.subgrid.SubgridBlock)) return;
+        if (!MinimizerItem.mayBreak(mc.player, mc.level, pos)) return;
+        Vec3 camera = event.getCamera().getPosition();
+        MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
+        LevelRenderer.renderLineBox(event.getPoseStack(), buffers.getBuffer(RenderType.lines()),
+                new net.minecraft.world.phys.AABB(pos).move(camera.scale(-1)).inflate(1 / 512d), 1f, 0.15f, 0.15f, 1f);
         buffers.endBatch(RenderType.lines());
     }
 }

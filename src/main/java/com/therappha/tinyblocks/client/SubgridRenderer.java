@@ -44,9 +44,27 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         // needs this passed through explicitly instead of just relying on the ambient poseStack.
         PoseStack.Pose basePose = poseStack.last();
 
-        for (PlacedPiece piece : be.getPieces()) {
+        // Static pieces come from a cached, culled mesh (StaticMesh); only the rest go through the loop below.
+        StaticMesh mesh = StaticMesh.of(be, blockRenderer);
+        mesh.draw(poseStack, bufferSource, packedLight, packedOverlay);
+        if (crackedPiece != null && mesh.baked.contains(crackedPiece)) {
+            BlockState state = crackedPiece.definition.renderState(crackedPiece);
+            RenderType crumbleType = RenderType.crumbling(ResourceLocation.withDefaultNamespace(
+                    "textures/block/destroy_stage_" + crackStage + ".png"));
+            MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
+            for (PieceTransforms.Slice slice : PieceTransforms.slices(crackedPiece, be.getGridSize())) {
+                poseStack.pushPose();
+                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
+                poseStack.popPose();
+            }
+        }
+
+        for (PlacedPiece piece : mesh.dynamic) {
             BlockState state = piece.definition.renderState(piece);
             if (state == null) continue;
+            boolean staticDrawn = mesh.baked.contains(piece);
 
             // #TODO remove before release — water-rendering investigation. A fluid's BlockState
             // has RenderShape.INVISIBLE (same as any real water/lava), so renderSingleBlock below
@@ -89,7 +107,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
                 poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
 
-                blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
+                if (!staticDrawn) blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay);
 
                 // Some vanilla blocks (a piston's moving-block animation, a chest lid, an enchanting
                 // table's book) carry ALL of their real visual on a BlockEntityRenderer rather than a
@@ -117,7 +135,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                     }
                 }
 
-                if (piece == crackedPiece) {
+                // A piece with a baked model got its crack with the static mesh above.
+                if (piece == crackedPiece && !staticDrawn) {
                     ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
                         "textures/block/destroy_stage_" + crackStage + ".png");
                     RenderType crumbleType = RenderType.crumbling(crackTex);
@@ -126,6 +145,107 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 }
 
                 poseStack.popPose();
+            }
+        }
+    }
+
+    /**
+     * A grid's static pieces as baked quads (issue #64): built once per change of its pieces
+     * (SubgridBlockEntity#pieceVersion) instead of looking every piece's model up and walking its quads every frame,
+     * and without the faces a neighbouring piece in the grid hides (PieceFaceCulling) — in a dense grid most of them.
+     * Exactly what renderSingleBlock drew for a MODEL piece: its model's quads per render type, tinted with the
+     * block's colour, in the piece's cell. A piece with a block entity, a fluid, another render shape or more than one
+     * slice still takes the per-frame path ({@link #dynamic}); one with a block entity keeps its model here.
+     */
+    static final class StaticMesh {
+        private record PieceQuads(org.joml.Vector3f translation, org.joml.Vector3f scale, float r, float g, float b,
+                                  List<net.minecraft.client.renderer.block.model.BakedQuad> quads) {}
+
+        final int version;
+        /** One model, to notice a resource reload (models replaced) without a version change. */
+        private final BlockState sentinelState;
+        private final net.minecraft.client.resources.model.BakedModel sentinelModel;
+        final java.util.Set<PlacedPiece> baked = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        final List<PlacedPiece> dynamic = new java.util.ArrayList<>();
+        private final java.util.Map<RenderType, List<PieceQuads>> batches = new java.util.LinkedHashMap<>();
+        int quadCount;
+
+        private StaticMesh(SubgridBlockEntity be, net.minecraft.client.renderer.block.BlockRenderDispatcher blockRenderer) {
+            this.version = be.pieceVersion();
+            BlockState sentinel = null;
+            net.minecraft.client.resources.model.BakedModel sentinelModelFound = null;
+            var colors = Minecraft.getInstance().getBlockColors();
+            net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create();
+            for (PlacedPiece piece : be.getPieces()) {
+                BlockState state = piece.definition.renderState(piece);
+                if (state == null) continue;
+                boolean single = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) == null;
+                boolean model = state.getRenderShape() == net.minecraft.world.level.block.RenderShape.MODEL;
+                boolean hasEntity = state.getBlock() instanceof net.minecraft.world.level.block.EntityBlock;
+                if (!single || !state.getFluidState().isEmpty() || !model || hasEntity || piece.runtimeBlockEntity != null) {
+                    dynamic.add(piece);
+                }
+                if (!single || !model || !state.getFluidState().isEmpty()) continue;
+
+                var bakedModel = blockRenderer.getBlockModel(state);
+                if (sentinel == null) {
+                    sentinel = state;
+                    sentinelModelFound = bakedModel;
+                }
+                int color = colors.getColor(state, null, null, 0);
+                float r = net.minecraft.util.Mth.clamp((color >> 16 & 0xFF) / 255f, 0, 1);
+                float g = net.minecraft.util.Mth.clamp((color >> 8 & 0xFF) / 255f, 0, 1);
+                float b = net.minecraft.util.Mth.clamp((color & 0xFF) / 255f, 0, 1);
+                PieceTransforms.Slice slice = PieceTransforms.slices(piece, be.getGridSize()).get(0);
+                var modelData = net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
+                for (RenderType rt : bakedModel.getRenderTypes(state, net.minecraft.util.RandomSource.create(42), modelData)) {
+                    List<net.minecraft.client.renderer.block.model.BakedQuad> quads = new java.util.ArrayList<>();
+                    for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
+                        if (com.therappha.tinyblocks.subgrid.PieceFaceCulling.hidden(be, piece, state, side)) continue;
+                        random.setSeed(42L);
+                        quads.addAll(bakedModel.getQuads(state, side, random, modelData, rt));
+                    }
+                    random.setSeed(42L);
+                    quads.addAll(bakedModel.getQuads(state, null, random, modelData, rt));
+                    if (quads.isEmpty()) continue;
+                    quadCount += quads.size();
+                    batches.computeIfAbsent(net.neoforged.neoforge.client.RenderTypeHelper.getEntityRenderType(rt, false),
+                                    k -> new java.util.ArrayList<>())
+                            .add(new PieceQuads(slice.translation(), slice.scale(), r, g, b, quads));
+                }
+                baked.add(piece);
+            }
+            this.sentinelState = sentinel;
+            this.sentinelModel = sentinelModelFound;
+        }
+
+        static StaticMesh of(SubgridBlockEntity be, net.minecraft.client.renderer.block.BlockRenderDispatcher blockRenderer) {
+            if (be.renderCache instanceof StaticMesh mesh && mesh.version == be.pieceVersion()
+                    && (mesh.sentinelState == null || blockRenderer.getBlockModel(mesh.sentinelState) == mesh.sentinelModel)) {
+                return mesh;
+            }
+            StaticMesh mesh = new StaticMesh(be, blockRenderer);
+            be.renderCache = mesh;
+            return mesh;
+        }
+
+        void draw(PoseStack poseStack, MultiBufferSource bufferSource, int light, int overlay) {
+            for (var batch : batches.entrySet()) {
+                var consumer = bufferSource.getBuffer(batch.getKey());
+                for (PieceQuads piece : batch.getValue()) {
+                    poseStack.pushPose();
+                    poseStack.translate(piece.translation().x, piece.translation().y, piece.translation().z);
+                    poseStack.scale(piece.scale().x, piece.scale().y, piece.scale().z);
+                    PoseStack.Pose pose = poseStack.last();
+                    for (var quad : piece.quads()) {
+                        if (quad.isTinted()) {
+                            consumer.putBulkData(pose, quad, piece.r(), piece.g(), piece.b(), 1.0F, light, overlay);
+                        } else {
+                            consumer.putBulkData(pose, quad, 1.0F, 1.0F, 1.0F, 1.0F, light, overlay);
+                        }
+                    }
+                    poseStack.popPose();
+                }
             }
         }
     }
