@@ -92,5 +92,5 @@
   "block.tinyblocks.grid_box": "Boxed Grid",
   "tinyblocks.grid_box.blocked": "Something is in the way: the box stays closed",
   "item.tinyblocks.grid_save.belt_cut": "A belt runs into a grid you didn't select: select both",
-  "key.tinyblocks.mode": "TinyBlocks mode (of the item in hand)"
+  "key.tinyblocks.mode": "TinyBlocks Mode Shift"
 }

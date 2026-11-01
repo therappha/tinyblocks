@@ -92,5 +92,5 @@
   "block.tinyblocks.grid_box": "装箱的网格",
   "tinyblocks.grid_box.blocked": "有东西挡住了:箱子保持关闭",
   "item.tinyblocks.grid_save.belt_cut": "传送带延伸到未选择的网格:请同时选择两个",
-  "key.tinyblocks.mode": "TinyBlocks 模式(手中物品)"
+  "key.tinyblocks.mode": "TinyBlocks 模式切换"
 }

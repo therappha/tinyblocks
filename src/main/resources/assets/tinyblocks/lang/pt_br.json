@@ -92,5 +92,5 @@
   "block.tinyblocks.grid_box": "Grid na Caixa",
   "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada",
   "item.tinyblocks.grid_save.belt_cut": "Uma esteira continua num grid que você não selecionou: selecione os dois",
-  "key.tinyblocks.mode": "Modo TinyBlocks (do item na mão)"
+  "key.tinyblocks.mode": "Troca de Modo TinyBlocks"
 }
