@@ -196,7 +196,6 @@ public class SubgridEventHandler {
             BlockState targetState = level.getBlockState(targetPos);
             if (!targetState.isAir() && !(targetState.getBlock() instanceof SubgridBlock)) return;
         }
-
         event.setCanceled(true);
         // Without this, a cancelled RightClickBlock defaults its result to PASS (see NeoForge's
         // own PlayerInteractEvent.RightClickBlock javadoc: "if result equals PASS, we proceed to
@@ -222,6 +221,14 @@ public class SubgridEventHandler {
         if (clickedIsSubgrid) {
             if (!(serverLevel.getBlockEntity(pos) instanceof SubgridBlockEntity existing)) return;
             Vec3i clickedCell = GridRay.cellAt(pos, hit.getLocation(), face, existing.gridSize);
+
+            // A connector's wide end meets what is outside: without a Minimizer, a block clicked onto it is a normal
+            // block out there. SubgridPlacementPreview shows it.
+            if (minimizer == null && blockItem != null
+                    && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(existing, blockItem.getBlock(), hit)) {
+                com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeOutside(serverLevel, player, event.getHand(), stack, blockItem, hit);
+                return;
+            }
 
             if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
                 // Before the clicked piece's own use: a tiny shaft would otherwise run Create's shaft placement

@@ -70,6 +70,29 @@ public class SubgridConnectorGameTest {
         helper.succeed();
     }
 
+    /** Without a Minimizer, a block clicked onto a connector's wide end is a normal block outside the grid. */
+    @GameTest(template = PLATFORM, timeoutTicks = 100)
+    public void aBlockClickedOntoAConnectorsWideEndGoesOutside(GameTestHelper helper) {
+        BlockPos at = new BlockPos(2, 1, 2), outside = at.east();
+        helper.setBlock(outside, net.minecraft.world.level.block.Blocks.AIR);
+        SubgridBlockEntity be = funnelGrid(helper, at);
+        ServerLevel level = helper.getLevel();
+        plateOn(be, level, Direction.EAST);
+        var player = SubgridTestSupport.serverPlayer(helper, be);
+        var shafts = AllBlocks.SHAFT.asStack(2);
+        player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, shafts);
+        BlockPos real = be.getBlockPos();
+        var onWideEnd = new net.minecraft.world.phys.BlockHitResult(
+                new net.minecraft.world.phys.Vec3(real.getX() + 1, real.getY() + 0.5, real.getZ() + 0.5), Direction.EAST, real, false);
+
+        player.gameMode.useItemOn(player, level, shafts, net.minecraft.world.InteractionHand.MAIN_HAND, onWideEnd);
+
+        helper.assertBlockPresent(AllBlocks.SHAFT.get(), outside);
+        helper.assertBlockProperty(outside, RotatedPillarKineticBlock.AXIS, Direction.Axis.X);
+        helper.assertTrue(be.getPieces().size() == 1, "the block went into the grid: " + be.getPieces().size() + " pieces");
+        helper.succeed();
+    }
+
     private static PlacedPiece plateOn(SubgridBlockEntity be, ServerLevel level, Direction face) {
         if (!ConnectorPlacement.place(be, level, face)) {
             throw new IllegalStateException("could not place a connector plate on " + face + " of " + be.getBlockPos());

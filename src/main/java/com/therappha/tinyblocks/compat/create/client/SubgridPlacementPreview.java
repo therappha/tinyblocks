@@ -80,6 +80,19 @@ public final class SubgridPlacementPreview {
         // not where the shaft helper it also matches would put it.
         if (!(held.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof ShaftConnectorBlock) return null;
 
+        // Without a Minimizer, a connector's wide end takes a normal block outside the grid (SubgridEventHandler).
+        if (!(mc.player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
+                && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(grid, blockItem.getBlock(), ray)) {
+            BlockPos outside = ray.getBlockPos().relative(ray.getDirection());
+            if (!mc.level.getBlockState(outside).canBeReplaced()) return null;
+            BlockState outsideState = blockItem.getBlock().getStateForPlacement(new net.minecraft.world.item.context.BlockPlaceContext(
+                    mc.player, net.minecraft.world.InteractionHand.MAIN_HAND, held, ray));
+            if (outsideState == null) return null;
+            ghost = new Ghost(Vec3.atLowerCornerOf(outside), 1,
+                    com.therappha.tinyblocks.compat.create.ConnectorPlacement.alignedOutside(outsideState, ray.getDirection()));
+            return outside;
+        }
+
         VirtualHit hit = VirtualHit.of(grid, ray);
         PlacedPiece piece = grid.getPieceAt(hit.cell().getX(), hit.cell().getY(), hit.cell().getZ());
         if (piece == null || !(piece.definition instanceof VanillaBlockPiece)
