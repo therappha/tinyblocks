@@ -125,7 +125,7 @@ public final class GridSavePreview {
                 if (!mc.level.getBlockState(target).canBeReplaced() || !mc.level.isInWorldBounds(target)) return;
             }
 
-            Vec3 camera = event.getCamera().getPosition();
+            Vec3 camera = SubLevelView.enter(event, origin);
             MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
             for (Part part : parts) {
                 BlockPos target = origin.offset(part.offset());
@@ -140,6 +140,7 @@ public final class GridSavePreview {
                         origin.getY() + turnedBox.getY(), origin.getZ() + turnedBox.getZ());
                 outline(event, buffers, box.move(camera.scale(-1)), 0xFFFFFF, 0.4f);
             }
+            SubLevelView.exit(event);
         }
 
         /**
@@ -158,6 +159,8 @@ public final class GridSavePreview {
             if (corner == null) return;
             BlockPos other = mc.hitResult instanceof BlockHitResult hit && hit.getType() != HitResult.Type.MISS
                     ? hit.getBlockPos() : corner;
+            // A corner on a sub-level and one in the world are millions of blocks apart: no box, and no walk across it.
+            if (!com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(mc.level, corner, other)) other = corner;
             BlockPos min = BlockPos.min(corner, other), max = BlockPos.max(corner, other);
             // As GridSaveItem#pickUpBox refuses, but for what only the server asks.
             int grids = 0;
@@ -167,10 +170,11 @@ public final class GridSavePreview {
             BlockPos span = max.subtract(min);
             boolean fits = span.getX() < GridSaveItem.MAX_SPAN && span.getY() < GridSaveItem.MAX_SPAN && span.getZ() < GridSaveItem.MAX_SPAN;
             boolean takes = fits && grids > 0 && grids <= GridSaveItem.MAX_GRIDS;
-            Vec3 camera = event.getCamera().getPosition();
+            Vec3 camera = SubLevelView.enter(event, min);
             AABB box = new AABB(Vec3.atLowerCornerOf(min), Vec3.atLowerCornerOf(max).add(1, 1, 1)).move(camera.scale(-1));
             // Create's Super Glue colours.
             outline(event, mc.renderBuffers().bufferSource(), box, takes ? 0x68c586 : 0xc5b548, 1f);
+            SubLevelView.exit(event);
         }
 
         private static void outline(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers, AABB box, int rgb, float alpha) {

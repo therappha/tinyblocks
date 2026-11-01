@@ -17,13 +17,13 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Shift+G (rebindable) switches a held Minimizer's build mode; with a shape's first corner held, Ctrl + scroll
+ * Shift+H (rebindable) switches the mode of what is in hand: a Minimizer's build mode, a Grid Save's cut or copy; with a shape's first corner held, Ctrl + scroll
  * raises or lowers the second corner (as Simulated's honey glue grows its box), instead of changing hotbar slot.
  */
 public final class MinimizerKeys {
 
-    public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.minimizer_mode",
-            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G,
+    public static final KeyMapping NEXT_MODE = new KeyMapping("key.tinyblocks.mode",
+            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H,
             "key.categories.tinyblocks");
 
     /** X (rebindable): shrink to the held Minimizer's size, or back to full size (MinimizeMe). */
@@ -33,6 +33,14 @@ public final class MinimizerKeys {
     /** K (rebindable): locks the Minimizer in hand (MinimizerItem#mayBreak). A key: a click in the air is the held item's. */
     public static final KeyMapping LOCK = new KeyMapping("key.tinyblocks.minimizer_lock",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "key.categories.tinyblocks");
+
+    /** Shift+G (rebindable): switches the held Minimizer off and on, to build normally without putting it away. */
+    public static final KeyMapping TOGGLE = new KeyMapping("key.tinyblocks.minimizer_toggle",
+            KeyConflictContext.IN_GAME, KeyModifier.SHIFT, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.tinyblocks");
+
+    /** Z (rebindable): held, shows the size board (MinimizerSizeMenu); let go on a size to pick it. */
+    public static final KeyMapping SIZE = new KeyMapping("key.tinyblocks.minimizer_size",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_Z, "key.categories.tinyblocks");
 
     private MinimizerKeys() {}
 
@@ -45,6 +53,8 @@ public final class MinimizerKeys {
             event.register(NEXT_MODE);
             event.register(MINIMIZE_ME);
             event.register(LOCK);
+            event.register(TOGGLE);
+            event.register(SIZE);
         }
     }
 
@@ -57,10 +67,14 @@ public final class MinimizerKeys {
             Minecraft mc = Minecraft.getInstance();
             while (NEXT_MODE.consumeClick()) {
                 if (mc.player == null) return;
-                if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem
-                        || mc.player.getMainHandItem().getItem() instanceof MinimizerItem) {
-                    PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
-                }
+                PacketDistributor.sendToServer(MinimizerModePayload.INSTANCE);
+            }
+        }
+
+        @SubscribeEvent
+        public static void onToggle(ClientTickEvent.Post event) {
+            while (TOGGLE.consumeClick()) {
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerTogglePayload.INSTANCE);
             }
         }
 

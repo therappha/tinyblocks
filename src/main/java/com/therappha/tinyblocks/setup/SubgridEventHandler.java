@@ -154,6 +154,9 @@ public class SubgridEventHandler {
      * subgrid_block is created there first (mirroring TinyPieceItem.useOn's own else branch),
      * so you don't need an existing subgrid to reference before placing into one.
      */
+    /** How many grids in a row a whole block placed against one goes past. */
+    private static final int MAX_GRIDS_PASSED = 64;
+
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         Level level = event.getLevel();
@@ -163,7 +166,7 @@ public class SubgridEventHandler {
 
         // A Minimizer in Destroy mode breaks the clicked grid, whatever is in the main hand, or nothing.
         if (event.getHand() == InteractionHand.MAIN_HAND
-                && player.getOffhandItem().getItem() instanceof MinimizerItem
+                && MinimizerItem.isOn(player.getOffhandItem())
                 && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) == com.therappha.tinyblocks.items.BuildMode.DESTROY
                 && level.getBlockEntity(event.getPos()) instanceof SubgridBlockEntity grid) {
             event.setCanceled(true);
@@ -184,7 +187,20 @@ public class SubgridEventHandler {
         BlockPos pos = event.getPos();
         BlockState clickedState = level.getBlockState(pos);
         boolean clickedIsSubgrid = clickedState.getBlock() instanceof SubgridBlock;
-        MinimizerItem minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
+        // A Minimizer switched off: a grid is a block like any other, and a whole block goes against it, past any
+        // more grids that way, on the first free spot.
+        if (clickedIsSubgrid && blockItem != null && event.getHand() == InteractionHand.MAIN_HAND && MinimizerItem.isOff(player.getOffhandItem())) {
+            BlockHitResult hit = event.getHitVec();
+            BlockPos against = pos;
+            for (int i = 0; i < MAX_GRIDS_PASSED && level.getBlockState(against.relative(hit.getDirection())).getBlock() instanceof SubgridBlock; i++) {
+                against = against.relative(hit.getDirection());
+            }
+            event.setCanceled(true);
+            event.setCancellationResult(blockItem.useOn(new net.minecraft.world.item.context.UseOnContext(player, InteractionHand.MAIN_HAND,
+                    new BlockHitResult(hit.getLocation(), hit.getDirection(), against, false))));
+            return;
+        }
+        MinimizerItem minimizer = MinimizerItem.isOn(player.getOffhandItem()) && player.getOffhandItem().getItem() instanceof MinimizerItem mi ? mi : null;
         // A Minimizer in a shape mode builds between two corners instead of placing one piece — of any size, the
         // normal size (1/1) included. Taken whatever was clicked, so a shape click never places a block of its own.
         if (minimizer != null && blockItem != null

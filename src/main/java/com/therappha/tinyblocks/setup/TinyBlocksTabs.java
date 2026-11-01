@@ -18,7 +18,7 @@ public class TinyBlocksTabs {
                     .title(Component.translatable("itemGroup.tinyblocks.main"))
                     .icon(() -> new ItemStack(Registration.MINIMIZER.get()))
                     .displayItems((params, output) -> {
-                        // One Minimizer: its size is picked on it (the fixed-size ones stay registered for old worlds).
+                        // One Minimizer: its size is picked on it.
                         output.accept(Registration.MINIMIZER.get());
                         output.accept(com.therappha.tinyblocks.compat.create.CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
                         output.accept(Registration.GRID_SAVE.get());

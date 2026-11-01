@@ -249,7 +249,7 @@ public class GridSaveItem extends Item {
         if (!full && !selecting && !(level.getBlockState(clicked).getBlock() instanceof SubgridBlock)) return InteractionResult.PASS;
         if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
         boolean done;
-        if (full) done = place(serverLevel, clicked.relative(face), face, stack, player);
+        if (full) done = pack(serverLevel, clicked.relative(face), face, stack, player);
         else if (player != null && player.isSecondaryUseActive()) done = selectCorner(serverLevel, clicked, stack, player);
         else if (selecting) done = pickUpBox(serverLevel, corner(stack, level), clicked, stack, player);
         else done = pickUp(serverLevel, clicked, stack, player);
@@ -276,17 +276,18 @@ public class GridSaveItem extends Item {
             }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         }
-        // Not sneaking: switches between cutting and copying.
-        if (!level.isClientSide) {
-            if (!isCopy(stack) && !player.hasInfiniteMaterials()) {
-                tell(player, "item.tinyblocks.grid_save.copy_creative");
-            } else {
-                boolean copy = !isCopy(stack);
-                CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.putBoolean(COPY_KEY, copy));
-                tell(player, copy ? "item.tinyblocks.grid_save.mode_copy" : "item.tinyblocks.grid_save.mode_cut");
-            }
+        return InteractionResultHolder.pass(stack);
+    }
+
+    /** The mode key: switches between cutting and copying. Copying makes pieces out of nothing, so it's creative only. */
+    public static void switchMode(ItemStack stack, Player player) {
+        if (!isCopy(stack) && !player.hasInfiniteMaterials()) {
+            tell(player, "item.tinyblocks.grid_save.copy_creative");
+            return;
         }
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        boolean copy = !isCopy(stack);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.putBoolean(COPY_KEY, copy));
+        tell(player, copy ? "item.tinyblocks.grid_save.mode_copy" : "item.tinyblocks.grid_save.mode_cut");
     }
 
     /** Put away, or taken to another dimension, it forgets the corner it was selecting from. */
@@ -313,6 +314,10 @@ public class GridSaveItem extends Item {
         }
         if (player != null && !mayBreak(level, pos, player)) return false;
         CompoundTag grid = new CompoundTag();
+        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(List.of(be))) {
+            tell(player, "item.tinyblocks.grid_save.belt_cut");
+            return false;
+        }
         grid.putInt("size", be.getGridSize());
         grid.put("data", be.saveCustomOnly(level.registryAccess()));
         grid.putInt("turns", 0);
@@ -381,6 +386,10 @@ public class GridSaveItem extends Item {
             }
             if (player != null && !mayBreak(level, pos, player)) return false;
         }
+        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(grids)) {
+            tell(player, "item.tinyblocks.grid_save.belt_cut");
+            return false;
+        }
         // Every one saved before any is removed: a grid removed changes what its neighbours hold (their speed, their
         // links), and those are saved as they were together.
         ListTag entries = new ListTag();
@@ -424,8 +433,40 @@ public class GridSaveItem extends Item {
      * writes it). All or none.
      */
     public static boolean place(ServerLevel level, BlockPos pos, Direction face, ItemStack stack, @Nullable Player player) {
+        List<BlockPos> targets = targets(level, pos, face, stack, player);
+        if (targets == null) return false;
         CompoundTag grid = grid(stack);
-        if (grid == null) return false;
+        Rotation rotation = rotation(stack);
+        List<Entry> entries = entries(grid);
+        return unboxInto(level, targets, pos, face, stack, player, grid, rotation, entries);
+    }
+
+    /** A click with a full Grid Save: what it holds goes into a closed box at {@code pos}, to be unboxed (GridBoxBlock). */
+    public static boolean pack(ServerLevel level, BlockPos pos, Direction face, ItemStack stack, @Nullable Player player) {
+        if (targets(level, pos, face, stack, player) == null) return false;
+        Vec3i size = turnedBox(box(grid(stack)), rotation(stack));
+        BlockPos corner = origin(pos, face, size);
+        List<BlockPos> cells = new ArrayList<>();
+        BlockPos.betweenClosed(corner, corner.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1)).forEach(cell -> cells.add(cell.immutable()));
+        for (BlockPos cell : cells) {
+            if (!level.getBlockState(cell).canBeReplaced() || !level.isInWorldBounds(cell)) return false;
+            if (player != null && !player.mayUseItemAt(cell, face, stack)) return false;
+        }
+        for (BlockPos cell : cells) level.setBlock(cell, Registration.GRID_BOX.get().defaultBlockState(), Block.UPDATE_ALL);
+        if (!(level.getBlockEntity(corner) instanceof GridBoxBlockEntity box)) return false;
+        box.hold(stack.copyWithCount(1), pos, face, size);
+        for (BlockPos cell : cells) {
+            if (!cell.equals(corner) && level.getBlockEntity(cell) instanceof GridBoxBlockEntity part) part.partOf(corner);
+        }
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
+        return true;
+    }
+
+    /** Where {@code stack}'s grids go if placed at {@code pos}; null if there's nothing to place, or it can't go there. */
+    @Nullable
+    private static List<BlockPos> targets(ServerLevel level, BlockPos pos, Direction face, ItemStack stack, @Nullable Player player) {
+        CompoundTag grid = grid(stack);
+        if (grid == null) return null;
         Rotation rotation = rotation(stack);
         Vec3i box = box(grid);
         BlockPos origin = origin(pos, face, turnedBox(box, rotation));
@@ -434,15 +475,20 @@ public class GridSaveItem extends Item {
         for (Entry entry : entries) {
             BlockPos offset = entry.offset();
             if (offset.getX() < 0 || offset.getY() < 0 || offset.getZ() < 0
-                    || offset.getX() >= box.getX() || offset.getY() >= box.getY() || offset.getZ() >= box.getZ()) return false;
+                    || offset.getX() >= box.getX() || offset.getY() >= box.getY() || offset.getZ() >= box.getZ()) return null;
             BlockPos target = origin.offset(turnedOffset(offset, box, rotation));
-            if (targets.contains(target)) return false;
-            if (!level.getBlockState(target).canBeReplaced() || !level.isInWorldBounds(target)) return false;
-            if (player != null && !player.mayUseItemAt(target, face, stack)) return false;
-            if (!level.isUnobstructed(null, Shapes.block().move(target.getX(), target.getY(), target.getZ()))) return false;
-            if (Registration.subgridBlock(entry.size()).gridSize != entry.size()) return false;
+            if (targets.contains(target)) return null;
+            if (!level.getBlockState(target).canBeReplaced() || !level.isInWorldBounds(target)) return null;
+            if (player != null && !player.mayUseItemAt(target, face, stack)) return null;
+            if (!level.isUnobstructed(null, Shapes.block().move(target.getX(), target.getY(), target.getZ()))) return null;
+            if (Registration.subgridBlock(entry.size()).gridSize != entry.size()) return null;
             targets.add(target);
         }
+        return targets;
+    }
+
+    private static boolean unboxInto(ServerLevel level, List<BlockPos> targets, BlockPos pos, Direction face, ItemStack stack,
+                                     @Nullable Player player, CompoundTag grid, Rotation rotation, List<Entry> entries) {
         List<BlockSnapshot> before = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             before.add(BlockSnapshot.create(level.dimension(), level, targets.get(i)));
@@ -470,6 +516,7 @@ public class GridSaveItem extends Item {
         for (int i = 0; i < placed.size(); i++) placed.get(i).loadCustomOnly(entries.get(i).data(), level.registryAccess());
         for (SubgridBlockEntity be : placed) be.turnMovedQuietly(rotation, Mirror.NONE);
         for (SubgridBlockEntity be : placed) be.lookAroundMoved();
+        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(placed);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
         return true;
     }
@@ -486,11 +533,6 @@ public class GridSaveItem extends Item {
 
     private static void tell(@Nullable Player player, String key) {
         if (player != null) player.displayClientMessage(Component.translatable(key), true);
-    }
-
-    @Override
-    public boolean isFoil(ItemStack stack) {
-        return isFull(stack);
     }
 
     @Override

@@ -6,7 +6,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/** Sent client->server on the Minimizer mode key (Shift+G): switch the held Minimizer to its next build mode. */
+/** Sent client->server on the mode key (Shift+H): switches the mode of what is in hand (NetworkSetup#handleMinimizerMode). */
 public record MinimizerModePayload() implements CustomPacketPayload {
 
     public static final MinimizerModePayload INSTANCE = new MinimizerModePayload();

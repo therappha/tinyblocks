@@ -54,6 +54,10 @@ public class ClientSetup {
             net.minecraft.client.renderer.item.ItemProperties.register(Registration.GRID_SAVE.get(),
                     net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "full"),
                     (stack, level, entity, seed) -> com.therappha.tinyblocks.items.GridSaveItem.isFull(stack) ? 1f : 0f);
+            // models/item/minimizer.json turns red while it is switched off.
+            net.minecraft.client.renderer.item.ItemProperties.register(Registration.MINIMIZER.get(),
+                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "off"),
+                    (stack, level, entity, seed) -> MinimizerItem.isOn(stack) ? 0f : 1f);
         });
     }
 
@@ -106,7 +110,7 @@ class SubgridClientHandler {
         if (!(state.getBlock() instanceof SubgridBlock)) {
             // Not a subgrid yet — if the Minimizer is equipped, replace vanilla's normal single
             // outline with a preview grid showing where its cells would land on this face.
-            if (mc.player.getOffhandItem().getItem() instanceof MinimizerItem minimizer
+            if (MinimizerItem.isOn(mc.player.getOffhandItem()) && mc.player.getOffhandItem().getItem() instanceof MinimizerItem minimizer
                     && minimizer.gridSize(mc.player.getOffhandItem()) != MinimizerItem.NORMAL_SIZE) {
                 event.setCanceled(true);
                 renderMinimizerFaceGrid(event, pos, hit.getDirection(), minimizer.gridSize(mc.player.getOffhandItem()));

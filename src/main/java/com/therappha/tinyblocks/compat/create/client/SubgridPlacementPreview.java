@@ -73,6 +73,7 @@ public final class SubgridPlacementPreview {
         if (mc.level == null || mc.player == null || mc.player.isShiftKeyDown()) return null;
         if (!(mc.hitResult instanceof BlockHitResult ray) || ray.getType() == HitResult.Type.MISS) return null;
         if (!(mc.level.getBlockEntity(ray.getBlockPos()) instanceof SubgridBlockEntity grid)) return null;
+        if (com.therappha.tinyblocks.items.MinimizerItem.isOff(mc.player.getOffhandItem())) return null; // whole blocks
 
         // Only the main hand: that's the hand VanillaBlockPiece#onUse hands to the piece.
         ItemStack held = mc.player.getMainHandItem();
@@ -81,7 +82,7 @@ public final class SubgridPlacementPreview {
         if (!(held.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof ShaftConnectorBlock) return null;
 
         // Without a Minimizer, a connector's wide end takes a normal block outside the grid (SubgridEventHandler).
-        if (!(mc.player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
+        if (!com.therappha.tinyblocks.items.MinimizerItem.isOn(mc.player.getOffhandItem())
                 && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(grid, blockItem.getBlock(), ray)) {
             BlockPos outside = ray.getBlockPos().relative(ray.getDirection());
             if (!mc.level.getBlockState(outside).canBeReplaced()) return null;
@@ -130,7 +131,7 @@ public final class SubgridPlacementPreview {
         if (current == null) return;
 
         Minecraft mc = Minecraft.getInstance();
-        Vec3 camera = event.getCamera().getPosition();
+        Vec3 camera = com.therappha.tinyblocks.client.SubLevelView.enter(event, net.minecraft.core.BlockPos.containing(current.corner()));
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         // Create's transparent ghost: breathing, fading in with the placement indicator, a little smaller than the cell.
@@ -154,6 +155,7 @@ public final class SubgridPlacementPreview {
         }
         poseStack.popPose();
         buffers.endBatch(RenderType.translucent());
+        com.therappha.tinyblocks.client.SubLevelView.exit(event);
     }
 
 }

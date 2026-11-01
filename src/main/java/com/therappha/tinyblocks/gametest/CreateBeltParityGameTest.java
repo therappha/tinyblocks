@@ -81,6 +81,74 @@ public class CreateBeltParityGameTest {
         }).thenSucceed();
     }
 
+    private static int belts(com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) {
+        int count = 0;
+        for (var piece : grid.getPieces()) {
+            if (piece.runtimeState instanceof BlockState state && AllBlocks.BELT.has(state)) count++;
+        }
+        return count;
+    }
+
+    /** A belt across two grids: taking one is refused and nothing changes, taking both moves the whole belt. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 200)
+    public void parityBeltAcrossGridsIsTakenWholeOrNotAtAll(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos westAt = new net.minecraft.core.BlockPos(1, 2, 1), eastAt = westAt.east(), to = new net.minecraft.core.BlockPos(1, 2, 4);
+        helper.setBlock(westAt, net.minecraft.world.level.block.Blocks.AIR);
+        helper.setBlock(eastAt, net.minecraft.world.level.block.Blocks.AIR);
+        var west = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(westAt), 8);
+        var east = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(eastAt), 8);
+        int first = 4, last = 11;
+        for (int x = first; x <= last; x++) {
+            var cell = new net.minecraft.core.BlockPos(x % 8, 1, 4);
+            SubgridTestSupport.placePiece(x < 8 ? west : east, level, cell, belt(x == first ? BeltPart.START : x == last ? BeltPart.END : BeltPart.MIDDLE));
+        }
+        var player = SubgridTestSupport.serverPlayer(helper, west);
+        var save = new net.minecraft.world.item.ItemStack(com.therappha.tinyblocks.setup.Registration.GRID_SAVE.get());
+        helper.startSequence().thenIdle(20).thenExecute(() -> {
+            helper.assertTrue(!com.therappha.tinyblocks.items.GridSaveItem.pickUp(level, helper.absolutePos(eastAt), save, player), "one grid of the belt was taken");
+            helper.assertTrue(!com.therappha.tinyblocks.items.GridSaveItem.isFull(save) && belts(west) == 4 && belts(east) == 4, "a refused take changed something");
+            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.pickUpBox(level, helper.absolutePos(westAt), helper.absolutePos(eastAt), save, player), "the two grids weren't taken");
+            helper.assertTrue(com.therappha.tinyblocks.items.GridSaveItem.place(level, helper.absolutePos(to), Direction.UP, save, player), "nothing placed");
+        }).thenIdle(20).thenExecute(() -> {
+            int total = 0;
+            for (var at : net.minecraft.core.BlockPos.betweenClosed(helper.absolutePos(to).offset(-2, 0, -2), helper.absolutePos(to).offset(2, 0, 2))) {
+                if (level.getBlockEntity(at) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) total += belts(grid);
+            }
+            helper.assertTrue(total == 8, total + " segments arrived, not 8");
+        }).thenSucceed();
+    }
+
+    /** A save made before the rule: half a belt, put down, goes away. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 60)
+    public void parityBeltLeadingToNothingGoes(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos at = new net.minecraft.core.BlockPos(1, 2, 1);
+        helper.setBlock(at, net.minecraft.world.level.block.Blocks.AIR);
+        var grid = com.therappha.tinyblocks.subgrid.SubgridBlockEntity.createAt(level, helper.absolutePos(at), 8);
+        for (int x = 4; x < 8; x++) {
+            SubgridTestSupport.placePiece(grid, level, new net.minecraft.core.BlockPos(x, 1, 4), belt(x == 4 ? BeltPart.START : BeltPart.MIDDLE));
+        }
+        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(List.of(grid));
+        helper.startSequence().thenIdle(5).thenExecute(() -> helper.assertTrue(belts(grid) == 0, belts(grid) + " segments stayed")).thenSucceed();
+    }
+
+    /** A corner on a sub-level and one in the world make no box: their positions are millions of blocks apart. */
+    @net.minecraft.gametest.framework.GameTest(template = "empty_platform", timeoutTicks = 60)
+    public void aSubLevelAndTheWorldAreDifferentPlaces(net.minecraft.gametest.framework.GameTestHelper helper) {
+        var level = helper.getLevel();
+        net.minecraft.core.BlockPos on = helper.absolutePos(new net.minecraft.core.BlockPos(2, 2, 2));
+        net.minecraft.core.BlockPos floor = helper.absolutePos(new net.minecraft.core.BlockPos(4, 2, 2));
+        level.setBlock(on, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+        Object subLevel = SableSupport.assemble(level, on, List.of(on), on, on);
+        net.minecraft.core.BlockPos plot = SableSupport.plotCenter(subLevel);
+        helper.assertTrue(!com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, plot, floor), "the sub-level and the world count as one place");
+        helper.assertTrue(com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, plot, plot.east()), "one sub-level counts as two places");
+        helper.assertTrue(com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level, floor, floor.east()), "the world counts as two places");
+        SableSupport.remove(level, subLevel);
+        helper.succeed();
+    }
+
     @GameTestGenerator
     public Collection<TestFunction> belts() {
         List<TestFunction> tests = new ArrayList<>();

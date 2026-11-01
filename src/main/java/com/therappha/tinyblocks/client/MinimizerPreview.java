@@ -36,7 +36,7 @@ public final class MinimizerPreview {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         ItemStack minimizer = mc.player.getOffhandItem();
-        if (!(minimizer.getItem() instanceof MinimizerItem item)) return;
+        if (!MinimizerItem.isOn(minimizer) || !(minimizer.getItem() instanceof MinimizerItem item)) return;
         BuildMode mode = MinimizerBuild.mode(minimizer);
         if (mode == BuildMode.DESTROY) {
             outlineDoomed(event, mc);
@@ -51,13 +51,13 @@ public final class MinimizerPreview {
         int size = target.gridSize();
         MinimizerBuild.Corner corner = MinimizerBuild.corner(minimizer);
         BlockPos min = target.cell(), max = target.cell();
-        if (corner != null && corner.gridSize() == size) {
+        if (corner != null && MinimizerBuild.sameShape(mc.level, corner, target)) {
             BlockPos[] bounds = mode.bounds(corner.cell(), MinimizerBuild.secondCorner(minimizer, target), corner.faceAxis());
             min = bounds[0];
             max = bounds[1];
         }
 
-        Vec3 camera = event.getCamera().getPosition();
+        Vec3 camera = SubLevelView.enter(event, hit.getBlockPos());
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         VertexConsumer lines = buffers.getBuffer(RenderType.lines());
@@ -70,6 +70,7 @@ public final class MinimizerPreview {
                 0.3f, 0.9f, 1f, 1f);
         poseStack.popPose();
         buffers.endBatch(RenderType.lines());
+        SubLevelView.exit(event);
     }
 
     /** Destroy mode: the grid a click would break, in red, the whole block as it all goes. Nothing on one it keeps. */
@@ -78,10 +79,11 @@ public final class MinimizerPreview {
         BlockPos pos = hit.getBlockPos();
         if (!(mc.level.getBlockState(pos).getBlock() instanceof com.therappha.tinyblocks.subgrid.SubgridBlock)) return;
         if (!MinimizerItem.mayBreak(mc.player, mc.level, pos)) return;
-        Vec3 camera = event.getCamera().getPosition();
+        Vec3 camera = SubLevelView.enter(event, pos);
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         LevelRenderer.renderLineBox(event.getPoseStack(), buffers.getBuffer(RenderType.lines()),
                 new net.minecraft.world.phys.AABB(pos).move(camera.scale(-1)).inflate(1 / 512d), 1f, 0.15f, 0.15f, 1f);
         buffers.endBatch(RenderType.lines());
+        SubLevelView.exit(event);
     }
 }

@@ -28,6 +28,8 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerModePayload.TYPE, MinimizerModePayload.STREAM_CODEC, NetworkSetup::handleMinimizerMode);
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
+        registrar.playToServer(MinimizerTogglePayload.TYPE, MinimizerTogglePayload.STREAM_CODEC,
+                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleOn(ctx.player())));
         registrar.playToServer(GridSaveTurnPayload.TYPE, GridSaveTurnPayload.STREAM_CODEC, NetworkSetup::handleGridSaveTurn);
         registrar.playToServer(MinimizerLockPayload.TYPE, MinimizerLockPayload.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleLock(ctx.player())));
@@ -64,9 +66,21 @@ public class NetworkSetup {
         });
     }
 
+    /** The one mode key acts on what is in hand: a Grid Save held in the main hand first, then a Minimizer in either. */
     private static void handleMinimizerMode(MinimizerModePayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             var player = ctx.player();
+            var main = player.getMainHandItem();
+            var off = player.getOffhandItem();
+            if (main.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) {
+                com.therappha.tinyblocks.items.GridSaveItem.switchMode(main, player);
+                return;
+            }
+            if (off.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem
+                    && !(main.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) {
+                com.therappha.tinyblocks.items.GridSaveItem.switchMode(off, player);
+                return;
+            }
             var minimizer = player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
                     ? player.getOffhandItem() : player.getMainHandItem();
             if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) return;

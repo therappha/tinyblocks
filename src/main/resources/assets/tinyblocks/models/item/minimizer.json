@@ -1,3 +1,11 @@
 {
-  "parent": "tinyblocks:item/minimizer_rod"
+  "parent": "tinyblocks:item/minimizer_rod",
+  "overrides": [
+    {
+      "predicate": {
+        "tinyblocks:off": 1
+      },
+      "model": "tinyblocks:item/minimizer_off"
+    }
+  ]
 }
