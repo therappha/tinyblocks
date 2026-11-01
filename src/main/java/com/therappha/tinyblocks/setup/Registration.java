@@ -46,6 +46,11 @@ public class Registration {
             BLOCKS.register("subgrid_block_9", () -> new SubgridBlock(
                     Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 9));
 
+    // What a full Grid Save puts down: a closed box, opened to place the grid (GridBoxBlock)
+    public static final DeferredHolder<Block, com.therappha.tinyblocks.items.GridBoxBlock> GRID_BOX =
+            BLOCKS.register("grid_box", () -> new com.therappha.tinyblocks.items.GridBoxBlock(
+                    Block.Properties.of().strength(0.5f).sound(SoundType.WOOL).noOcclusion()));
+
     /** Smallest and largest grid size: cells of 1/2 to 1/16 of a block. */
     public static final int MIN_GRID_SIZE = 2, MAX_GRID_SIZE = 16;
 
@@ -84,6 +89,9 @@ public class Registration {
                     BlockEntityType.Builder.of(
                             (pos, state) -> new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state),
                             allSubgridBlocks()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.therappha.tinyblocks.items.GridBoxBlockEntity>> GRID_BOX_ENTITY =
+            BLOCK_ENTITIES.register("grid_box", () -> BlockEntityType.Builder.of(com.therappha.tinyblocks.items.GridBoxBlockEntity::new, GRID_BOX.get()).build(null));
 
     // Subgrid block items — only obtainable via /give, not in any creative tab
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_2_ITEM =

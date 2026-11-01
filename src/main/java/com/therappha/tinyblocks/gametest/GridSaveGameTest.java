@@ -64,6 +64,15 @@ public class GridSaveGameTest {
     private static final BlockPos LINK = new BlockPos(5, 1, 5);
     private static final int PIECES = 4;
 
+    /** A click with a full Grid Save puts a box down; a right click on the box places the grid. */
+    private static void placeAndUnbox(ServerPlayer player, ServerLevel level, ItemStack save, net.minecraft.world.phys.BlockHitResult hit) {
+        player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, hit);
+        BlockPos box = hit.getBlockPos().relative(hit.getDirection());
+        if (level.getBlockState(box).is(Registration.GRID_BOX.get())) {
+            level.getBlockState(box).useWithoutItem(level, player, new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(box), net.minecraft.core.Direction.UP, box, false));
+        }
+    }
+
     @GameTest(template = "empty_platform", timeoutTicks = 200)
     public void aGridSavedAndPlacedElsewhereKeepsWorking(GameTestHelper helper) {
         // Not a frequency other link tests use: they run alongside, in range.
@@ -113,7 +122,7 @@ public class GridSaveGameTest {
                 .thenExecute(() -> player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, SubgridTestSupport.topHit(be, LINK)))
                 .thenWaitUntil(() -> helper.assertBlockProperty(receiver, RedstoneLinkBlock.POWERED, false))
                 .thenExecute(() -> {
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor);
+                    placeAndUnbox(player, level, save, onFloor);
                     helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grid");
                 })
                 .thenWaitUntil(() -> helper.assertBlockProperty(receiver, RedstoneLinkBlock.POWERED, true))
@@ -254,7 +263,7 @@ public class GridSaveGameTest {
                     inTheWay.discard();
                 })
                 .thenExecute(() -> {
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor);
+                    placeAndUnbox(player, level, save, onFloor);
                     helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grid");
                     helper.assertTrue(level.getBlockEntity(helper.absolutePos(TO)) instanceof SubgridBlockEntity, "no grid was placed");
                     placed[0] = (SubgridBlockEntity) level.getBlockEntity(helper.absolutePos(TO));
@@ -350,7 +359,7 @@ public class GridSaveGameTest {
                 })
                 .thenIdle(2)
                 .thenExecute(() -> {
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onFloor);
+                    placeAndUnbox(player, level, save, onFloor);
                     helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grids");
                     BlockPos[] at = {toWest, toEast};
                     int[] pieces = {4, 3};
@@ -462,11 +471,11 @@ public class GridSaveGameTest {
                     player.setShiftKeyDown(false);
                     BlockPos corner = GridSaveItem.corner(save, level);
                     helper.assertTrue(corner != null, "a sneaking click set no corner");
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, hitOn(helper, new BlockPos(1, 5, 1), Direction.UP));
+                    placeAndUnbox(player, level, save, hitOn(helper, new BlockPos(1, 5, 1), Direction.UP));
                     helper.assertTrue(!GridSaveItem.isFull(save) && corner.equals(GridSaveItem.corner(save, level)),
                             "a box too big was taken, or lost the corner");
                     helper.assertTrue(level.getBlockEntity(helper.absolutePos(westAt)) instanceof SubgridBlockEntity, "a refused take took a grid");
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, hitOn(helper, new BlockPos(2, 2, 1), Direction.UP));
+                    placeAndUnbox(player, level, save, hitOn(helper, new BlockPos(2, 2, 1), Direction.UP));
                     helper.assertTrue(GridSaveItem.isFull(save), "the box was not taken");
                     helper.assertTrue(GridSaveItem.box(GridSaveItem.grid(save)).equals(new Vec3i(2, 1, 1)),
                             "the box kept is " + GridSaveItem.box(GridSaveItem.grid(save)) + ", not only the two grids");
@@ -476,7 +485,7 @@ public class GridSaveGameTest {
                     helper.assertTrue(GridSaveItem.isFull(save), "a refused placement emptied the Grid Save");
                     helper.assertBlockPresent(Blocks.AIR, toWest);
                     helper.setBlock(toEast, Blocks.AIR);
-                    player.gameMode.useItemOn(player, level, save, InteractionHand.MAIN_HAND, onWall);
+                    placeAndUnbox(player, level, save, onWall);
                     helper.assertTrue(!GridSaveItem.isFull(save), "the Grid Save still holds its grids");
                     BlockPos[] at = {toWest, toEast};
                     int[] pieces = {1, 2};

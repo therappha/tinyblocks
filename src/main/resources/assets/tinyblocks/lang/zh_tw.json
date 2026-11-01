@@ -5,8 +5,8 @@
   "block.tinyblocks.subgrid_block_16": "子網格方塊 (1/16)",
   "item.tinyblocks.grid_save": "Grid Save",
   "item.tinyblocks.grid_save.tooltip_empty": "點擊子網格連同小方塊一起取走;潛行點擊一個角,再點擊另一個角,取走其間所有子網格",
-  "item.tinyblocks.grid_save.tooltip_full": "存有一個 1/%s 網格,共 %s 個小方塊:R 旋轉,點擊放置",
-  "item.tinyblocks.grid_save.tooltip_full_box": "存有 %s 個網格,共 %s 個小方塊:R 旋轉,點擊放置",
+  "item.tinyblocks.grid_save.tooltip_full": "存有 1/%s 網格,共 %s 個小方塊:R 旋轉,點擊放下箱子",
+  "item.tinyblocks.grid_save.tooltip_full_box": "存有 %s 個網格,共 %s 個小方塊:R 旋轉,點擊放下箱子",
   "item.tinyblocks.grid_save.corner_set": "已設定第一個角:點擊另一個角(潛行點擊空氣取消)",
   "item.tinyblocks.grid_save.corner_cleared": "已取消選取",
   "item.tinyblocks.grid_save.box_too_big": "選取範圍每邊最多 4 個方塊",
@@ -65,7 +65,7 @@
   "tinyblocks.guide.page.10": "§l鎖定 (K)§r\n\n手持 Minimizer 按 K:它會發光。\n\n這時只能破壞同尺寸的網格。普通方塊和其他尺寸受到保護。",
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\n手持它按 X,縮小到它的尺寸。\n\n觸及距離不變。再按 X 恢復。退出世界不會恢復。",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\n把整個網格存進物品。\n\n點擊網格:它連同所有內容離開世界,不會掉落。",
-  "tinyblocks.guide.page.13": "§l放回§r\n\n拿著它時,虛影顯示網格的位置。\n\nR 旋轉四分之一圈。\n\n點擊放置。機器和連結繼續運作。",
+  "tinyblocks.guide.page.13": "§l放回§r\n\n拿在手中時,虛影顯示網格的位置。\n\nR 旋轉四分之一圈。\n\n點擊放下箱子,再右鍵打開箱子。破壞箱子會返還 Grid Save。",
   "tinyblocks.guide.page.14": "§l剪下或複製§r\n\n右鍵點擊空氣切換。\n\n剪下(預設):網格離開世界。\n\n複製(僅創造模式):網格留下,物品保存副本。",
   "tinyblocks.guide.page.15": "§l選取模式§r\n\n物品為空時,潛行點擊一個角,再點擊另一個角。\n\n綠色:可以取走。\n黃色:不可以。\n\n最多 4 個網格,每邊 4 格。潛行點擊空氣取消。",
   "tinyblocks.guide.page.16": "§l何時拒絕§r\n\n網格裡還有東西在移動,比如活塞。\n\n網格內容太多。\n\n放置時位置被佔用。",
@@ -89,5 +89,7 @@
   "tinyblocks.minimizer.on": "Minimizer 已開啟",
   "tinyblocks.minimizer.off": "Minimizer 已關閉:正常建造",
   "tinyblocks.hud.minimizer_off": "Minimizer 已關閉",
-  "key.tinyblocks.minimizer_size": "選擇 Minimizer 尺寸(按住)"
+  "key.tinyblocks.minimizer_size": "選擇 Minimizer 尺寸(按住)",
+  "block.tinyblocks.grid_box": "裝箱的網格",
+  "tinyblocks.grid_box.blocked": "有東西擋住了:箱子保持關閉"
 }

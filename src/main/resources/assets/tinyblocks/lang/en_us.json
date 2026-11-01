@@ -5,8 +5,8 @@
   "block.tinyblocks.subgrid_block_16": "Subgrid Block (1/16)",
   "item.tinyblocks.grid_save": "Grid Save",
   "item.tinyblocks.grid_save.tooltip_empty": "Click a subgrid to take it, pieces and all; sneak-click a corner, then click the other, to take every subgrid in between",
-  "item.tinyblocks.grid_save.tooltip_full": "Holds a 1/%s grid of %s pieces: R turns it, click to place it",
-  "item.tinyblocks.grid_save.tooltip_full_box": "Holds %s grids of %s pieces: R turns them, click to place them",
+  "item.tinyblocks.grid_save.tooltip_full": "Holds a 1/%s grid of %s pieces: R turns it, click to put the box down",
+  "item.tinyblocks.grid_save.tooltip_full_box": "Holds %s grids of %s pieces: R turns them, click to put the box down",
   "item.tinyblocks.grid_save.corner_set": "First corner set: click the other one (sneak-click the air to cancel)",
   "item.tinyblocks.grid_save.corner_cleared": "Selection cancelled",
   "item.tinyblocks.grid_save.box_too_big": "A box can be at most 4 blocks a side",
@@ -65,7 +65,7 @@
   "tinyblocks.guide.page.10": "§lLock (K)§r\n\nPress K with the Minimizer in hand: it glows.\n\nYou then only break grids of its size. Normal blocks and other sizes are safe.",
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\nPress X with it in hand to shrink to its size.\n\nYour reach stays the same. Press X again to go back. Leaving the world doesn't undo it.",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\nKeeps a whole grid in the item.\n\nClick a grid: it leaves the world with everything inside, and nothing drops.",
-  "tinyblocks.guide.page.13": "§lPlacing it back§r\n\nWith it in hand, a ghost shows where the grid will go.\n\nR turns it a quarter.\n\nClick to place it. Machines and links keep working.",
+  "tinyblocks.guide.page.13": "§lPlacing it back§r\n\nWith it in hand, a ghost shows where the grid will go.\n\nR turns it a quarter.\n\nClick to put the box down, then right-click the box to unbox it. Breaking the box gives the Grid Save back.",
   "tinyblocks.guide.page.14": "§lCut or copy§r\n\nRight-click the air to switch.\n\nCut, the default: the grid leaves the world.\n\nCopy, creative only: the grid stays and the item keeps a copy.",
   "tinyblocks.guide.page.15": "§lSelection mode§r\n\nEmpty, sneak-click one corner, then click the other.\n\nGreen: it can take it.\nYellow: it can't.\n\nUp to 4 grids, 4 blocks a side. Sneak-click the air to cancel.",
   "tinyblocks.guide.page.16": "§lWhen it refuses§r\n\nSomething in the grid is still moving, like a piston.\n\nThe grid holds too much.\n\nWhen placing, the spot is taken.",
@@ -89,5 +89,7 @@
   "tinyblocks.minimizer.on": "Minimizer on",
   "tinyblocks.minimizer.off": "Minimizer off: building normally",
   "tinyblocks.hud.minimizer_off": "Minimizer off",
-  "key.tinyblocks.minimizer_size": "Pick the Minimizer's size (hold)"
+  "key.tinyblocks.minimizer_size": "Pick the Minimizer's size (hold)",
+  "block.tinyblocks.grid_box": "Boxed Grid",
+  "tinyblocks.grid_box.blocked": "Something is in the way: the box stays closed"
 }

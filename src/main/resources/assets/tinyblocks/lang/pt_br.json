@@ -5,8 +5,8 @@
   "block.tinyblocks.subgrid_block_16": "Bloco Subgrid (1/16)",
   "item.tinyblocks.grid_save": "Grid Save",
   "item.tinyblocks.grid_save.tooltip_empty": "Clique num subgrid para pegar ele com as peças; agache e clique um canto, depois clique o outro, para pegar todos os subgrids entre eles",
-  "item.tinyblocks.grid_save.tooltip_full": "Guarda um grid 1/%s de %s peças: R gira, clique para colocar",
-  "item.tinyblocks.grid_save.tooltip_full_box": "Guarda %s grids de %s peças: R gira, clique para colocar",
+  "item.tinyblocks.grid_save.tooltip_full": "Guarda um grid 1/%s de %s peças: R gira, clique para colocar a caixa",
+  "item.tinyblocks.grid_save.tooltip_full_box": "Guarda %s grids de %s peças: R gira, clique para colocar a caixa",
   "item.tinyblocks.grid_save.corner_set": "Primeiro canto marcado: clique o outro (agache e clique no ar para cancelar)",
   "item.tinyblocks.grid_save.corner_cleared": "Seleção cancelada",
   "item.tinyblocks.grid_save.box_too_big": "A caixa pode ter no máximo 4 blocos por lado",
@@ -65,7 +65,7 @@
   "tinyblocks.guide.page.10": "§lTravar (K)§r\n\nAperte K com o Minimizer na mão: ele fica encantado.\n\nAssim você só quebra grids do tamanho dele. Blocos normais e outros tamanhos ficam protegidos.",
   "tinyblocks.guide.page.11": "§lMinimize me (X)§r\n\nAperte X com ele na mão para encolher até o tamanho dele.\n\nO alcance continua normal. Aperte X de novo para voltar. Sair do mundo não desfaz.",
   "tinyblocks.guide.page.12": "§lGrid Save§r\n\nGuarda um grid inteiro no item.\n\nClique num grid: ele sai do mundo com tudo dentro, sem dropar nada.",
-  "tinyblocks.guide.page.13": "§lColocar de volta§r\n\nCom ele na mão, um ghost mostra onde o grid vai ficar.\n\nR gira um quarto de volta.\n\nClique para colocar. Máquinas e links continuam funcionando.",
+  "tinyblocks.guide.page.13": "§lColocando de volta§r\n\nCom ele na mão, um fantasma mostra onde o grid vai ficar.\n\nR gira um quarto.\n\nClique para colocar a caixa e botão direito nela para abrir. Quebrar a caixa devolve o Grid Save.",
   "tinyblocks.guide.page.14": "§lRecortar ou copiar§r\n\nBotão direito no ar troca.\n\nRecortar, o padrão: o grid sai do mundo.\n\nCopiar, só no criativo: o grid fica, e o item guarda uma cópia.",
   "tinyblocks.guide.page.15": "§lModo seleção§r\n\nCom ele vazio, agache e clique um canto. Clique o outro.\n\nVerde: dá para pegar.\nAmarelo: não dá.\n\nAté 4 grids, 4 blocos por lado.",
   "tinyblocks.guide.page.16": "§lQuando recusa§r\n\nAlgo no grid ainda se move, como um pistão.\n\nO grid guarda coisa demais.\n\nNa hora de colocar, o lugar está ocupado.",
@@ -89,5 +89,7 @@
   "tinyblocks.minimizer.on": "Minimizer ligado",
   "tinyblocks.minimizer.off": "Minimizer desligado: construindo normal",
   "tinyblocks.hud.minimizer_off": "Minimizer desligado",
-  "key.tinyblocks.minimizer_size": "Escolher o tamanho do Minimizer (segurar)"
+  "key.tinyblocks.minimizer_size": "Escolher o tamanho do Minimizer (segurar)",
+  "block.tinyblocks.grid_box": "Grid na Caixa",
+  "tinyblocks.grid_box.blocked": "Tem algo no caminho: a caixa continua fechada"
 }
