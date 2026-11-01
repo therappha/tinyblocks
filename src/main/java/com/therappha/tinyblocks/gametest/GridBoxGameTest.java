@@ -67,9 +67,9 @@ public class GridBoxGameTest {
         }).thenSucceed();
     }
 
-    /** Two grids: the spot of the second is taken after the box is down, and the box stays closed, holding both. */
+    /** Two grids side by side: a box two blocks long. A click on its far end opens it, a break on it gives one Grid Save. */
     @GameTest(template = "empty_platform")
-    public void aBoxThatDoesntFitStaysClosed(GameTestHelper helper) {
+    public void aBoxIsAsBigAsWhatItHolds(GameTestHelper helper) {
         ServerPlayer player = SubgridTestSupport.serverPlayer(helper, SubgridTestSupport.placeSubgrid(helper, new BlockPos(0, 2, 4)));
         BlockPos second = FROM.east();
         SubgridBlockEntity a = SubgridTestSupport.placeSubgrid(helper, FROM), b = SubgridTestSupport.placeSubgrid(helper, second);
@@ -79,10 +79,46 @@ public class GridBoxGameTest {
         helper.assertTrue(GridSaveItem.pickUpBox(helper.getLevel(), helper.absolutePos(FROM), helper.absolutePos(second), save, player), "nothing taken");
         BlockPos at = helper.absolutePos(BOX);
         helper.assertTrue(GridSaveItem.pack(helper.getLevel(), at, Direction.UP, save, player), "no box put down");
-        for (Direction side : Direction.Plane.HORIZONTAL) helper.setBlock(BOX.relative(side), Blocks.STONE);
-        open(helper, player);
-        helper.assertBlockPresent(Registration.GRID_BOX.get(), BOX);
-        helper.assertTrue(helper.getLevel().getBlockEntity(at) instanceof GridBoxBlockEntity box && GridSaveItem.isFull(box.held()), "the box lost the grids");
+        int boxes = 0;
+        for (BlockPos cell : BlockPos.betweenClosed(at.offset(-2, 0, -2), at.offset(2, 2, 2))) {
+            if (helper.getLevel().getBlockState(cell).is(Registration.GRID_BOX.get())) boxes++;
+        }
+        helper.assertTrue(boxes == 2, "a box of two grids takes " + boxes + " blocks");
+        BlockPos far = null;
+        for (BlockPos cell : BlockPos.betweenClosed(at.offset(-2, 0, -2), at.offset(2, 2, 2))) {
+            if (helper.getLevel().getBlockEntity(cell) instanceof GridBoxBlockEntity box && !box.isMain()) far = cell.immutable();
+        }
+        helper.assertTrue(far != null, "no second block in the box");
+        helper.getLevel().getBlockState(far).useWithoutItem(helper.getLevel(), player, new BlockHitResult(Vec3.atCenterOf(far), Direction.UP, far, false));
+        int grids = 0;
+        for (BlockPos cell : BlockPos.betweenClosed(at.offset(-2, 0, -2), at.offset(2, 2, 2))) {
+            if (helper.getLevel().getBlockEntity(cell) instanceof SubgridBlockEntity) grids++;
+            helper.assertTrue(!helper.getLevel().getBlockState(cell).is(Registration.GRID_BOX.get()), "part of the box stayed");
+        }
+        helper.assertTrue(grids == 2, "opened into " + grids + " grids");
         helper.succeed();
+    }
+
+    /** Broken at any block, one Grid Save comes back, not one per block. */
+    @GameTest(template = "empty_platform")
+    public void aBigBoxBrokenGivesOneGridSave(GameTestHelper helper) {
+        ServerPlayer player = SubgridTestSupport.serverPlayer(helper, SubgridTestSupport.placeSubgrid(helper, new BlockPos(0, 2, 4)));
+        BlockPos second = FROM.east();
+        SubgridBlockEntity a = SubgridTestSupport.placeSubgrid(helper, FROM), b = SubgridTestSupport.placeSubgrid(helper, second);
+        SubgridTestSupport.placePiece(a, helper.getLevel(), BlockPos.ZERO, Blocks.STONE.defaultBlockState());
+        SubgridTestSupport.placePiece(b, helper.getLevel(), BlockPos.ZERO, Blocks.STONE.defaultBlockState());
+        ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
+        helper.assertTrue(GridSaveItem.pickUpBox(helper.getLevel(), helper.absolutePos(FROM), helper.absolutePos(second), save, player), "nothing taken");
+        BlockPos at = helper.absolutePos(BOX);
+        helper.assertTrue(GridSaveItem.pack(helper.getLevel(), at, Direction.UP, save, player), "no box put down");
+        BlockPos part = null;
+        for (BlockPos cell : BlockPos.betweenClosed(at.offset(-2, 0, -2), at.offset(2, 2, 2))) {
+            if (helper.getLevel().getBlockEntity(cell) instanceof GridBoxBlockEntity box && !box.isMain()) part = cell.immutable();
+        }
+        helper.getLevel().destroyBlock(part, true);
+        helper.startSequence().thenIdle(1).thenExecute(() -> {
+            var drops = helper.getLevel().getEntities(EntityType.ITEM, new net.minecraft.world.phys.AABB(at).inflate(4), e -> GridSaveItem.isFull(e.getItem()));
+            helper.assertTrue(drops.size() == 1, drops.size() + " Grid Saves came back");
+        }).thenSucceed();
     }
 }

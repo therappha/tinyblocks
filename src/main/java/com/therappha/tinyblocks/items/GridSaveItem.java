@@ -434,10 +434,21 @@ public class GridSaveItem extends Item {
 
     /** A click with a full Grid Save: what it holds goes into a closed box at {@code pos}, to be unboxed (GridBoxBlock). */
     public static boolean pack(ServerLevel level, BlockPos pos, Direction face, ItemStack stack, @Nullable Player player) {
-        if (targets(level, pos, face, stack, player) == null || !level.getBlockState(pos).canBeReplaced()) return false;
-        level.setBlock(pos, Registration.GRID_BOX.get().defaultBlockState(), Block.UPDATE_ALL);
-        if (!(level.getBlockEntity(pos) instanceof GridBoxBlockEntity box)) return false;
-        box.hold(stack.copyWithCount(1), face);
+        if (targets(level, pos, face, stack, player) == null) return false;
+        Vec3i size = turnedBox(box(grid(stack)), rotation(stack));
+        BlockPos corner = origin(pos, face, size);
+        List<BlockPos> cells = new ArrayList<>();
+        BlockPos.betweenClosed(corner, corner.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1)).forEach(cell -> cells.add(cell.immutable()));
+        for (BlockPos cell : cells) {
+            if (!level.getBlockState(cell).canBeReplaced() || !level.isInWorldBounds(cell)) return false;
+            if (player != null && !player.mayUseItemAt(cell, face, stack)) return false;
+        }
+        for (BlockPos cell : cells) level.setBlock(cell, Registration.GRID_BOX.get().defaultBlockState(), Block.UPDATE_ALL);
+        if (!(level.getBlockEntity(corner) instanceof GridBoxBlockEntity box)) return false;
+        box.hold(stack.copyWithCount(1), pos, face, size);
+        for (BlockPos cell : cells) {
+            if (!cell.equals(corner) && level.getBlockEntity(cell) instanceof GridBoxBlockEntity part) part.partOf(corner);
+        }
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
         return true;
     }
