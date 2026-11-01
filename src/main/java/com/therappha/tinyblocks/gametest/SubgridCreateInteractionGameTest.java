@@ -214,6 +214,36 @@ public class SubgridCreateInteractionGameTest {
                 .thenSucceed();
     }
 
+    /** A grid on a sub-level sits in its plot, far from the player, and a value box there still reaches its piece. */
+    @GameTest(template = "empty_platform", timeoutTicks = 100)
+    public void aValueBoxReachesAPieceOnASubLevel(GameTestHelper helper) {
+        BlockPos at = new BlockPos(2, 2, 2);
+        SubgridBlockEntity be = SubgridTestSupport.placeSubgrid(helper, at);
+        BlockPos anchor = new BlockPos(4, 4, 4);
+        SubgridTestSupport.placePiece(be, helper.getLevel(), anchor,
+                AllBlocks.CREATIVE_MOTOR.getDefaultState().setValue(DirectionalBlock.FACING, Direction.UP));
+        net.minecraft.server.level.ServerPlayer player = SubgridTestSupport.serverPlayer(helper, be);
+        BlockPos real = helper.absolutePos(at);
+        Object[] subLevel = new Object[1];
+
+        helper.startSequence()
+                .thenIdle(3)
+                .thenExecute(() -> subLevel[0] = SableSupport.assemble(helper.getLevel(), real, java.util.List.of(real), real, real))
+                .thenIdle(5) // Sable places a new sub-level on its next physics tick
+                .thenExecute(() -> {
+                    var level = helper.getLevel();
+                    var moved = (SubgridBlockEntity) level.getBlockEntity(SableSupport.plotCenter(subLevel[0]));
+                    var phantom = (com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity)
+                            SubgridTestSupport.blockEntityOf(moved, moved.getPieces().iterator().next(), level);
+                    new com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsPacket(moved.virtualPosOf(anchor),
+                            1, 64, null, null, Direction.UP, false, phantom.generatedSpeed.netId()).handle(player);
+                    int speed = phantom.generatedSpeed.getValue();
+                    SableSupport.remove(level, subLevel[0]);
+                    helper.assertTrue(speed == 64, "the tiny motor's speed is " + speed + ", not 64");
+                })
+                .thenSucceed();
+    }
+
     /** A linked controller's button on a tiny receiver's frequency powers it, as with a full-size receiver. */
     @GameTest(template = "empty_platform", timeoutTicks = 100)
     public void linkedControllerPowersATinyReceiver(GameTestHelper helper) {
