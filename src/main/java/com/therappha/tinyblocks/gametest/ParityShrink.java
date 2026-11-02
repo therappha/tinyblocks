@@ -103,7 +103,7 @@ final class ParityShrink {
         attempts++;
         boolean first = attempts == 1;
         if (first && !run.diverged()) {
-            helper.fail(testName + ": esta seed nao falha nesta configuracao");
+            helper.fail(testName + ": this seed doesn't fail in this layout");
             return;
         }
         if (run.diverged() && !first) {

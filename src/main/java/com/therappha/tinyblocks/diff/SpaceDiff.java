@@ -17,15 +17,15 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Compares two spaces cell by cell and says, in words, what differs: "estado" (the block and its properties, redstone
- * level included), "funcionamento" (what a comparator puts out or reads, what a container holds) and "visual" (what a
+ * Compares two spaces cell by cell and says, in words, what differs: "state" (the block and its properties, redstone
+ * level included), "working" (what a comparator puts out or reads, what a container holds) and "visual" (what a
  * client was last told to draw). {@link Timeline} follows the differences tick by tick.
  */
 public final class SpaceDiff {
 
     private SpaceDiff() {}
 
-    public static final String STATE = "estado.", WORKING = "funcionamento.", VISUAL = "visual.";
+    public static final String STATE = "state.", WORKING = "working.", VISUAL = "visual.";
 
     /** {@code left} and {@code right} are what each space has for {@code field} at {@code cell}; "" when it has none. */
     public record Difference(BlockPos cell, String field, String left, String right) {}
@@ -35,16 +35,16 @@ public final class SpaceDiff {
         Map<String, String> facts = new LinkedHashMap<>();
         BlockState state = space.state(cell);
         BlockState drawn = space.drawn(cell);
-        if (!drawn.isAir()) facts.put(VISUAL + "desenhado", drawn.toString());
+        if (!drawn.isAir()) facts.put(VISUAL + "drawn", drawn.toString());
         if (state.isAir()) return facts;
-        facts.put(STATE + "bloco", BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath());
+        facts.put(STATE + "block", BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath());
         for (Property<?> property : state.getProperties()) facts.put(STATE + property.getName(), value(state, property));
-        if (state.hasAnalogOutputSignal()) facts.put(WORKING + "sinal_analogico", Integer.toString(space.analogSignal(cell)));
+        if (state.hasAnalogOutputSignal()) facts.put(WORKING + "analog_signal", Integer.toString(space.analogSignal(cell)));
         BlockEntity be = space.blockEntity(cell);
         if (be instanceof ComparatorBlockEntity comparator) {
-            facts.put(WORKING + "saida_comparador", Integer.toString(comparator.getOutputSignal()));
+            facts.put(WORKING + "comparator_output", Integer.toString(comparator.getOutputSignal()));
         }
-        if (be instanceof Container container) facts.put(WORKING + "itens", items(container));
+        if (be instanceof Container container) facts.put(WORKING + "items", items(container));
         if (be != null) com.therappha.tinyblocks.compat.create.CreateFacts.add(be, WORKING, facts);
         return facts;
     }
@@ -62,7 +62,7 @@ public final class SpaceDiff {
             text.append(slot).append(':').append(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath())
                     .append('x').append(stack.getCount());
         }
-        return text.isEmpty() ? "vazio" : text.toString();
+        return text.isEmpty() ? "empty" : text.toString();
     }
 
     public static List<Difference> compare(SpaceView left, SpaceView right, Iterable<BlockPos> cells) {
@@ -114,7 +114,7 @@ public final class SpaceDiff {
     }
 
     private static String shown(String value) {
-        return value.isEmpty() ? "nada" : value;
+        return value.isEmpty() ? "nothing" : value;
     }
 
     /** One difference that held from tick {@code from} to tick {@code to}, with its values on the first of them. */
@@ -152,9 +152,9 @@ public final class SpaceDiff {
         }
 
         public String describe(Span span, String leftName, String rightName) {
-            String when = endsDifferent(span) ? "do tick %d até o fim".formatted(span.from())
-                    : span.length() == 1 ? "no tick %d".formatted(span.from())
-                    : "dos ticks %d a %d".formatted(span.from(), span.to());
+            String when = endsDifferent(span) ? "from tick %d to the end".formatted(span.from())
+                    : span.length() == 1 ? "at tick %d".formatted(span.from())
+                    : "from tick %d to %d".formatted(span.from(), span.to());
             return SpaceDiff.describe(span.first(), leftName, rightName) + ", " + when;
         }
     }
