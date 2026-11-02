@@ -179,20 +179,20 @@ final class ParityRun {
 
     private void finish() {
         List<String> failing = new ArrayList<>();
-        for (SpaceDiff.Span span : againstTiny.spans()) failing.add(againstTiny.describe(span, "mundo", "tiny"));
+        for (SpaceDiff.Span span : againstTiny.spans()) failing.add(againstTiny.describe(span, "world", "tiny"));
         List<String> report = new ArrayList<>();
-        report.add((failing.isEmpty() ? "PASSOU " : "FALHOU ") + testName + " (" + scene.ticks + " ticks, "
-                + changesSeen + " mudancas no mundo)");
+        report.add((failing.isEmpty() ? "PASSED " : "FAILED ") + testName + " (" + scene.ticks + " ticks, "
+                + changesSeen + " changes in the world)");
         report.addAll(eventsSeen);
-        if (!failing.isEmpty()) report.add("--- divergencias: " + failing.size());
+        if (!failing.isEmpty()) report.add("--- divergences: " + failing.size());
         report.addAll(failing);
         if (!failing.isEmpty()) {
-            report.add("--- cena");
+            report.add("--- scene");
             for (ParityScene.Placement p : scene.blocks) report.add(p.cell().toShortString() + " " + p.state());
         }
-        if (!undecided.isEmpty()) report.add("--- fora da comparacao, o controle real contra real divergiu: " + undecided.size());
-        for (SpaceDiff.Span span : betweenReals.spans()) report.add("  " + betweenReals.describe(span, "mundo", "controle"));
-        report.add("--- estado final no mundo");
+        if (!undecided.isEmpty()) report.add("--- left out of the comparison, the real against real control diverged: " + undecided.size());
+        for (SpaceDiff.Span span : betweenReals.spans()) report.add("  " + betweenReals.describe(span, "world", "control"));
+        report.add("--- final state in the world");
         for (BlockPos cell : allCells) {
             if (!world.state(cell).isAir()) report.add(cell.toShortString() + " " + world.state(cell));
         }
@@ -201,7 +201,7 @@ final class ParityRun {
             helper.succeed();
             return;
         }
-        StringBuilder message = new StringBuilder(testName + ": " + failing.size() + " divergencias");
+        StringBuilder message = new StringBuilder(testName + ": " + failing.size() + " divergences");
         for (int i = 0; i < Math.min(MAX_SHOWN, failing.size()); i++) message.append("\n  ").append(failing.get(i));
         // It ends up on a page of the test's log book, which holds 1024 characters; the whole report is in the file.
         helper.fail(message.length() > 900 ? message.substring(0, 900) : message.toString());

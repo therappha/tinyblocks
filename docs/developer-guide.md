@@ -163,7 +163,7 @@ public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridP
 
 ## Comparing a grid with the real world
 
-`SpaceDiff` compares a box of real blocks with a box of cells, cell by cell, and says in words what differs: *estado* (block and properties, redstone level included), *funcionamento* (comparator output, analog signal, what a container holds) and *visual* (what the grid last sent its clients).
+`SpaceDiff` compares a box of real blocks with a box of cells, cell by cell, and says in words what differs: *state* (block and properties, redstone level included), *working* (comparator output, analog signal, what a container holds) and *visual* (what the grid last sent its clients).
 
 The real world is the reference: a scene never states what should happen.
 

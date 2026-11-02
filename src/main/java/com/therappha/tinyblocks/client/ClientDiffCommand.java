@@ -97,27 +97,27 @@ public final class ClientDiffCommand {
                 IntegerArgumentType.getInteger(ctx, "height"), IntegerArgumentType.getInteger(ctx, "depth"));
 
         Map<BlockPos, Map<String, String>> client = SpaceDiff.snapshot(new ClientTinyView(level, grid, gridSize), cells);
-        int found = report(source, "cliente contra blocos reais", "blocos", "cliente",
+        int found = report(source, "client against real blocks", "blocks", "client",
                 SpaceDiff.compare(SpaceDiff.snapshot(new RealSpaceView(level, real), cells), client, SpaceDiff.STATE));
 
         var server = minecraft.getSingleplayerServer();
         if (server == null) {
-            source.sendSuccess(() -> Component.literal("[diff] sem servidor integrado: cliente contra servidor não comparado"), false);
+            source.sendSuccess(() -> Component.literal("[diff] no integrated server: client against server not compared"), false);
             return found;
         }
         try {
             ServerLevel serverLevel = server.getLevel(level.dimension());
             Map<BlockPos, Map<String, String>> onServer = server.submit(() -> SpaceDiff.snapshot(
                     new TinySpaceView(serverLevel, grid, gridSize, BlockPos.ZERO), cells)).get(5, TimeUnit.SECONDS);
-            found += report(source, "servidor contra cliente", "servidor", "cliente", SpaceDiff.compare(onServer, client, SpaceDiff.STATE));
+            found += report(source, "server against client", "server", "client", SpaceDiff.compare(onServer, client, SpaceDiff.STATE));
         } catch (Exception e) {
-            source.sendFailure(Component.literal("[diff] não consegui ler o servidor: " + e));
+            source.sendFailure(Component.literal("[diff] couldn't read the server: " + e));
         }
         return found;
     }
 
     private static int report(CommandSourceStack source, String title, String left, String right, List<SpaceDiff.Difference> differences) {
-        source.sendSuccess(() -> Component.literal("[diff] " + title + ": " + differences.size() + " diferenças"), false);
+        source.sendSuccess(() -> Component.literal("[diff] " + title + ": " + differences.size() + " differences"), false);
         differences.stream().limit(LINES).forEach(d -> source.sendSuccess(() -> Component.literal(SpaceDiff.describe(d, left, right)), false));
         return differences.size();
     }

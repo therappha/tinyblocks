@@ -397,7 +397,7 @@ public class RedstoneParityGameTest {
         tiny.build(BlockPos.ZERO, LAMP, false);
         var real = new com.therappha.tinyblocks.diff.RealSpaceView(helper.getLevel(), helper.absolutePos(at));
         var differences = com.therappha.tinyblocks.diff.SpaceDiff.compare(real, tiny, List.of(BlockPos.ZERO));
-        helper.assertTrue(differences.stream().anyMatch(d -> d.field().equals("estado.lit") && d.left().equals("true") && d.right().equals("false")),
+        helper.assertTrue(differences.stream().anyMatch(d -> d.field().equals("state.lit") && d.left().equals("true") && d.right().equals("false")),
                 "the lit lamp against the dark one was not reported: " + differences);
         helper.succeed();
     }

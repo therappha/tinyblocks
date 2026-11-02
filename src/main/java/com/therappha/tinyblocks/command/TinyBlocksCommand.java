@@ -72,9 +72,9 @@ public class TinyBlocksCommand {
                 com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height"),
                 com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "depth"));
         var differences = com.therappha.tinyblocks.diff.SpaceDiff.compare(real, tiny, cells);
-        ctx.getSource().sendSuccess(() -> Component.literal("[diff] " + cells.size() + " células, " + differences.size() + " diferenças"), false);
+        ctx.getSource().sendSuccess(() -> Component.literal("[diff] " + cells.size() + " cells, " + differences.size() + " differences"), false);
         differences.stream().limit(DIFF_LINES).forEach(d -> ctx.getSource().sendSuccess(
-                () -> Component.literal(com.therappha.tinyblocks.diff.SpaceDiff.describe(d, "mundo", "tiny")), false));
+                () -> Component.literal(com.therappha.tinyblocks.diff.SpaceDiff.describe(d, "world", "tiny")), false));
         return differences.size();
     }
 
