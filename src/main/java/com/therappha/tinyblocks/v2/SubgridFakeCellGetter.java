@@ -106,7 +106,7 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
             work.accept(space.level);
-            VanillaBlockPiece.applyChanges(be, space.level, level);
+            GridWriteBack.applyChanges(be, space.level, level);
         } finally {
             space.release();
         }

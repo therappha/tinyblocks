@@ -308,7 +308,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * boolean or just the piece) — a caller that also captured a real BlockEntity for this same
      * write (e.g. a piston's moving-block animation state) needs both: something to attach the
      * capture to, AND the correct owner to run capture bookkeeping against when the write lands in
-     * a DIFFERENT grid than the one that made this call (see VanillaBlockPiece.applyChanges'
+     * a DIFFERENT grid than the one that made this call (see GridWriteBack.applyChanges'
      * syncBlockEntity — issue #46's cross-grid sticky-piston-duplication fix depends on this being
      * the real owner, not always the calling grid).
      */
@@ -355,7 +355,7 @@ public class SubgridBlockEntity extends BlockEntity {
             existing.runtimeState = runtimeState;
             // Its block entity follows, as for a change made in this grid's own fake space.
             if (was instanceof BlockState wasState && runtimeState instanceof BlockState nowState) {
-                com.therappha.tinyblocks.v2.VanillaBlockPiece.followStateChange(this, existing, wasState, nowState);
+                com.therappha.tinyblocks.v2.GridWriteBack.followStateChange(this, existing, wasState, nowState);
             }
             notifyNeighbors(existing);
             notifyUpdate();

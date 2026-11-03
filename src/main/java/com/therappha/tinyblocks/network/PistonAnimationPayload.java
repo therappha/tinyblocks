@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 
 /**
  * Sent server->client the moment a piece's fake-space setBlockEntity call is captured as a real
- * PistonMovingBlockEntity (see VanillaBlockPiece.syncBlockEntity) — carries that BE's own NBT
+ * PistonMovingBlockEntity (see GridWriteBack.syncBlockEntity) — carries that BE's own NBT
  * (PistonMovingBlockEntity#saveAdditional's shape: blockState/facing/progress/extending/source) so
  * the client can build its own local copy purely for rendering the extend/retract animation.
  *

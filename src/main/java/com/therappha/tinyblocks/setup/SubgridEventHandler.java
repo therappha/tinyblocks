@@ -9,6 +9,7 @@ import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
 import com.therappha.tinyblocks.v2.FakeServerLevel;
+import com.therappha.tinyblocks.v2.GridWriteBack;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -421,7 +422,7 @@ public class SubgridEventHandler {
             state.getBlock().setPlacedBy(fakeLevel, at, state, player, stack);
             // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
             // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
-            // "untracked write" pattern VanillaBlockPiece.applyChanges already generalizes for
+            // "untracked write" pattern GridWriteBack.applyChanges already generalizes for
             // fluids/falling blocks, but this placement flow doesn't go through applyChanges at
             // all. Reuse the same scan here so any such second (or third, etc.) write becomes a
             // real piece too — this is what actually makes a placed door end up as two pieces
@@ -473,7 +474,7 @@ public class SubgridEventHandler {
      * this block"). Checking only (x,y,z)'s before/after silently ate clicks that landed on an
      * occupied cell — the actual write went to the neighbor cell and was never noticed. Scans
      * every position the fake space actually saw written instead, same touchedCells()-based
-     * mechanism VanillaBlockPiece.applyChanges and the placement flow above already use, so this
+     * mechanism GridWriteBack.applyChanges and the placement flow above already use, so this
      * composes correctly whether the write lands on the clicked cell or an offset one, and
      * crosses into an adjacent subgrid via placePieceCrossBoundary if it overflows this one.
      * Returns true if the click was consumed (stop further fallthrough to placement), regardless
@@ -543,7 +544,7 @@ public class SubgridEventHandler {
                 } else {
                     piece.runtimeState = touchedState;
                     // A wrench switching a tiny redstone link: its block entity has to see the new state too.
-                    VanillaBlockPiece.followStateChange(be, piece, wasState, touchedState);
+                    GridWriteBack.followStateChange(be, piece, wasState, touchedState);
                     if (!fakeLevel.cells().isSettled(touchedPos)) be.notifyNeighbors(piece);
                     be.notifyUpdate();
                 }
@@ -562,7 +563,7 @@ public class SubgridEventHandler {
         // scheduled a tick — e.g. LiquidBlock.onPlace scheduling water's first spread step, via
         // the onPlace call just above. Same drain FakeSpace callers always do after touching a
         // fake space; skipped here previously since this function never called applyChanges.
-        VanillaBlockPiece.scheduleCaptured(be, fakeLevel, serverLevel.getGameTime());
+        GridWriteBack.scheduleCaptured(be, fakeLevel, serverLevel.getGameTime());
         return result != InteractionResult.PASS;
     }
 
