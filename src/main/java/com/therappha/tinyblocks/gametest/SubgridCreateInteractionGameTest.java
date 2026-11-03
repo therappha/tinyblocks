@@ -6,6 +6,7 @@ import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.simibubi.create.content.redstone.link.LinkBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.v2.PieceClickDispatch;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -242,6 +243,20 @@ public class SubgridCreateInteractionGameTest {
                     helper.assertTrue(speed == 64, "the tiny motor's speed is " + speed + ", not 64");
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * A click on a piece makes a stand-in player. It must not look for a spawn from inside the piece's fake space, whose
+     * column is 131072 blocks tall: that held the server for seconds on every click in a real world.
+     */
+    @GameTest(template = "empty_platform")
+    public void theStandInPlayerDoesNotSearchForASpawn(GameTestHelper helper) {
+        var level = helper.getLevel();
+        // Up in the air, so a search would have to come back with some other position.
+        BlockPos asked = helper.absolutePos(new BlockPos(2, 30, 2));
+        helper.assertTrue(asked.equals(PieceClickDispatch.standIn(level).adjustSpawnLocation(level, asked)),
+                "the stand-in moved away from where it was put");
+        helper.succeed();
     }
 
     /** A linked controller's button on a tiny receiver's frequency powers it, as with a full-size receiver. */
