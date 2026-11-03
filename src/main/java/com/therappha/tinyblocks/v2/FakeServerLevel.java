@@ -123,6 +123,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             instance.delegate = delegateLevel;
             instance.realServer = (ServerLevel) real;
             instance.scheduled = new ArrayList<>();
+            instance.capabilityListeners = new ArrayList<>();
             instance.blockTicks = new FakeTicks<>(cells);
             instance.fluidTicks = new FakeTicks<>(cells);
 
@@ -350,6 +351,23 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             fallable.onLand(this, into, state, replaced, falling);
         }
         return true;
+    }
+
+    /** The caches block entities keep of a neighbour's capability, told each use to look again (forgetCapabilities). */
+    private List<net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener> capabilityListeners;
+
+    @Override
+    public void registerCapabilityListener(BlockPos pos, net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener listener) {
+        capabilityListeners.add(listener);
+    }
+
+    /**
+     * A chunk tells these listeners when the block entity at their position changes. Nothing tells a fake space that:
+     * a piece can go at any time, from any space. So a cache (a Create chute's, of what is below it) never outlives a
+     * use of the space.
+     */
+    public void forgetCapabilities() {
+        capabilityListeners.removeIf(listener -> !listener.onInvalidate());
     }
 
     // --- The rest of this section exists because ServerLevel re-overrides essentially every

@@ -237,6 +237,7 @@ public class VanillaBlockPiece extends PieceDefinition {
             }
             space.busy = true;
             space.cells.live = true;
+            space.level.forgetCapabilities();
             return space;
         }
 
