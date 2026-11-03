@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
- * v2 prototype, Tier 3: a real ServerLevel subclass, needed because Block.tick/randomTick are
+ * A real ServerLevel subclass, needed because Block.tick/randomTick are
  * statically typed to require a genuine ServerLevel instance — no amount of Level-level
  * delegation (FakeLevel) satisfies that type requirement.
  *

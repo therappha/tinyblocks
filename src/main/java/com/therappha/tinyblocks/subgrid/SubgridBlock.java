@@ -36,7 +36,6 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import javax.annotation.Nullable;
-import java.util.List;
 
 public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape {
 

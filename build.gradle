@@ -67,8 +67,7 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
 
 repositories {
     mavenCentral()
-    // EXPERIMENT (feat/flywheel-create-experiment): Create + Flywheel to test hosting their
-    // block-entity visuals inside a subgrid. Dev-only; not part of the shipped dependency set.
+    // Create and Flywheel: the Create pieces, and their block-entity visuals hosted inside a subgrid.
     maven { url = 'https://maven.createmod.net' }
     maven { url = 'https://maven.ithundxr.dev/snapshots' } // Registrate
     // Sable API (BlockSubLevelCollisionShape, ...). Compile-time only; the jar itself is run/mods in dev.

@@ -169,7 +169,7 @@ public abstract class PieceDefinition {
     }
 
     /**
-     * Called when a scheduled tick this piece requested (v2: via a real vanilla scheduleTick
+     * Called when a scheduled tick this piece requested (for a vanilla piece, via a real scheduleTick
      * call, e.g. a redstone lamp asking to turn off in 4 ticks) comes due. See
      * SubgridBlockEntity.scheduleTick.
      */
@@ -177,7 +177,7 @@ public abstract class PieceDefinition {
 
     /**
      * Called on a small random sample of pieces each server tick, mirroring vanilla's random
-     * tick (crop growth, leaf decay, fire spread). Most pieces should no-op; v2 pieces check
+     * tick (crop growth, leaf decay, fire spread). Most pieces should no-op; vanilla pieces check
      * their own BlockState.isRandomlyTicking() before doing anything.
      */
     public void randomTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be) {}

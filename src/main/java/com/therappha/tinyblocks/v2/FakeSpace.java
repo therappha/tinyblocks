@@ -8,8 +8,8 @@ import java.util.List;
  * Common surface shared by FakeLevel and FakeServerLevel: the fake cell space itself, plus any
  * scheduleTick requests captured instead of touching a real (blackholed) tick list. Lets
  * VanillaBlockPiece's shared apply/merge logic work identically for both — interact/
- * neighborChanged use the simpler, proven FakeLevel; only scheduledTick/randomTick (which need a
- * type-genuine ServerLevel) use the more fragile FakeServerLevel.
+ * neighborChanged use the simpler FakeLevel; scheduledTick/randomTick (which need a
+ * type-genuine ServerLevel) use FakeServerLevel.
  */
 public interface FakeSpace {
 

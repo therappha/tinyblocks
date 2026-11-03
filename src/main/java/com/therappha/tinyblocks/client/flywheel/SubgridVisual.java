@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * EXPERIMENT (feat/flywheel-create-experiment). One Flywheel visual per SubgridBlockEntity that
+ * One Flywheel visual per SubgridBlockEntity that
  * hosts the visuals of its pieces' phantom block entities, generically: for each piece whose
  * phantom BE type has a registered visualizer (Create's kinetic blocks, anything else using
  * Flywheel), it asks the public VisualizerRegistry for that visualizer and creates the visual

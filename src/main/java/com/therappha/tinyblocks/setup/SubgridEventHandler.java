@@ -146,17 +146,17 @@ public class SubgridEventHandler {
         return removed;
     }
 
+    /** How many grids in a row a whole block placed against one goes past. */
+    private static final int MAX_GRIDS_PASSED = 64;
+
     /**
-     * Phase C debug convenience (v2): holding any real BlockItem and right-clicking an existing
+     * Holding any real BlockItem and right-clicking an existing
      * SubgridBlock places a real v2.VanillaBlockPiece using vanilla's own getStateForPlacement/
      * canSurvive logic, instead of needing a dedicated debug item per vanilla block. Holding the
      * Minimizer in the offhand additionally lets you right-click any normal block — a new
      * subgrid_block is created there first (mirroring TinyPieceItem.useOn's own else branch),
      * so you don't need an existing subgrid to reference before placing into one.
      */
-    /** How many grids in a row a whole block placed against one goes past. */
-    private static final int MAX_GRIDS_PASSED = 64;
-
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         Level level = event.getLevel();
@@ -492,9 +492,6 @@ public class SubgridEventHandler {
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
         InteractionResult result = stack.useOn(new UseOnContext(fakeLevel, player, hand, stack, fakeHit));
 
-        // #TODO remove before release (or fold into a permanent comment) once verified live —
-        // water-placement investigation.
-        //
         // Vanilla dispatches useOn first, then falls back to a SEPARATE Item#use(Level, Player,
         // InteractionHand) call if useOn PASSes (Minecraft#startUseItem / ServerPlayerGameMode
         // #useItemOn). BucketItem — like any DispensibleContainerItem/BucketPickup — only
@@ -536,7 +533,7 @@ public class SubgridEventHandler {
             PlacedPiece piece = be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ());
             if (piece != null && piece.definition instanceof VanillaBlockPiece) {
                 if (touchedState.isAir()) {
-                    // #TODO remove before release — water-placement investigation. A piece that
+                    // A piece that
                     // became air here (e.g. BucketPickup emptying a water piece back into a
                     // bucket) needs the same real removal applyChanges already does for tick-
                     // driven self-destruction — just overwriting runtimeState with air would leave
@@ -554,7 +551,7 @@ public class SubgridEventHandler {
                 be.placePieceCrossBoundary(VanillaBlockPiece.INSTANCE, touchedPos, face, touchedState, serverLevel);
             }
         }
-        // #TODO remove before release — water-placement investigation. Mirrors onBlockBreak/
+        // Mirrors onBlockBreak/
         // handleMinePiece's own cleanup: removeAndDrop above (BucketPickup emptying the last
         // piece in this subgrid) leaves an empty-but-still-present SubgridBlock behind otherwise
         // — every other removal path already deletes it once nothing's left.
@@ -570,7 +567,7 @@ public class SubgridEventHandler {
     }
 
     /**
-     * Phase C debug convenience (v2): holding a real BlockItem and left-clicking a piece inside
+     * Debug convenience: holding a real BlockItem and left-clicking a piece inside
      * a SubgridBlock removes it instantly — skips destroyTime()/mining-progress entirely, for
      * fast placement/removal iteration while testing. The real hardness path (mining without a
      * block item in hand) is unaffected.

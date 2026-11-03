@@ -14,9 +14,6 @@ import net.minecraft.world.level.material.FluidState;
 import javax.annotation.Nullable;
 
 /**
- * #TODO remove before release (or fold into a permanent comment) once verified live —
- * water-rendering investigation.
- *
  * A fluid piece's BlockState has RenderShape.INVISIBLE (same as any real water/lava block) —
  * BlockRenderDispatcher#renderSingleBlock (what SubgridRenderer already uses for every other
  * piece) explicitly skips INVISIBLE render shapes, since fluids don't have a normal baked model
@@ -79,7 +76,7 @@ final class SubgridFluidView implements BlockAndTintGetter {
     }
 
     /**
-     * #TODO remove before release — water-rendering investigation. LiquidBlockRenderer's own
+     * LiquidBlockRenderer's own
      * lighting (LevelRenderer#getLightColor) reads brightness through these two BlockAndTintGetter
      * default methods, NOT getLightEngine() directly — overriding them to substitute the
      * subgrid's one real-world position (same pattern FakeLevel already uses for its own

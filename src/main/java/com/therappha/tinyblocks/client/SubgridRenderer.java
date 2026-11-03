@@ -37,7 +37,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         }
 
         SubgridFluidView fluidView = null;
-        // #TODO remove before release — water-rendering investigation. Captured once, BEFORE any
+        // Captured once, before any
         // per-piece pushPose/translate below — this is the BE's own unmodified render origin
         // (camera-relative, exactly what renderSingleBlock's pipeline also builds on top of via
         // its own translate+scale). See ScaledVertexConsumer's doc comment for why renderLiquid
@@ -74,7 +74,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             if (state == null) continue;
             boolean staticDrawn = mesh.baked.contains(piece);
 
-            // #TODO remove before release — water-rendering investigation. A fluid's BlockState
+            // A fluid's BlockState
             // has RenderShape.INVISIBLE (same as any real water/lava), so renderSingleBlock below
             // is a deliberate no-op for it — fluids render through a completely separate path
             // (see SubgridFluidView's doc comment) that needs real neighbor-height sampling, not

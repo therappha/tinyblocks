@@ -46,7 +46,7 @@ public class SubgridBlockEntity extends BlockEntity {
     /** Client only: the renderer's cached mesh of this grid's static pieces (SubgridRenderer.StaticMesh). */
     public Object renderCache;
 
-    /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
+    /** A piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime, int priority, long order,
                                      @Nullable Object type) {
         ScheduledPieceTick(int x, int y, int z, long targetGameTime) {
@@ -993,16 +993,6 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
-     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
-     * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
-     * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
-     * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
-     * the whole log) and caused real lag from the logging volume alone — see issue #42. Guarding on
-     * isDebugEnabled() also skips describeCellRef's string-building work when disabled, not just
-     * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
-     * separately from latest.log — just no longer paid for on every tick by default.
-     */
-    /**
      * Diagnostic-only (issue #43): set true around FluidState.tick calls (VanillaBlockPiece
      * .scheduledTick) so logResolve can trace which boundary reads happen mid fluid-spread at
      * INFO — the regular [xgrid] DEBUG line turned out not to actually be captured anywhere by
@@ -1019,6 +1009,16 @@ public class SubgridBlockEntity extends BlockEntity {
         tracingFluid = value;
     }
 
+    /**
+     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
+     * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
+     * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
+     * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
+     * the whole log) and caused real lag from the logging volume alone — see issue #42. Guarding on
+     * isDebugEnabled() also skips describeCellRef's string-building work when disabled, not just
+     * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
+     * separately from latest.log — just no longer paid for on every tick by default.
+     */
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
         // The description is only built when it is logged: formatting it on every resolve weighed in a profile.
         if (tracingFluid && LOGGER.isDebugEnabled()) {
@@ -1222,6 +1222,9 @@ public class SubgridBlockEntity extends BlockEntity {
         rebuildShape();
     }
 
+    /** Test hook: how many times the merged shape has been rebuilt. */
+    int shapeRebuildCount = 0;
+
     /**
      * Builds the merged shape directly from cellOwner's occupancy in a single pass, instead of
      * unioning one VoxelShape per piece via Shapes.or — that scaled with piece count (and grew
@@ -1229,9 +1232,6 @@ public class SubgridBlockEntity extends BlockEntity {
      * paid an increasingly large cost on every single place/break. This is bounded by
      * gridSize^3 regardless of piece count (see issue #27).
      */
-    /** Test hook: how many times the merged shape has been rebuilt. */
-    int shapeRebuildCount = 0;
-
     private void rebuildShape() {
         shapeRebuildCount++;
         var discrete = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);

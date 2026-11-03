@@ -38,7 +38,7 @@ import java.util.Map;
  * one hand-written PieceDefinition per block type (see PieceDefinitions.java for the old way).
  * Stores the actual BlockState in piece.runtimeState and runs interact/neighborChanged/hardness
  * through a fake, in-memory position space (FakeCellGetter/FakeLevel, or FakeServerLevel for the
- * Tier 3 tick methods) built from this piece's SubgridBlockEntity siblings — real vanilla
+ * tick methods) built from this piece's SubgridBlockEntity siblings — real vanilla
  * behavior, zero reimplementation.
  */
 public class VanillaBlockPiece extends PieceDefinition {
@@ -64,7 +64,7 @@ public class VanillaBlockPiece extends PieceDefinition {
     /**
      * Forces this class (and its PieceDefinition.REGISTRY registration) to load at mod setup,
      * same as PieceDefinitions.init(). Without this, INSTANCE only loads lazily on first use
-     * (e.g. the first Minimizer/Phase C right-click) — but BlockEntity NBT loading can happen
+     * (e.g. the first Minimizer or block-item right-click) — but BlockEntity NBT loading can happen
      * before that, so PieceDefinition.getOrThrow("tinyblocks:vanilla_block") would throw and
      * silently drop any SubgridBlockEntity containing a saved VanillaBlockPiece.
      */
@@ -751,13 +751,6 @@ public class VanillaBlockPiece extends PieceDefinition {
     // --- Fake space plumbing, shared with SubgridEventHandler's placement flow ---
 
     /**
-     * Builds a FakeLevel whose cell space mirrors every VanillaBlockPiece sibling in be. Used for
-     * interact/neighborChanged/placement — none of which actually need a genuine ServerLevel,
-     * only a Level — so they stay on this simpler, proven path rather than the more fragile
-     * FakeServerLevel (see buildFakeServerSpace), which is scoped to just the Tier 3 tick methods
-     * that are statically typed to require one.
-     */
-    /**
      * A fake space for CLIENT-side hosts of phantom block entities (the Flywheel SubgridVisual). Its light
      * and biome queries are answered at the SubgridBlock's real position, so a hosted visual that lights
      * itself from its block entity's position — which is now a virtual-cube position that can be inside
@@ -770,6 +763,13 @@ public class VanillaBlockPiece extends PieceDefinition {
         return fakeLevel;
     }
 
+    /**
+     * Builds a FakeLevel whose cell space mirrors every VanillaBlockPiece sibling in be. Used for
+     * interact/neighborChanged/placement — none of which actually need a genuine ServerLevel,
+     * only a Level — so they stay on this simpler, proven path rather than the more fragile
+     * FakeServerLevel (see buildFakeServerSpace), which is scoped to just the tick methods
+     * that are statically typed to require one.
+     */
     public static FakeLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
         SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, be.getBlockPos());

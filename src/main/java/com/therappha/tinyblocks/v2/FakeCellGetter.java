@@ -15,12 +15,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * v2 prototype (see issue tracker): proves that vanilla's own BlockGetter-level block API
- * (hardness, shape, redstone signal) runs correctly against a fake, in-memory position space
- * instead of a real chunk — the same trick WorldGenRegion uses for chunk generation.
+ * A fake, in-memory position space that vanilla's own BlockGetter-level block API (hardness,
+ * shape, redstone signal) runs against instead of a real chunk — the same trick WorldGenRegion
+ * uses for chunk generation.
  *
- * Deliberately minimal: no real Level, no ServerLevel. Anything that needs those (interact,
- * neighborChanged, tick) is out of scope for this checkpoint.
+ * Deliberately minimal: no real Level, no ServerLevel. What needs those (interact,
+ * neighborChanged, tick) goes through FakeLevel and FakeServerLevel, which wrap this.
  */
 public class FakeCellGetter implements BlockGetter {
 

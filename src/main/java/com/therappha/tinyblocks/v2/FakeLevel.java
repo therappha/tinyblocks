@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * v2 prototype checkpoint 2: a real Level subclass that redirects block-position access to a
+ * A real Level subclass that redirects block-position access to a
  * fake in-memory cell space, delegating everything else (registries, day time, sound, entities)
  * to the real wrapped Level. Lets us call neighborChanged()/useWithoutItem() — which require a
  * genuine Level, not just BlockGetter — against fake positions with zero reimplementation.
