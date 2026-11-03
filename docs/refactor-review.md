@@ -155,3 +155,96 @@ to `SubgridVisual`. Step 22 then stays `javap`-identical for every file.
 ## Counts
 
 0 blockers, 5 majors, 11 minors. Step 23 is deferred.
+
+## Round 2
+
+A review of the revised plan at 012c1ab. As in round 1, I only read: no Gradle task was run and no code was changed.
+Each round 1 finding was checked against the code, not only against what the plan now says.
+
+**Verdict:** 0 blockers, 1 major, 4 minors. I approve the plan once R2-M1 is fixed. It is a small change to step 4's
+test. The minors can be done during implementation.
+
+### Round 1 findings, checked
+
+- **Step 23:** deferred, and nothing depends on it. Resolved.
+- **M1 (hop-loop merge):** dropped. Step 6 moves the two loops apart. It names both differences found in round 1:
+  which level each loop reads (`SubgridBlockEntity.java:857` against `:960`), and the `setBlock` in the middle of the
+  creating loop (`:385-386`). Resolved.
+- **M2 (PendingDrops):** dropped. It is gone from the target structure and is listed under "Left alone". Resolved.
+- **M3 (`operatingServerSpace`):** step 14 now covers only `buildFakeSpace` and `buildClientFakeSpace`, which are the
+  same three lines over a `Level` (`VanillaBlockPiece.java:766-778`). It leaves `operatingServerSpace` and its
+  `cells.live = false` (`:1133`) alone. Resolved. Step 13 is checked below.
+- **M4 (neighbour order):** step 5 leaves the `refreshSignals` loop alone, and `rebuildAfterRemove` copies its index
+  into a final local, which is right. Step 4 is the new check, and it doesn't fully cover the order: see R2-M1.
+- **M5 (`relightChildren`):** moved into step 17. Steps 19 to 22 are now imports only and `javap`-identical. Resolved.
+- **m1:** step 12 and the risk list now give the right failure (an `Error`, which `SubgridBlockEntity.java:786` doesn't
+  catch). Resolved.
+- **m2:** `SubgridFakeCellGetter.be` is now in step 10's list (it is read at `VanillaBlockPiece.java:1362`). Resolved.
+- **m3:** steps 6, 7 and 9 now read the grid through `getLevel()` and `getBlockPos()`, and step 9 keeps
+  `markNeighbouringPhantomsDirty` last in `notifyUpdate` (`:1160`). Resolved. One more access to widen: see R2-m3.
+- **m4:** step 5 now uses a `placeIn` helper. Resolved.
+- **m5:** step 3 now gives the right reason for each read it removes: `FakeLevel.java:294-296`, and
+  `VanillaBlockPiece.java:555-569`. Resolved.
+- **m6:** step 1's check is now `grep -rn "TODO" src/main`. Today the only matches are the eight markers and
+  `ScaledVertexConsumer.java:29`, so an empty result does prove the step was done. Resolved.
+- **m7:** "What doesn't change" now lists every member a mixin calls, and step 9 names `SyncedBlockEntityMixin`.
+  Resolved.
+- **m8:** `pushSlice`, with no lambda. Resolved.
+- **m9:** opened as #118 and listed under "Left alone". Resolved.
+- **m10 (declined):** I accept the decline. In `SubgridEventHandler.java:265-349`, every branch (outside placement,
+  connector, plate target, wrench, the piece's own use, the item's use) ends the click with its own side effect and
+  its own `return`. Pulling them out would need a result type, and the handler would still have to switch on it. The
+  only part that could move cleanly is the choice of target cell (`:353-374`), which ends in assignments. It is about
+  20 lines, too small to be worth a step.
+- **m11:** `docs/performance.md` is kept as a record of its time, and the plan says so. Resolved.
+
+### The two new test steps
+
+- **Step 4 (neighbour order).** Reversing `Direction.values()` would be caught: a single-cell piece with neighbours on
+  several sides is enough. A wrong cell order would only be caught in part. See R2-M1.
+- **Step 13 (the `live` flag).** This step works. The order is right: it finds or adds the test before step 14. It
+  requires the test to be seen to fail with the one-off applied. And it chose the right effect to look at: with `live`
+  wrongly true, the only thing lost is the chest telling its comparator (`FakeServerLevel.java:241` →
+  `afterItsCall`). The items still arrive, because the hopper writes them into the chest's block entity directly. So
+  the existing hopper tests probably pass with the one-off, and the new comparator-and-lamp scene is what will catch
+  it. See R2-m1 for how to make sure it fails.
+
+### Major
+
+#### R2-M1. Step 4: a 2 by 1 by 2 test piece can't see the y order
+
+A footprint one cell tall gives the same cell order for x-y-z as for x-z-y, and for y-x-z as for x-y-z. So the new
+unit test can't tell a `forEachCell` that walks y in the wrong place.
+
+The real multi-cell pieces are shaft connectors. Their footprint is `w x w x d` (`ShaftConnectorPiece.java:48`), and
+on the X axis it turns into `d x w x w` (`PlacedPiece.java:66-69`). There, y and z both span more than one cell, so
+the y order does change which neighbour hears first. The one-off in step 4 also only moves z outermost; it never
+moves y.
+
+**What to do:**
+
+- Give the test piece a footprint of 2 by 2 by 2, with neighbours placed so that every loop order gives a different
+  `neighborsOf` sequence.
+- Add "y and z swapped" to the one-off changes, and require the test to fail under each of them.
+
+### Minor
+
+- **R2-m1. Step 13:** for the new scene to fail with the one-off, the chest's phantom must first be built by the
+  chest's own `tick`. That call binds it to an operating space (`VanillaBlockPiece.java:178-179`). If a reader built
+  it first, it would be bound to a `TickSpace`, which `release` sets to not live, and the scene would pass either
+  way. The scene must also judge by the comparator or the lamp, not by the items. If it doesn't fail at first, place
+  the chest before the hopper. The step's "seen to fail" rule already catches this, so this is only a hint for the
+  implementer.
+- **R2-m2. Step 4:** a test-only `PieceDefinition` registers itself in the global `REGISTRY` from its constructor
+  (`PieceDefinition.java:36`), so give it an id no real piece uses. A piece's footprint also turns with its facing's
+  axis (`PlacedPiece.java:33`). Pick the facing on purpose, or a 2 by 2 by 2 footprint makes it not matter.
+- **R2-m3. Step 6:** `GridResolver` calls `grid.outOfBounds`, which is private (`SubgridBlockEntity.java:1546`). Add it
+  to what becomes package-private, as step 10 does for its classes, or use `!grid.inBounds(...)`. The compiler would
+  catch this anyway.
+- **R2-m4. Step 11:** the file list includes `v2/TickSpace`, but `TickSpace` calls none of the methods that move
+  (`VanillaBlockPiece.java:216-251`); only `SubgridFakeCellGetter.afterItsCall` calls `applyChanges`. Drop it from the
+  list, or say why it is there.
+
+### Counts, round 2
+
+0 blockers, 1 major (R2-M1), 4 minors. Step 23 is still deferred.
