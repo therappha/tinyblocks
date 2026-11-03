@@ -319,23 +319,19 @@ public class SubgridBlockEntity extends BlockEntity {
                                                      Object runtimeState, ServerLevel realLevel) {
         CellRef ref = resolveOrCreate(local.getX(), local.getY(), local.getZ(), realLevel);
         return switch (ref) {
-            case CellRef.Local l -> {
-                PlacedPiece p = placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(this, p) : null;
-            }
-            case CellRef.InAdjacentGrid a -> {
-                PlacedPiece p = a.grid().placeOrUpdatePiece(
-                        definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(a.grid(), p) : null;
-            }
-            case CellRef.Created c -> {
-                PlacedPiece p = c.grid().placeOrUpdatePiece(
-                        definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(c.grid(), p) : null;
-            }
+            case CellRef.Local l -> placeIn(this, l.x(), l.y(), l.z(), definition, facing, runtimeState);
+            case CellRef.InAdjacentGrid a -> placeIn(a.grid(), a.x(), a.y(), a.z(), definition, facing, runtimeState);
+            case CellRef.Created c -> placeIn(c.grid(), c.x(), c.y(), c.z(), definition, facing, runtimeState);
             case CellRef.RealWorld ignored -> null;
             case CellRef.OutOfScope ignored -> null;
         };
+    }
+
+    @Nullable
+    private static PlacementResult placeIn(SubgridBlockEntity grid, int x, int y, int z, PieceDefinition definition,
+                                           Direction facing, Object runtimeState) {
+        PlacedPiece p = grid.placeOrUpdatePiece(definition, new BlockPos(x, y, z), facing, runtimeState);
+        return p != null ? new PlacementResult(grid, p) : null;
     }
 
     /**
@@ -559,10 +555,7 @@ public class SubgridBlockEntity extends BlockEntity {
             return;
         }
         pieces.remove(idx);
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                    cellOwner[indexOf(x, y, z)] = EMPTY;
+        p.forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = EMPTY);
     }
 
     /** Where a world point inside this grid's block goes when the grid is mirrored, then turned (as transformCell). */
@@ -1050,14 +1043,13 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     public Set<Neighbor> neighborsOf(PlacedPiece piece) {
         Set<Neighbor> result = new LinkedHashSet<>();
-        for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX(); x++)
-            for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY(); y++)
-                for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ(); z++)
-                    for (Direction dir : Direction.values()) {
-                        if (piece.occupies(x + dir.getStepX(), y + dir.getStepY(), z + dir.getStepZ())) continue;
-                        Neighbor neighbor = neighborAt(x, y, z, dir);
-                        if (neighbor != null) result.add(neighbor);
-                    }
+        piece.forEachCell((x, y, z) -> {
+            for (Direction dir : Direction.values()) {
+                if (piece.occupies(x + dir.getStepX(), y + dir.getStepY(), z + dir.getStepZ())) continue;
+                Neighbor neighbor = neighborAt(x, y, z, dir);
+                if (neighbor != null) result.add(neighbor);
+            }
+        });
         return result;
     }
 
@@ -1162,13 +1154,7 @@ public class SubgridBlockEntity extends BlockEntity {
     // --- Grid helpers ---
 
     private boolean canFit(PlacedPiece p) {
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++) {
-                    if (outOfBounds(x, y, z)) return false;
-                    if (cellOwner[indexOf(x, y, z)] != EMPTY) return false;
-                }
-        return true;
+        return !p.anyCell((x, y, z) -> outOfBounds(x, y, z) || cellOwner[indexOf(x, y, z)] != EMPTY);
     }
 
     private void addToGrid(PlacedPiece p) {
@@ -1181,10 +1167,7 @@ public class SubgridBlockEntity extends BlockEntity {
         pieceVersion++;
         short idx = (short) pieces.size();
         pieces.add(p);
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                    cellOwner[indexOf(x, y, z)] = idx;
+        p.forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = idx);
     }
 
     private void rebuildAfterRemove(short removedIdx) {
@@ -1192,11 +1175,8 @@ public class SubgridBlockEntity extends BlockEntity {
         pieces.remove(removedIdx);
         Arrays.fill(cellOwner, EMPTY);
         for (int i = 0; i < pieces.size(); i++) {
-            PlacedPiece p = pieces.get(i);
-            for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-                for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                    for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                        cellOwner[indexOf(x, y, z)] = (short) i;
+            final short owner = (short) i;
+            pieces.get(i).forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = owner);
         }
         rebuildShape();
     }
@@ -1361,11 +1341,7 @@ public class SubgridBlockEntity extends BlockEntity {
     public void notifyFace(Direction face) {
         if (!(level instanceof ServerLevel serverLevel)) return;
         for (PlacedPiece piece : new ArrayList<>(pieces)) {
-            boolean against = false;
-            for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX() && !against; x++)
-                for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY() && !against; y++)
-                    for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ() && !against; z++)
-                        against = onFace(face, x, y, z, gridSize);
+            boolean against = piece.anyCell((x, y, z) -> onFace(face, x, y, z, gridSize));
             if (!against || !pieces.contains(piece)) continue;
             try {
                 piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
