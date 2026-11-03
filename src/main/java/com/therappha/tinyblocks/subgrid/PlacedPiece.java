@@ -23,7 +23,7 @@ public class PlacedPiece {
      * directly (the PieceDefinition round-trips whatever data it holds through extraData).
      */
     public Object runtimeBlockEntity;
-    /** Hash of the phantom block entity data last pushed to clients; runtime-only, see SubgridBlockEntity#flushPhantomData. */
+    /** Hash of the phantom block entity data last pushed to clients; runtime-only, see PhantomSync#flush. */
     public int lastSyncedPhantomHash;
 
     public PlacedPiece(PieceDefinition definition, BlockPos anchor, Direction facing) {

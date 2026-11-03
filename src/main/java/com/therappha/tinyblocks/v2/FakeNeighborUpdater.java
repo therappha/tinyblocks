@@ -13,7 +13,7 @@ import javax.annotation.Nullable;
 /**
  * Vanilla's neighbour updates, kept inside the fake space. An update reaching a real block past the grid's edge stops
  * there: running that block's logic here would act at a virtual position. The real block hears of what the grid's
- * faces give through SubgridBlockEntity#updateRedstoneOutputs, in the real level.
+ * faces give through GridSignals#updateRedstoneOutputs, in the real level.
  */
 final class FakeNeighborUpdater extends CollectingNeighborUpdater {
 
