@@ -1008,6 +1008,10 @@ public class VanillaBlockPiece extends PieceDefinition {
             BlockEntity captured = super.getBlockEntity(resolved);
             if (captured != null) return captured;
             if (be.inBounds(resolved.getX(), resolved.getY(), resolved.getZ())) {
+                // A grid whose chunk unloaded holds none: as for a real block entity left from before a reload, the
+                // position belongs to the one loaded in its place. Create drops a network member whose position no
+                // longer answers with it; a stale phantom that still did was counted next to its successor.
+                if (be.isChunkUnloaded()) return null;
                 PlacedPiece piece = be.getPieceAt(resolved.getX(), resolved.getY(), resolved.getZ());
                 if (piece == null || !(piece.definition instanceof VanillaBlockPiece) || attachedLevel == null) return null;
                 // Only the piece actually being operated on (its own tick/onUse — aliasTo is its

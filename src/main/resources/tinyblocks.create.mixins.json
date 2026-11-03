@@ -6,7 +6,9 @@
   "mixins": [
     "BlockEntityConfigurationPacketMixin",
     "ContraptionMixin",
+    "DirectionalShaftHalvesBlockEntityMixin",
     "KineticBlockEntityMixin",
+    "KineticNetworkAccessor",
     "KineticNetworkMixin",
     "LinkedControllerBindPacketMixin",
     "LinkBehaviourMixin",
@@ -15,6 +17,7 @@
     "RotationPropagatorAccessor",
     "RotationPropagatorMixin",
     "SyncedBlockEntityMixin",
+    "TorquePropagatorAccessor",
     "TorquePropagatorMixin"
   ],
   "client": [

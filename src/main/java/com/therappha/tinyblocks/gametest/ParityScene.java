@@ -1,12 +1,15 @@
 package com.therappha.tinyblocks.gametest;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -24,6 +27,17 @@ final class ParityScene {
     record Slot(BlockPos cell, int slot, ItemStack stack) {}
     record Timed(int tick, String what, Step step) {}
     record Proof(BlockPos cell, String fact) {}
+    /**
+     * A cell whose block, in the space under test, is a grid of {@code gridSize} standing in for it: connectors on its
+     * two faces along {@code axis} joined inside by tiny parts (ParitySpace.Bridged). {@code downstream} is the face
+     * rotation leaves by, the one whose connector the cell shows.
+     */
+    record StandIn(BlockPos cell, int gridSize, Direction.Axis axis, Direction downstream, boolean jog) {}
+
+    /** Where the spaces stand: by the test, a few million blocks out; next to the world origin; or across a seam of the virtual frame. */
+    enum Place {
+        BY_THE_TEST, NEAR_ORIGIN, FRAME_SEAM
+    }
 
     final String name;
     final List<Placement> blocks = new ArrayList<>();
@@ -32,6 +46,11 @@ final class ParityScene {
     final List<Proof> proofs = new ArrayList<>();
     /** What steps place, for what is built later to be looked at too (ParityChanceGameTest). */
     final List<BlockState> placedLater = new ArrayList<>();
+    final List<StandIn> standIns = new ArrayList<>();
+    /** Compared only at the end, these fields everywhere and every field of these cells: what may get there on another tick. */
+    final Set<String> endOnlyFields = new HashSet<>();
+    final Set<BlockPos> endOnlyCells = new HashSet<>();
+    Place place = Place.BY_THE_TEST;
     int ticks = 60;
     /** How long it runs before the comparison starts, built and, when a grid is moved, moved halfway through this. */
     int settleTicks = 12;
@@ -119,6 +138,13 @@ final class ParityScene {
         return this;
     }
 
+    /** A player's turn of a hand crank, which keeps it going for a few ticks. */
+    ParityScene crank(int tick, int x, int y, int z) {
+        BlockPos cell = new BlockPos(x, y, z);
+        steps.add(new Timed(tick, "crank " + cell.toShortString(), space -> space.crank(cell)));
+        return this;
+    }
+
     ParityScene runFor(int ticks) {
         this.ticks = ticks;
         return this;
@@ -150,6 +176,37 @@ final class ParityScene {
 
     ParityScene compareEntitiesAt(int tick) {
         entitiesAt = tick;
+        return this;
+    }
+
+    ParityScene endOnlyField(String prefix) {
+        endOnlyFields.add(prefix);
+        return this;
+    }
+
+    ParityScene endOnlyCell(BlockPos cell) {
+        endOnlyCells.add(cell);
+        return this;
+    }
+
+    ParityScene placed(Place place) {
+        this.place = place;
+        return this;
+    }
+
+    /** The same scene without what is said to the setter: everything but what was built and done in it. */
+    ParityScene settingsFrom(ParityScene other) {
+        ticks = other.ticks;
+        settleTicks = other.settleTicks;
+        watchOnlyAround = other.watchOnlyAround;
+        onlyAtTheEnd = other.onlyAtTheEnd;
+        knownBroken = other.knownBroken;
+        entitiesAt = other.entitiesAt;
+        moveAt = other.moveAt;
+        place = other.place;
+        standIns.addAll(other.standIns);
+        endOnlyFields.addAll(other.endOnlyFields);
+        endOnlyCells.addAll(other.endOnlyCells);
         return this;
     }
 

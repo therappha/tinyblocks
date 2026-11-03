@@ -4,7 +4,6 @@ import com.therappha.tinyblocks.TinyBlocks;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
@@ -36,8 +35,7 @@ final class ParityEntities {
         if (WATCHED.isEmpty() || entity instanceof Player || event.getLevel().isClientSide()) return;
         for (Map.Entry<ParitySpace, Watch> watched : WATCHED.entrySet()) {
             // Asked now, not when watching began: a grid that has moved has its box where it went.
-            AABB box = watched.getKey().spawnBox(watched.getValue().size());
-            if (watched.getValue().level() == event.getLevel() && box.contains(entity.position())) {
+            if (watched.getValue().level() == event.getLevel() && watched.getKey().bornIn(watched.getValue().size(), entity.position())) {
                 watched.getKey().born().add(entity);
                 return;
             }

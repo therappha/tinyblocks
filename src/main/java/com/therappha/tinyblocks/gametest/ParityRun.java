@@ -7,6 +7,9 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
+import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,6 +38,8 @@ final class ParityRun {
         static final Layout FOUR_8_SHIFTED = new Layout("g8s", 8, new BlockPos(3, 0, 5), "parity_16", 16);
         static final Layout FOUR_16 = new Layout("big16", 16, BlockPos.ZERO, "parity_32", 32);
         static final Layout SIXTEEN_8 = new Layout("big8", 8, BlockPos.ZERO, "parity_32", 32);
+        /** Real blocks, with grids standing in for some of them (ParityScene.StandIn, ParitySpace.Bridged): a whole space wide, so the bigger template. */
+        static final Layout BRIDGED = new Layout("bridged", 16, BlockPos.ZERO, "parity_32", 16);
     }
 
     private static final int MAX_SHOWN = 8;
@@ -50,10 +55,11 @@ final class ParityRun {
     private final List<String> eventsSeen = new ArrayList<>();
     private int tick;
     private final ParitySpace.Move move;
-    private int lastHash, changesSeen;
+    private int lastHash, changesSeen, overstressedTicks, beltTicks;
     private String entitiesSeen = "";
     private boolean built;
     private final int gap;
+    private final BlockPos base;
     /** Off for a run that is only asked whether it still fails. */
     boolean reports = true;
 
@@ -69,15 +75,64 @@ final class ParityRun {
         this.testName = testName;
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
         gap = layout.spaceWidth() + 1;
-        world = new ParitySpace.Real(helper.getLevel(), helper.absolutePos(new BlockPos(1, 2, 1)), player);
-        controls = List.of(new ParitySpace.Real(helper.getLevel(), helper.absolutePos(new BlockPos(1 + gap, 2, 1)), player),
-                new ParitySpace.Real(helper.getLevel(), helper.absolutePos(new BlockPos(1, 2, 1 + gap)), player),
-                new ParitySpace.Real(helper.getLevel(), helper.absolutePos(new BlockPos(1 + gap, 2, 1 + gap)), player));
-        tiny = new ParitySpace.Tiny(helper.getLevel(), helper.absolutePos(new BlockPos(1 + 2 * gap, 2, 1)),
-                layout.gridSize(), layout.seam(), player);
+        base = base(helper, scene.place, gap);
+        world = new ParitySpace.Real(helper.getLevel(), base, player);
+        controls = List.of(new ParitySpace.Real(helper.getLevel(), base.offset(gap, 0, 0), player),
+                new ParitySpace.Real(helper.getLevel(), base.offset(0, 0, gap), player),
+                new ParitySpace.Real(helper.getLevel(), base.offset(gap, 0, gap), player));
+        BlockPos tinyAt = base.offset(2 * gap, 0, 0);
+        tiny = scene.standIns.isEmpty()
+                ? new ParitySpace.Tiny(helper.getLevel(), tinyAt, layout.gridSize(), layout.seam(), player)
+                : new ParitySpace.Bridged(helper.getLevel(), tinyAt, player, scene.standIns);
         int[] size = scene.size();
         allCells = SpaceDiff.box(size[0], size[1], size[2]);
         cells = scene.watchOnlyAround ? around(scene) : allCells;
+        if (scene.place != ParityScene.Place.BY_THE_TEST) forEachChunk(chunk -> helper.getLevel().setChunkForced(chunk.x, chunk.z, true));
+    }
+
+    /** Spaces away from the test each get ground of their own: tests run side by side. */
+    private static final java.util.concurrent.atomic.AtomicInteger AWAY = new java.util.concurrent.atomic.AtomicInteger();
+    /** A seam of the virtual frame's horizontal window (SubgridBlockEntity#virtualOrigin), millions of blocks out. */
+    private static final int FRAME_SEAM_X = 2 * SubgridBlockEntity.HORIZONTAL_WINDOW + SubgridBlockEntity.HORIZONTAL_WINDOW / 2;
+
+    /** Where the real copy's cell (0,0,0) is; the others are a row over from it, the tiny one two. */
+    private static BlockPos base(GameTestHelper helper, ParityScene.Place place, int gap) {
+        int slot = place == ParityScene.Place.BY_THE_TEST ? 0 : AWAY.getAndIncrement();
+        return switch (place) {
+            case BY_THE_TEST -> helper.absolutePos(new BlockPos(1, 2, 1));
+            case NEAR_ORIGIN -> new BlockPos(64 + 128 * (slot % 16), 100, 64 + 128 * (slot / 16));
+            // The tiny copy's first column of grids is the last one before the seam.
+            case FRAME_SEAM -> new BlockPos(FRAME_SEAM_X - 1 - 2 * gap, 100, 4_000_000 + 128 * slot);
+        };
+    }
+
+    /** The chunks every space of this run stands in. */
+    private void forEachChunk(java.util.function.Consumer<net.minecraft.world.level.ChunkPos> action) {
+        int[] size = scene.size();
+        // A tiny copy stands in a few blocks; one with grids standing in for blocks is as wide as a real one.
+        int tinyWidth = scene.standIns.isEmpty() ? 5 : size[0];
+        BlockPos far = base.offset(2 * gap + tinyWidth, 0, gap + size[2]);
+        for (int x = base.getX() >> 4; x <= far.getX() >> 4; x++) {
+            for (int z = base.getZ() >> 4; z <= far.getZ() >> 4; z++) action.accept(new net.minecraft.world.level.ChunkPos(x, z));
+        }
+    }
+
+    /** Ground away from the test isn't cleared by the test framework: what a run left there goes, and the chunks are let go once done. */
+    private void clearAway(boolean letGo) {
+        if (scene.place == ParityScene.Place.BY_THE_TEST) return;
+        int[] size = scene.size();
+        var level = helper.getLevel();
+        BlockPos far = base.offset(2 * gap + size[0], size[1], gap + size[2]);
+        int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS | net.minecraft.world.level.block.Block.UPDATE_SUPPRESS_DROPS;
+        for (BlockPos at : BlockPos.betweenClosed(base.below(), far)) {
+            // Ground to stand on while it runs, as by the test: a sub-level assembled in the air falls.
+            BlockState wanted = at.getY() < base.getY() && !letGo ? net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()
+                    : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            if (level.getBlockState(at) != wanted) level.setBlock(at, wanted, flags);
+        }
+        var box = new net.minecraft.world.phys.AABB(Vec3.atLowerCornerOf(base), Vec3.atLowerCornerOf(far)).inflate(4);
+        for (var entity : level.getEntitiesOfClass(net.minecraft.world.entity.Entity.class, box, e -> !(e instanceof Player))) entity.discard();
+        if (letGo) forEachChunk(chunk -> level.setChunkForced(chunk.x, chunk.z, false));
     }
 
     /** The cells a scene built on, and those next to them: comparing all of a sparse scene's box every tick adds nothing. */
@@ -98,6 +153,7 @@ final class ParityRun {
             if (!built) {
                 // A chunk not ticking yet would hold the real copies still while the grids run: it would look like a difference.
                 if (!chunksTicking()) return;
+                clearAway(false); // ground away from the test keeps what an earlier run of the server left there
                 buildAll();
                 built = true;
                 return;
@@ -107,13 +163,9 @@ final class ParityRun {
     }
 
     private boolean chunksTicking() {
-        for (int x = 0; x < 2 * gap + 6; x += 16) {
-            for (int z = 0; z < 2 * gap; z += 16) {
-                long chunk = net.minecraft.world.level.ChunkPos.asLong(helper.absolutePos(new BlockPos(x, 0, z)));
-                if (!helper.getLevel().shouldTickBlocksAt(chunk)) return false;
-            }
-        }
-        return true;
+        boolean[] ticking = {true};
+        forEachChunk(chunk -> ticking[0] &= helper.getLevel().shouldTickBlocksAt(chunk.toLong()));
+        return ticking[0];
     }
 
     private List<ParitySpace> all() {
@@ -155,25 +207,44 @@ final class ParityRun {
         if (tick >= 0) compare();
         // Its next spot is a row over, past the space it was built in.
         int moveTick = scene.moveAt != null ? scene.moveAt : -scene.settleTicks / 2;
-        if (tick == moveTick && move != ParitySpace.Move.STAYS) ((ParitySpace.Tiny) tiny).move(move, new BlockPos(0, 0, gap));
+        if (tick == moveTick && move != ParitySpace.Move.STAYS) {
+            ((ParitySpace.Tiny) tiny).move(move, new BlockPos(0, 0, gap));
+            // A chunk reload changes what a real block entity holds as well: the real copies go through it with the grid.
+            if (move == ParitySpace.Move.RELOAD) {
+                for (ParitySpace space : all()) if (space instanceof ParitySpace.Real real) real.reload(scene.size());
+            }
+        }
         for (ParityScene.Timed step : scene.steps) {
             if (step.tick() != tick) continue;
             eventsSeen.add("tick " + tick + ": " + step.what());
             for (ParitySpace space : all()) step.step().run(space);
         }
         if (tick == scene.ticks) {
-            ((ParitySpace.Tiny) tiny).cleanUp();
+            if (tiny instanceof ParitySpace.Tiny moved) moved.cleanUp();
             for (ParitySpace space : all()) ParityEntities.stopWatching(space);
         }
-        if (tick == scene.ticks && reports) finish();
-        tick++;
+        try {
+            if (tick == scene.ticks && reports) finish();
+        } finally {
+            if (tick == scene.ticks) clearAway(true);
+            tick++;
+        }
     }
 
     private void compare() {
         if (scene.onlyAtTheEnd && tick != scene.ticks) return;
         List<BlockPos> cells = tick == scene.ticks ? allCells : this.cells; // nothing can have hidden elsewhere by the end
         int hash = 0;
-        for (BlockPos cell : cells) hash = 31 * hash + SpaceDiff.facts(world, cell).hashCode();
+        boolean overstressed = false, onBelts = false;
+        for (BlockPos cell : cells) {
+            var facts = SpaceDiff.facts(world, cell);
+            hash = 31 * hash + facts.hashCode();
+            overstressed |= "true".equals(facts.get(SpaceDiff.WORKING + "overstressed"));
+            onBelts |= facts.containsKey(SpaceDiff.WORKING + "on_belt") && !"{}".equals(facts.get(SpaceDiff.WORKING + "on_belt"));
+        }
+        // What a random scene got up to, for its report: one that never did what it was built for proves little.
+        if (overstressed) overstressedTicks++;
+        if (onBelts) beltTicks++;
         if (tick > 0 && hash != lastHash) changesSeen++; // a scene where nothing happens proves nothing: the report says so
         lastHash = hash;
         List<SpaceDiff.Difference> reals = new ArrayList<>();
@@ -184,6 +255,10 @@ final class ParityRun {
             againstWorld.addAll(SpaceDiff.compareTotals(world.entities(), tiny.entities()));
             entitiesSeen = world.entities().toString();
         }
+        if (tick != scene.ticks && !(scene.endOnlyFields.isEmpty() && scene.endOnlyCells.isEmpty())) {
+            reals.removeIf(this::comparedAtTheEnd);
+            againstWorld.removeIf(this::comparedAtTheEnd);
+        }
         betweenReals.record(tick, reals);
         for (SpaceDiff.Difference d : reals) undecided.add(d.cell().toShortString() + d.field());
         List<SpaceDiff.Difference> counted = new ArrayList<>();
@@ -191,6 +266,12 @@ final class ParityRun {
             if (!undecided.contains(d.cell().toShortString() + d.field())) counted.add(d);
         }
         againstTiny.record(tick, counted);
+    }
+
+    private boolean comparedAtTheEnd(SpaceDiff.Difference d) {
+        if (scene.endOnlyCells.contains(d.cell())) return true;
+        for (String prefix : scene.endOnlyFields) if (d.field().startsWith(prefix)) return true;
+        return false;
     }
 
     private void finish() {
@@ -202,7 +283,9 @@ final class ParityRun {
         }
         List<String> report = new ArrayList<>();
         report.add((failing.isEmpty() ? "PASSED " : "FAILED ") + testName + " (" + scene.ticks + " ticks, "
-                + changesSeen + " changes in the world)");
+                + changesSeen + " changes in the world" + (overstressedTicks > 0 ? ", overstressed for " + overstressedTicks + " ticks" : "")
+                + (beltTicks > 0 ? ", items on belts for " + beltTicks + " ticks" : "") + ")");
+        for (ParityScene.StandIn standIn : scene.standIns) report.add("grid standing in: " + standIn);
         report.addAll(eventsSeen);
         if (!failing.isEmpty()) report.add("--- divergences: " + failing.size());
         report.addAll(failing);

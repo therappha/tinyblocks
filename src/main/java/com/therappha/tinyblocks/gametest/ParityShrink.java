@@ -21,6 +21,7 @@ final class ParityShrink {
     private static final int PAUSE_TICKS = 30;
     private final GameTestHelper helper;
     private final ParityRun.Layout layout;
+    private final ParitySpace.Move move;
     private final String testName;
     private ParityScene best;
     private List<Object> items;
@@ -30,9 +31,10 @@ final class ParityShrink {
     private boolean finishing;
     private int pause;
 
-    private ParityShrink(GameTestHelper helper, ParityScene scene, ParityRun.Layout layout, String testName) {
+    private ParityShrink(GameTestHelper helper, ParityScene scene, ParityRun.Layout layout, ParitySpace.Move move, String testName) {
         this.helper = helper;
         this.layout = layout;
+        this.move = move;
         this.testName = testName;
         this.best = scene;
     }
@@ -40,10 +42,12 @@ final class ParityShrink {
     static TestFunction test(long seed) {
         List<ParityRun.Layout> layouts = List.of(ParityRun.Layout.ONE_16, ParityRun.Layout.FOUR_8, ParityRun.Layout.FOUR_8_SHIFTED);
         ParityRun.Layout layout = layouts.get((int) (seed % layouts.size()));
-        ParityScene scene = RandomRedstoneScene.generate(seed);
-        String name = "shrink_" + seed;
+        return test("shrink_" + seed, RandomRedstoneScene.generate(seed), layout, ParitySpace.Move.STAYS);
+    }
+
+    static TestFunction test(String name, ParityScene scene, ParityRun.Layout layout, ParitySpace.Move move) {
         return new TestFunction("parity", name, TinyBlocks.MOD_ID + ":" + layout.template(), TIMEOUT, 0L, true,
-                helper -> new ParityShrink(helper, scene, layout, name).start());
+                helper -> new ParityShrink(helper, scene, layout, move, name).start());
     }
 
     private void start() {
@@ -64,24 +68,23 @@ final class ParityShrink {
     private void begin(ParityScene scene) {
         clear();
         trying = scene;
-        run = new ParityRun(helper, scene, layout, testName);
+        run = new ParityRun(helper, scene, layout, testName, move);
         run.reports = false;
         pause = PAUSE_TICKS;
     }
 
-    /** Empties all three spaces, without the updates: nothing of the last attempt may reach the next. */
+    /** Empties every space, all of the template above its floor, without the updates: nothing of the last attempt may reach the next. */
     private void clear() {
         int flags = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_SUPPRESS_DROPS;
-        for (BlockPos pos : BlockPos.betweenClosed(new BlockPos(1, 2, 1), new BlockPos(38, 15, 35))) {
-            BlockPos at = helper.absolutePos(pos);
+        var bounds = helper.getBounds();
+        BlockPos low = BlockPos.containing(bounds.minX, bounds.minY, bounds.minZ), high = BlockPos.containing(bounds.maxX - 1, bounds.maxY - 1, bounds.maxZ - 1);
+        for (BlockPos at : BlockPos.betweenClosed(low.offset(1, 2, 1), high.offset(-1, 0, -1))) {
             if (!helper.getLevel().getBlockState(at).isAir()) helper.getLevel().setBlock(at, Blocks.AIR.defaultBlockState(), flags);
         }
     }
 
     private ParityScene without(int from, int to) {
-        ParityScene scene = new ParityScene(best.name);
-        scene.ticks = best.ticks;
-        scene.watchOnlyAround = true;
+        ParityScene scene = new ParityScene(best.name).settingsFrom(best);
         for (int i = 0; i < items.size(); i++) {
             if (i >= from && i < to) continue;
             Object item = items.get(i);
@@ -133,11 +136,12 @@ final class ParityShrink {
         best.blocks.forEach(p -> report.add(p.cell().toShortString() + " " + p.state()));
         best.slots.forEach(s -> report.add("item " + s.cell().toShortString() + " slot " + s.slot() + " " + s.stack()));
         best.steps.forEach(t -> report.add("tick " + t.tick() + ": " + t.what()));
+        best.standIns.forEach(g -> report.add("stand-in " + g));
         ParityRun.writeReport(testName + "_scene", report);
         // Once more with its report on: it says what the smallest scene still gets wrong, and fails the test with it.
         clear();
         trying = best;
-        run = new ParityRun(helper, best, layout, testName);
+        run = new ParityRun(helper, best, layout, testName, move);
         pause = PAUSE_TICKS;
         finishing = true;
     }
