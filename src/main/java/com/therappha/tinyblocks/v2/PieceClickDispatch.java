@@ -12,6 +12,8 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -35,7 +37,36 @@ public final class PieceClickDispatch {
     /** How far in front of the hit point (in virtual blocks) the stand-in's eyes are: well inside a re-trace's reach. */
     private static final double EYE_DISTANCE = 1.5;
 
+    /** One stand-in per real player, moved into whichever piece's space that player clicks. Server thread only. */
+    private static final Map<UUID, FakePlayer> STAND_INS = new HashMap<>();
+
     private PieceClickDispatch() {}
+
+    /**
+     * The stand-in for {@code player}'s clicks, now in {@code space}: built on the player's first click, then reused.
+     * Its inventory is emptied, so nothing a listener gave it on an earlier click is carried over.
+     */
+    public static FakePlayer standInFor(Player player, net.minecraft.server.level.ServerLevel space) {
+        FakePlayer proxy = STAND_INS.get(player.getUUID());
+        if (proxy == null) {
+            proxy = standIn(space);
+            STAND_INS.put(player.getUUID(), proxy);
+        } else if (proxy.level() != space) {
+            proxy.setServerLevel(space);
+        }
+        proxy.getInventory().clearContent();
+        return proxy;
+    }
+
+    /** Drops the stand-in of a player who left, so it doesn't hold on to a piece's space. */
+    public static void forget(UUID player) {
+        STAND_INS.remove(player);
+    }
+
+    /** Drops every stand-in, when the server stops. */
+    public static void forgetAll() {
+        STAND_INS.clear();
+    }
 
     /**
      * A player's constructor looks for a spawn around the world's, from {@code level}. A piece's fake space answers every
@@ -63,7 +94,7 @@ public final class PieceClickDispatch {
 
         FakePlayer proxy;
         try {
-            proxy = standIn(space);
+            proxy = standInFor(player, space);
         } catch (RuntimeException e) {
             LOGGER.warn("Could not create the stand-in player for a click on a piece at {}", be.getBlockPos(), e);
             return false;

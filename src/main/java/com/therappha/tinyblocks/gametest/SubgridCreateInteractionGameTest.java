@@ -259,6 +259,31 @@ public class SubgridCreateInteractionGameTest {
         helper.succeed();
     }
 
+    /**
+     * One stand-in per player: the same one comes back on the next click, moved into the level clicked this time and
+     * with nothing left in its inventory. Another player has their own.
+     */
+    @GameTest(template = "empty_platform")
+    public void eachPlayerKeepsOneStandIn(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var nether = level.getServer().getLevel(net.minecraft.world.level.Level.NETHER);
+        Player alice = helper.makeMockPlayer(GameType.SURVIVAL);
+        Player bob = helper.makeMockPlayer(GameType.SURVIVAL);
+        try {
+            var first = PieceClickDispatch.standInFor(alice, level);
+            first.getInventory().add(new ItemStack(Items.DIAMOND));
+            var second = PieceClickDispatch.standInFor(alice, nether);
+            helper.assertTrue(first == second, "the same player got a new stand-in");
+            helper.assertTrue(second.level() == nether, "the stand-in wasn't moved into the clicked level");
+            helper.assertTrue(second.getInventory().isEmpty(), "the stand-in kept an item from the last click");
+            helper.assertTrue(PieceClickDispatch.standInFor(bob, level) != second, "two players share a stand-in");
+        } finally {
+            PieceClickDispatch.forget(alice.getUUID());
+            PieceClickDispatch.forget(bob.getUUID());
+        }
+        helper.succeed();
+    }
+
     /** A linked controller's button on a tiny receiver's frequency powers it, as with a full-size receiver. */
     @GameTest(template = "empty_platform", timeoutTicks = 100)
     public void linkedControllerPowersATinyReceiver(GameTestHelper helper) {
