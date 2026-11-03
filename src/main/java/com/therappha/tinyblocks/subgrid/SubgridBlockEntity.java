@@ -1276,10 +1276,6 @@ public class SubgridBlockEntity extends BlockEntity {
         pieceVersion++;
     }
 
-    private int pieceKey() {
-        return pieceVersion;
-    }
-
     @Override
     public void setChanged() {
         pieceVersion++;
@@ -1301,7 +1297,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private void refreshSignals() {
-        int key = pieceKey();
+        int key = pieceVersion;
         if (signalsBuilt && key == signalKey) return;
         signalsBuilt = true;
         signalKey = key;
@@ -1367,7 +1363,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     /** Once a tick: when what the faces give changed, the blocks around are told, as a lever tells them. */
     private void updateRedstoneOutputs(ServerLevel level) {
-        if (signalsBuilt && pieceKey() == signalKey) return;
+        if (signalsBuilt && pieceVersion == signalKey) return;
         int[][] weakBefore = weakCells, strongBefore = strongCells;
         int[] strongFaceBefore = strongFace.clone();
         refreshSignals();

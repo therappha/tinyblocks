@@ -158,11 +158,9 @@ public class VanillaBlockPiece extends PieceDefinition {
         BlockState state = stateOf(piece);
         if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock)) return false;
 
-        BlockPos realPos = be.getBlockPos();
-
         // Cheap ticker check FIRST (issue #50): most EntityBlocks (chest, sign, bed, ...) have no
         // server ticker at all, and everything below — a reflection-allocated FakeServerLevel, a
-        // field transplant, populateCells over every sibling, a snapshot — was being built and
+        // field transplant, a copy of every sibling — was being built and
         // thrown away every single tick just to find that out. blockEntityFor caches the phantom
         // on the piece, so the call further down reuses it instead of building a second one.
         //
@@ -190,9 +188,8 @@ public class VanillaBlockPiece extends PieceDefinition {
             BlockEntity phantom = blockEntityFor(piece, be, fakeLevel);
             if (phantom == null) return false;
 
-            Map<BlockPos, BlockState> before = snapshot(be);
             if (!tickTyped(entityBlock, fakeLevel, state, tickPos, phantom)) return false;
-            applyChanges(be, fakeLevel, before, level);
+            applyChanges(be, fakeLevel, level);
         } finally {
             // Phantoms stay bound to the space between ticks, and code outside the grid reads through them
             // (boundPhantom): it must see the pieces as they are, not this tick's leftover writes and ticks.
@@ -467,10 +464,8 @@ public class VanillaBlockPiece extends PieceDefinition {
             return InteractionResult.SUCCESS;
         }
         SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
-        populateCells(cells, be);
         FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, realPos);
         cells.attachLevel(fakeLevel);
-        Map<BlockPos, BlockState> before = snapshot(be);
 
         BlockPos at = cells.toWorld(piece.anchor);
         // The real hit point, scaled into the piece's virtual block: blocks read where on them the click landed.
@@ -489,13 +484,13 @@ public class VanillaBlockPiece extends PieceDefinition {
             InteractionResult first = held.onItemUseFirst(new net.minecraft.world.item.context.UseOnContext(
                     fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
             if (first != InteractionResult.PASS) {
-                applyChanges(be, fakeLevel, before, serverLevel);
+                applyChanges(be, fakeLevel, serverLevel);
                 return first;
             }
             net.minecraft.world.ItemInteractionResult itemResult = cells.getBlockState(at).useItemOn(
                     held, fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, fakeHit);
             if (itemResult != net.minecraft.world.ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
-                applyChanges(be, fakeLevel, before, serverLevel);
+                applyChanges(be, fakeLevel, serverLevel);
                 // Not consumed: the item's own use (a wrench turning the block) gets its turn.
                 return itemResult.consumesAction() ? itemResult.result() : InteractionResult.PASS;
             }
@@ -509,7 +504,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                     fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
         }
 
-        applyChanges(be, fakeLevel, before, serverLevel);
+        applyChanges(be, fakeLevel, serverLevel);
         return result;
     }
 
@@ -544,7 +539,6 @@ public class VanillaBlockPiece extends PieceDefinition {
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         BlockPos at = fakeLevel.world(piece.anchor);
         BlockPos fakeNeighborPos = dir != null ? at.relative(dir) : at;
-        Map<BlockPos, BlockState> before = snapshot(be);
 
         // Unconditional (not gated behind isPistonRelated's before/after-changed check, since the
         // point of this trace is exactly to see WHY a piston's state DIDN'T change) — issue #34's
@@ -582,7 +576,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
 
-        applyChanges(be, fakeLevel, before, level);
+        applyChanges(be, fakeLevel, level);
     }
 
     /**
@@ -593,10 +587,9 @@ public class VanillaBlockPiece extends PieceDefinition {
         if (!(stateOf(piece) != null && stateOf(piece).getBlock() instanceof net.minecraft.world.level.block.piston.PistonHeadBlock)) return;
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         BlockPos at = fakeLevel.world(piece.anchor), across = at.relative(face);
-        Map<BlockPos, BlockState> before = snapshot(be);
         fakeLevel.cells().set(at, fakeLevel.cells().getBlockState(at)
                 .updateShape(face, fakeLevel.getBlockState(across), fakeLevel, at, across));
-        applyChanges(be, fakeLevel, before, level);
+        applyChanges(be, fakeLevel, level);
     }
 
     @Override
@@ -620,7 +613,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         try {
             FakeServerLevel fakeLevel = space.level;
             runScheduledTick(fakeLevel, fakeLevel.world(piece.anchor), level, blockTick, fluidTick);
-            applyChanges(be, fakeLevel, null, level);
+            applyChanges(be, fakeLevel, level);
         } finally {
             space.release();
         }
@@ -670,7 +663,7 @@ public class VanillaBlockPiece extends PieceDefinition {
                 state.updateNeighbourShapes(fakeLevel, at, flags, 511);
                 state.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
             }
-            applyChanges(be, fakeLevel, null, level);
+            applyChanges(be, fakeLevel, level);
         } finally {
             space.release();
         }
@@ -714,7 +707,7 @@ public class VanillaBlockPiece extends PieceDefinition {
             air.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
             fakeLevel.gameEvent(net.minecraft.world.level.gameevent.GameEvent.BLOCK_DESTROY, at,
                     net.minecraft.world.level.gameevent.GameEvent.Context.of(state));
-            applyChanges(be, fakeLevel, null, level);
+            applyChanges(be, fakeLevel, level);
         } finally {
             space.release();
         }
@@ -728,7 +721,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
             space.level.runBlockEvent(event.pos(), event.block(), event.id(), event.param());
-            applyChanges(be, space.level, null, level);
+            applyChanges(be, space.level, level);
         } finally {
             space.release();
         }
@@ -740,12 +733,11 @@ public class VanillaBlockPiece extends PieceDefinition {
         if (state == null || !state.isRandomlyTicking()) return;
 
         FakeServerLevel fakeLevel = buildFakeServerSpace(be, level);
-        Map<BlockPos, BlockState> before = snapshot(be);
         BlockPos at = fakeLevel.world(piece.anchor);
 
         fakeLevel.cells().getBlockState(at).randomTick(fakeLevel, at, level.getRandom());
 
-        applyChanges(be, fakeLevel, before, level);
+        applyChanges(be, fakeLevel, level);
     }
 
     // --- Fake space plumbing, shared with SubgridEventHandler's placement flow ---
@@ -791,23 +783,13 @@ public class VanillaBlockPiece extends PieceDefinition {
     }
 
     private static FakeCellGetter cellsFor(SubgridBlockEntity be) {
-        SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, null);
-        populateCells(cells, be);
-        return cells;
+        return new SubgridFakeCellGetter(be, null);
     }
-
-    /**
-     * Used to seed every sibling piece's state into the cell map, O(pieces) on every fake space — so a grid tick
-     * cost O(pieces) per ticking piece (issue #64). Nothing needs it: an untouched cell falls back to
-     * SubgridBlockEntity#realBlockStateAt, which reads the very same piece state, live. Kept as the one place that
-     * says so.
-     */
-    private static void populateCells(FakeCellGetter cells, SubgridBlockEntity be) {}
 
     /**
      * Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla view.
      * Vanilla code addresses it in the grid's virtual world frame (SubgridBlockEntity#virtualOrigin);
-     * internal bookkeeping (cell map keys, touchedCells, populateCells) stays in LOCAL cell coordinates.
+     * internal bookkeeping (cell map keys, touchedCells) stays in LOCAL cell coordinates.
      */
     private static final class SubgridFakeCellGetter extends FakeCellGetter {
         private final SubgridBlockEntity be;
@@ -900,7 +882,7 @@ public class VanillaBlockPiece extends PieceDefinition {
             TickSpace space = TickSpace.acquire(be, level, null);
             try {
                 work.accept(space.level);
-                applyChanges(be, space.level, null, level);
+                applyChanges(be, space.level, level);
             } finally {
                 space.release();
             }
@@ -1127,7 +1109,6 @@ public class VanillaBlockPiece extends PieceDefinition {
     /** A fake server space of {@code be} operated on by {@code piece}: a lookup of its cell binds its phantom to it. */
     static FakeServerLevel operatingServerSpace(PlacedPiece piece, SubgridBlockEntity be, ServerLevel level) {
         SubgridFakeCellGetter cells = new SubgridFakeCellGetter(be, piece.anchor);
-        populateCells(cells, be);
         FakeServerLevel fakeLevel = FakeServerLevel.create(level, cells, be.getBlockPos());
         cells.attachLevel(fakeLevel);
         cells.live = false; // only a phantom's binding: nothing applies what is written to it
@@ -1144,29 +1125,19 @@ public class VanillaBlockPiece extends PieceDefinition {
     }
 
     /**
-     * No longer a copy of the whole grid (issue #64): applyChanges only looks at the cells the call wrote, and a
-     * piece's state can't change during a fake-space call except through those writes, so what it held before is
-     * still on the piece when applyChanges starts. Kept so the call sites read as before.
-     */
-    private static Map<BlockPos, BlockState> snapshot(SubgridBlockEntity be) {
-        return null;
-    }
-
-    /**
      * Writes any sibling states that changed during the fake-space call back into their pieces,
      * and merges any scheduleTick requests the vanilla logic made (e.g. a redstone lamp asking
      * to turn itself off in 4 ticks) into be's own persistent queue — both FakeLevel and
      * FakeServerLevel capture these instead of touching a real tick list, since scheduledTick(...)
      * is what actually drains and fires them later.
      */
-    private static void applyChanges(SubgridBlockEntity be, FakeSpace fakeSpace,
-                                      Map<BlockPos, BlockState> before, ServerLevel realLevel) {
+    private static void applyChanges(SubgridBlockEntity be, FakeSpace fakeSpace, ServerLevel realLevel) {
         FakeCellGetter cells = fakeSpace.cells();
         boolean anyChanged = false;
         // What the written cells held before their first write this call (a write reaching a cell from outside in
         // the meantime, another grid's call placing a piece here, is not this call's change), and those pieces in the
         // grid's own order, so neighbours hear of changes in the order they did when every piece was diffed.
-        before = new HashMap<>();
+        Map<BlockPos, BlockState> before = new HashMap<>();
         List<PlacedPiece> written = new ArrayList<>();
         for (BlockPos pos : cells.touchedCells().keySet()) {
             PlacedPiece p = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
@@ -1193,9 +1164,8 @@ public class VanillaBlockPiece extends PieceDefinition {
             // fallback()'s out-of-bounds branch (AIR) for every single piece. That's exactly what
             // silently destroyed the whole subgrid on any interaction once resolve() started doing
             // full neighborhood translation (see SubgridFakeCellGetter.resolve's own comment) —
-            // this diff read and populateCells' seeding write are the only two internal call sites
-            // that address cells by raw anchor instead of by a vanilla-supplied position, so both
-            // need the raw, alias-bypassing accessor.
+            // this diff read addresses cells by raw anchor instead of by a vanilla-supplied
+            // position, so it needs the raw, alias-bypassing accessor.
             BlockState now = cells.getStateRaw(p.anchor);
             if (!now.equals(before.get(p.anchor))) {
                 if (now.isAir()) {

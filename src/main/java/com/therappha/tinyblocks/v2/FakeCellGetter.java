@@ -114,8 +114,8 @@ public class FakeCellGetter implements BlockGetter {
     /**
      * Reads/writes the raw cell map directly, bypassing any position aliasing a subclass applies
      * (see SubgridFakeCellGetter.resolve). For internal engine bookkeeping that already operates
-     * in this cell space's own local coordinate frame — e.g. populateCells seeding sibling piece
-     * states by their own anchor, or applyChanges' diff reading them back — as opposed to vanilla
+     * in this cell space's own local coordinate frame — e.g. applyChanges' diff reading piece
+     * states back by their own anchor — as opposed to vanilla
      * call-through positions (realPos and its neighbor offsets), which DO need alias translation.
      * final so no subclass can intercept these and reintroduce the same bug.
      */
