@@ -37,6 +37,9 @@ neoForge {
             systemProperty 'tinyblocks.randomSeeds', providers.gradleProperty('randomSeeds').getOrElse('')
             systemProperty 'tinyblocks.shrinkSeed', providers.gradleProperty('shrinkSeed').getOrElse('')
             systemProperty 'tinyblocks.sprint', providers.gradleProperty('sprint').getOrElse('false')
+            // A world of its own, not the dedicated server's run/world: the test server lays its tests out somewhere
+            // new in it every run, so a world kept between runs only grows (and takes minutes to save).
+            programArguments.addAll '--world', 'gametest-world'
         }
     }
 
@@ -55,6 +58,11 @@ neoForge {
         testedMod = mods.named(mod_id)
         enable()
     }
+}
+
+// Made anew for every test run, see the gameTestServer run.
+tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    doFirst { delete file('run/gametest-world') }
 }
 
 repositories {
