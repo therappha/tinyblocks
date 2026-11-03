@@ -1,17 +1,19 @@
 package com.therappha.tinyblocks.subgrid;
 
+import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity.CellRef;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
 /** Where a local cell of a grid lands: in it, in a neighbour grid of the same size, or in the real world. */
 final class GridResolver {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private GridResolver() {}
 

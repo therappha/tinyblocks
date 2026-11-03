@@ -1,9 +1,14 @@
 package com.therappha.tinyblocks.subgrid;
 
+import com.therappha.tinyblocks.network.PhantomDataPayload;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 /** Pushing a grid's phantom block entity data to clients; one per grid. */
 final class PhantomSync {
@@ -51,16 +56,16 @@ final class PhantomSync {
         for (PlacedPiece piece : grid.getPieces()) {
             if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) continue;
             // A piston's moving-block BE has its own dedicated animation payload (see PistonAnimationPayload).
-            if (phantom instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) continue;
-            if (!all && phantom instanceof net.minecraft.world.Container) continue;
+            if (phantom instanceof PistonMovingBlockEntity) continue;
+            if (!all && phantom instanceof Container) continue;
             var tag = phantom.saveCustomOnly(level.registryAccess());
             int hash = tag.hashCode();
             if (!all && hash == piece.lastSyncedPhantomHash) continue;
             piece.lastSyncedPhantomHash = hash;
             sentAny = true;
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(level,
-                    new net.minecraft.world.level.ChunkPos(grid.getBlockPos()),
-                    new com.therappha.tinyblocks.network.PhantomDataPayload(grid.getBlockPos(), new BlockPos(piece.anchor), tag));
+            PacketDistributor.sendToPlayersTrackingChunk(level,
+                    new ChunkPos(grid.getBlockPos()),
+                    new PhantomDataPayload(grid.getBlockPos(), new BlockPos(piece.anchor), tag));
         }
         if (sentAny) phantomDataFlushes++;
     }

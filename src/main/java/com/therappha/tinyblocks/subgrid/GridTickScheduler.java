@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import javax.annotation.Nullable;
 
 /**
  * Scheduled ticks and block events of every grid of a level, run as the level runs its own: all that are due, in trigger
@@ -45,7 +46,7 @@ public final class GridTickScheduler {
     }
 
     private static long nextOrder = 0;
-    @javax.annotation.Nullable private static Level running;
+    @Nullable private static Level running;
 
     /** The game time for a tick asked for now. Queues run ahead of the level's own tick, in the tick about to start. */
     public static long gameTime(Level level) {

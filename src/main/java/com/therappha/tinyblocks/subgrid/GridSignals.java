@@ -1,8 +1,10 @@
 package com.therappha.tinyblocks.subgrid;
 
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -51,7 +53,7 @@ final class GridSignals {
         Arrays.fill(weakFace, 0);
         Arrays.fill(strongFace, 0);
         if (!(grid.getLevel() instanceof ServerLevel server)) return;
-        net.minecraft.world.level.Level space = null;
+        Level space = null;
         for (PlacedPiece p : grid.getPieces()) {
             if (!(p.runtimeState instanceof BlockState state) || !state.isSignalSource()) continue;
             for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
@@ -59,7 +61,7 @@ final class GridSignals {
                     for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
                         for (Direction face : Direction.values()) {
                             if (!onFace(face, x, y, z, grid.gridSize)) continue;
-                            if (space == null) space = com.therappha.tinyblocks.v2.VanillaBlockPiece.buildFakeSpace(grid, server);
+                            if (space == null) space = VanillaBlockPiece.buildFakeSpace(grid, server);
                             // Asked as the block across that face would: the direction points from it into the grid.
                             BlockPos at = grid.virtualPosOf(new BlockPos(x, y, z));
                             Direction towards = face.getOpposite();

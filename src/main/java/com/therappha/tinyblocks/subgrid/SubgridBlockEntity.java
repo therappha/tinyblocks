@@ -1,8 +1,15 @@
 package com.therappha.tinyblocks.subgrid;
 
+import com.mojang.logging.LogUtils;
+import com.therappha.tinyblocks.network.SubgridPieceAddedPayload;
+import com.therappha.tinyblocks.network.SubgridPieceRemovedPayload;
+import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.v2.GridWriteBack;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -10,6 +17,9 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -19,9 +29,13 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.neoforged.neoforge.network.PacketDistributor;
+import org.slf4j.Logger;
 
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,7 +47,7 @@ import java.util.Set;
 
 public class SubgridBlockEntity extends BlockEntity {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static final Logger LOGGER = LogUtils.getLogger();
     static final short EMPTY = -1;
     private static final int RANDOM_TICK_SPEED = 3;
 
@@ -71,8 +85,8 @@ public class SubgridBlockEntity extends BlockEntity {
      * is pure insurance against a leaked capture (a piece whose captureEnded() never fires, e.g. an
      * exception mid-finalize) permanently starving this drop — not the primary gate.
      */
-    record PendingDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                        List<net.minecraft.world.item.ItemStack> drops, long safetyDeadlineTick) {}
+    record PendingDrop(BlockState state, Vec3 dropPos,
+                        List<ItemStack> drops, long safetyDeadlineTick) {}
     private final List<PendingDrop> pendingDrops = new ArrayList<>();
     private static final long PENDING_DROP_SAFETY_TICKS = 200;
 
@@ -102,8 +116,8 @@ public class SubgridBlockEntity extends BlockEntity {
         return pendingDrops.size();
     }
 
-    public void deferDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                           List<net.minecraft.world.item.ItemStack> drops, long currentGameTime) {
+    public void deferDrop(BlockState state, Vec3 dropPos,
+                           List<ItemStack> drops, long currentGameTime) {
         if (drops.isEmpty()) return;
         pendingDrops.add(new PendingDrop(state, dropPos, drops, currentGameTime + PENDING_DROP_SAFETY_TICKS));
     }
@@ -144,8 +158,8 @@ public class SubgridBlockEntity extends BlockEntity {
 
     private void tickPendingDrops(ServerLevel level) {
         for (PendingDrop pd : drainReadyDrops(level.getGameTime())) {
-            for (net.minecraft.world.item.ItemStack drop : pd.drops()) {
-                level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(
+            for (ItemStack drop : pd.drops()) {
+                level.addFreshEntity(new ItemEntity(
                         level, pd.dropPos().x, pd.dropPos().y, pd.dropPos().z, drop));
             }
         }
@@ -198,7 +212,7 @@ public class SubgridBlockEntity extends BlockEntity {
     private final List<ScheduledPieceTick> dueTicks = new ArrayList<>();
 
     /** Hands {@code due} the ticks whose time has come, which stop being pending in the queue and wait in dueTicks. */
-    void takeDue(long now, java.util.function.Consumer<ScheduledPieceTick> due) {
+    void takeDue(long now, Consumer<ScheduledPieceTick> due) {
         scheduledTicks.removeIf(tick -> {
             if (tick.targetGameTime() > now) return false;
             dueTicks.add(tick);
@@ -221,7 +235,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     void runBlockEvent(ServerLevel level, GridTickScheduler.BlockEvent event) {
         try {
-            com.therappha.tinyblocks.v2.VanillaBlockPiece.INSTANCE.blockEvent(level, this, event);
+            VanillaBlockPiece.INSTANCE.blockEvent(level, this, event);
         } catch (Exception e) {
             LOGGER.error("v2 block event at {} in grid {} failed", event.pos(), worldPosition, e);
         }
@@ -271,9 +285,9 @@ public class SubgridBlockEntity extends BlockEntity {
         addToGrid(piece);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
-                    new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.SubgridPieceAddedPayload(worldPosition, piece.save()));
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new ChunkPos(worldPosition),
+                    new SubgridPieceAddedPayload(worldPosition, piece.save()));
             if (syncObserver != null) syncObserver.accept(piece.anchor);
         }
         pieceVersion++;
@@ -355,7 +369,7 @@ public class SubgridBlockEntity extends BlockEntity {
             existing.runtimeState = runtimeState;
             // Its block entity follows, as for a change made in this grid's own fake space.
             if (was instanceof BlockState wasState && runtimeState instanceof BlockState nowState) {
-                com.therappha.tinyblocks.v2.GridWriteBack.followStateChange(this, existing, wasState, nowState);
+                GridWriteBack.followStateChange(this, existing, wasState, nowState);
             }
             notifyNeighbors(existing);
             notifyUpdate();
@@ -367,7 +381,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
-        return com.therappha.tinyblocks.setup.Registration.subgridBlock(gridSize);
+        return Registration.subgridBlock(gridSize);
     }
 
     /**
@@ -401,9 +415,9 @@ public class SubgridBlockEntity extends BlockEntity {
         rebuildAfterRemove(idx);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
-                    new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new ChunkPos(worldPosition),
+                    new SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
             if (syncObserver != null) syncObserver.accept(new BlockPos(x, y, z));
             removed.definition.onRemoved(removed, serverLevel, this);
             if (applyingSettled == 0) removed.definition.afterRemoved(removed, serverLevel, this);
@@ -559,7 +573,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /** Where a world point inside this grid's block goes when the grid is mirrored, then turned (as transformCell). */
-    private net.minecraft.world.phys.Vec3 transformPoint(net.minecraft.world.phys.Vec3 point, Rotation rotation, Mirror mirror) {
+    private Vec3 transformPoint(Vec3 point, Rotation rotation, Mirror mirror) {
         double x = point.x - worldPosition.getX(), z = point.z - worldPosition.getZ();
         if (mirror == Mirror.FRONT_BACK) x = 1 - x;
         if (mirror == Mirror.LEFT_RIGHT) z = 1 - z;
@@ -575,7 +589,7 @@ public class SubgridBlockEntity extends BlockEntity {
             case CLOCKWISE_180 -> 1 - z;
             case COUNTERCLOCKWISE_90 -> 1 - x;
         };
-        return new net.minecraft.world.phys.Vec3(worldPosition.getX() + tx, point.y, worldPosition.getZ() + tz);
+        return new Vec3(worldPosition.getX() + tx, point.y, worldPosition.getZ() + tz);
     }
 
     /**
@@ -905,7 +919,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * Told of what this grid sends its clients, for a comparison of what they draw (TinySpaceView): the cell of a piece
      * added or removed, or null when all of them went. Holds nothing unless something is comparing.
      */
-    @Nullable public java.util.function.Consumer<BlockPos> syncObserver;
+    @Nullable public Consumer<BlockPos> syncObserver;
 
     public void notifyUpdate() {
         setChanged();
@@ -1012,7 +1026,7 @@ public class SubgridBlockEntity extends BlockEntity {
                 piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
                 // A piston head goes with its piston, when the grid the piston was in is gone. Not with a grid across:
                 // that one tells its pieces through notifyNeighbors, cell by cell.
-                if (pieces.contains(piece) && piece.definition instanceof com.therappha.tinyblocks.v2.VanillaBlockPiece vanilla
+                if (pieces.contains(piece) && piece.definition instanceof VanillaBlockPiece vanilla
                         && !(serverLevel.getBlockState(worldPosition.relative(face)).getBlock() instanceof SubgridBlock)) {
                     vanilla.reshapeAgainst(piece, serverLevel, this, face);
                 }
@@ -1043,7 +1057,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /** The shape of {@code piece} in its own block space (0..1), or null where it fills its cells whole. */
-    @javax.annotation.Nullable
+    @Nullable
     public static VoxelShape pieceShape(PlacedPiece piece) {
         return GridShapes.pieceShape(piece);
     }
@@ -1060,9 +1074,9 @@ public class SubgridBlockEntity extends BlockEntity {
      * the player — instead of collapsing every piece in the subgrid down to one shared point
      * (the whole SubgridBlock's own BlockPos, which is what be.getBlockPos() alone gives you).
      */
-    public net.minecraft.world.phys.Vec3 realPositionOf(BlockPos local) {
+    public Vec3 realPositionOf(BlockPos local) {
         double cell = 1.0 / gridSize;
-        return new net.minecraft.world.phys.Vec3(
+        return new Vec3(
                 worldPosition.getX() + (local.getX() + 0.5) * cell,
                 worldPosition.getY() + (local.getY() + 0.5) * cell,
                 worldPosition.getZ() + (local.getZ() + 0.5) * cell
@@ -1096,7 +1110,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /** World-frame position a phantom block entity for the piece at {@code cell} lives at. */
-    public BlockPos virtualPosOf(net.minecraft.core.Vec3i cell) {
+    public BlockPos virtualPosOf(Vec3i cell) {
         return virtualOrigin().offset(cell);
     }
 

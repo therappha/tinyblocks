@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 public abstract class PieceDefinition {
 
@@ -133,7 +134,7 @@ public abstract class PieceDefinition {
     public void onRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {}
 
     /** A queued tick of {@code type} (null: unknown, it was saved and loaded) reached this piece. */
-    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @javax.annotation.Nullable Object type) {
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @Nullable Object type) {
         scheduledTick(piece, level, subgridPos, be);
     }
 
