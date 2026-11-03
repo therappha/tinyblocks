@@ -34,7 +34,7 @@ import java.util.Set;
 public class SubgridBlockEntity extends BlockEntity {
 
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-    private static final short EMPTY = -1;
+    static final short EMPTY = -1;
     private static final int RANDOM_TICK_SPEED = 3;
 
     public final int gridSize;
@@ -1003,25 +1003,10 @@ public class SubgridBlockEntity extends BlockEntity {
     /** Test hook: how many times the merged shape has been rebuilt. */
     int shapeRebuildCount = 0;
 
-    /**
-     * Builds the merged shape directly from cellOwner's occupancy in a single pass, instead of
-     * unioning one VoxelShape per piece via Shapes.or — that scaled with piece count (and grew
-     * more expensive per union as the accumulated shape got more complex), so dense subgrids
-     * paid an increasingly large cost on every single place/break. This is bounded by
-     * gridSize^3 regardless of piece count (see issue #27).
-     */
+    /** Rebuilds the collision shape from the occupancy, in one pass (GridShapes.occupancy). */
     private void rebuildShape() {
         shapeRebuildCount++;
-        var discrete = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
-        boolean any = false;
-        for (int y = 0; y < gridSize; y++)
-            for (int z = 0; z < gridSize; z++)
-                for (int x = 0; x < gridSize; x++)
-                    if (cellOwner[indexOf(x, y, z)] != EMPTY) {
-                        discrete.fill(x, y, z);
-                        any = true;
-                    }
-        cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
+        cachedShape = GridShapes.occupancy(this);
     }
 
     /**
@@ -1104,7 +1089,7 @@ public class SubgridBlockEntity extends BlockEntity {
     public VoxelShape getOutlineShape() {
         int key = pieceVersion;
         if (!outlineBuilt || key != outlineKey) {
-            outlineShape = buildOutlineShape();
+            outlineShape = GridShapes.outline(this);
             outlineKey = key;
             outlineBuilt = true;
         }
@@ -1114,66 +1099,7 @@ public class SubgridBlockEntity extends BlockEntity {
     /** The shape of {@code piece} in its own block space (0..1), or null where it fills its cells whole. */
     @javax.annotation.Nullable
     public static VoxelShape pieceShape(PlacedPiece piece) {
-        if (!(piece.runtimeState instanceof net.minecraft.world.level.block.state.BlockState state)) return null;
-        if (piece.footprint.getX() != 1 || piece.footprint.getY() != 1 || piece.footprint.getZ() != 1) return null;
-        VoxelShape shape;
-        try {
-            shape = state.getShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
-        } catch (RuntimeException e) {
-            return null; // a shape that needs a real world around it
-        }
-        // An empty shape (light, structure void) would leave the piece impossible to aim at, so to break.
-        if (shape.isEmpty() || net.minecraft.world.level.block.Block.isShapeFullBlock(shape)) return null;
-        return shape;
-    }
-
-    private VoxelShape buildOutlineShape() {
-        var whole = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
-        boolean anyWhole = false;
-        List<VoxelShape> parts = new ArrayList<>();
-        double cell = 1.0 / gridSize;
-        for (PlacedPiece p : pieces) {
-            VoxelShape shape = pieceShape(p);
-            if (shape == null) {
-                for (int x = 0; x < p.footprint.getX(); x++)
-                    for (int y = 0; y < p.footprint.getY(); y++)
-                        for (int z = 0; z < p.footprint.getZ(); z++) {
-                            int cx = p.anchor.getX() + x, cy = p.anchor.getY() + y, cz = p.anchor.getZ() + z;
-                            if (!outOfBounds(cx, cy, cz)) {
-                                whole.fill(cx, cy, cz);
-                                anyWhole = true;
-                            }
-                        }
-                continue;
-            }
-            for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
-                parts.add(Shapes.create(
-                        (p.anchor.getX() + box.minX) * cell, (p.anchor.getY() + box.minY) * cell, (p.anchor.getZ() + box.minZ) * cell,
-                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell));
-            }
-        }
-        VoxelShape partial = joinAll(parts);
-        VoxelShape out = anyWhole ? ShapeAccess.wrap(whole) : Shapes.empty();
-        return partial.isEmpty() ? out : Shapes.joinUnoptimized(out, partial, net.minecraft.world.phys.shapes.BooleanOp.OR).optimize();
-    }
-
-    /**
-     * The union of {@code parts}, joined pairwise up a balanced tree (issue #64): joining them one by one into a
-     * growing shape cost O(parts x final shape) — 220 ms for a 16-grid layer of 256 cogwheels, on every change.
-     */
-    private static VoxelShape joinAll(List<VoxelShape> parts) {
-        if (parts.isEmpty()) return Shapes.empty();
-        List<VoxelShape> level = parts;
-        while (level.size() > 1) {
-            List<VoxelShape> next = new ArrayList<>((level.size() + 1) / 2);
-            for (int i = 0; i < level.size(); i += 2) {
-                next.add(i + 1 < level.size()
-                        ? Shapes.joinUnoptimized(level.get(i), level.get(i + 1), net.minecraft.world.phys.shapes.BooleanOp.OR)
-                        : level.get(i));
-            }
-            level = next;
-        }
-        return level.get(0);
+        return GridShapes.pieceShape(piece);
     }
 
     public int indexOf(int x, int y, int z) {
