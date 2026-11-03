@@ -1,13 +1,21 @@
 package com.therappha.tinyblocks.v2;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.Vec3;
 
+import java.util.Collections;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,7 +51,7 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /** Where in the real level the point {@code virtual} of this space is. */
-    public net.minecraft.world.phys.Vec3 toReal(net.minecraft.world.phys.Vec3 virtual) {
+    public Vec3 toReal(Vec3 virtual) {
         return virtual;
     }
 
@@ -62,7 +70,7 @@ public class FakeCellGetter implements BlockGetter {
      * written to a space nobody reads again. {@code work} then runs in a space of the grid, applied right after, and this
      * answers true. While the space's own call is running this answers false: the caller just goes on in it.
      */
-    public boolean afterItsCall(java.util.function.Consumer<net.minecraft.world.level.Level> work) {
+    public boolean afterItsCall(Consumer<Level> work) {
         return false;
     }
 
@@ -85,7 +93,7 @@ public class FakeCellGetter implements BlockGetter {
     }
 
     /** Queues a block event to run when the level runs them; false if nobody owns this space. */
-    public boolean blockEvent(BlockPos world, net.minecraft.world.level.block.Block block, int id, int param) {
+    public boolean blockEvent(BlockPos world, Block block, int id, int param) {
         return false;
     }
 
@@ -168,13 +176,13 @@ public class FakeCellGetter implements BlockGetter {
      * this cell space and is better answered by the world around it; null to answer it from the cells as usual.
      */
     @Nullable
-    public Integer outsideSignal(BlockPos world, net.minecraft.core.Direction direction, boolean strong) {
+    public Integer outsideSignal(BlockPos world, Direction direction, boolean strong) {
         return null;
     }
 
     /** A game event at a vanilla-visible position: whoever owns this space passes it to what listens. */
-    public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event,
-                          net.minecraft.world.phys.Vec3 pos, net.minecraft.world.level.gameevent.GameEvent.Context context) {}
+    public void gameEvent(Holder<GameEvent> event,
+                          Vec3 pos, GameEvent.Context context) {}
 
     /** A block entity at this vanilla-visible position asked its clients to resync; no-op without an owning grid. */
     public void blockUpdatedAt(BlockPos world) {}
@@ -193,7 +201,7 @@ public class FakeCellGetter implements BlockGetter {
      * diff in the first place.
      */
     public Map<BlockPos, BlockState> touchedCells() {
-        return java.util.Collections.unmodifiableMap(cells);
+        return Collections.unmodifiableMap(cells);
     }
 
     /**
@@ -217,12 +225,12 @@ public class FakeCellGetter implements BlockGetter {
 
     /** Every position explicitly given a real BlockEntity via setBlockEntity this call. */
     public Map<BlockPos, BlockEntity> touchedBlockEntities() {
-        return java.util.Collections.unmodifiableMap(blockEntities);
+        return Collections.unmodifiableMap(blockEntities);
     }
 
     /** Every position explicitly cleared via removeBlockEntityAt this call. */
     public Set<BlockPos> removedBlockEntityPositions() {
-        return java.util.Collections.unmodifiableSet(removedBlockEntities);
+        return Collections.unmodifiableSet(removedBlockEntities);
     }
 
     @Nullable

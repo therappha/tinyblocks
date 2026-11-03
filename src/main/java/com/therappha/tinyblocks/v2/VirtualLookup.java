@@ -1,6 +1,8 @@
 package com.therappha.tinyblocks.v2;
 
+import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
@@ -30,7 +32,7 @@ public final class VirtualLookup {
     public static Found find(Level level, BlockPos virtual, Vec3 near) {
         Found found = findAround(level, virtual, near);
         if (found != null) return found;
-        for (Vec3 inPlot : com.therappha.tinyblocks.subgrid.SubLevels.inPlotsAround(level, near, MAX_DISTANCE)) {
+        for (Vec3 inPlot : SubLevels.inPlotsAround(level, near, MAX_DISTANCE)) {
             found = findAround(level, virtual, inPlot);
             if (found != null) return found;
         }
@@ -39,8 +41,8 @@ public final class VirtualLookup {
 
     @Nullable
     private static Found findAround(Level level, BlockPos virtual, Vec3 near) {
-        for (int size = com.therappha.tinyblocks.setup.Registration.MIN_GRID_SIZE;
-             size <= com.therappha.tinyblocks.setup.Registration.MAX_GRID_SIZE; size++) {
+        for (int size = Registration.MIN_GRID_SIZE;
+             size <= Registration.MAX_GRID_SIZE; size++) {
             for (BlockPos real : realCandidates(virtual, size, near)) {
                 if (!level.isLoaded(real) || !(level.getBlockEntity(real) instanceof SubgridBlockEntity grid)) continue;
                 if (grid.getGridSize() != size) continue;

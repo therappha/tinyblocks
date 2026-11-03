@@ -1,5 +1,7 @@
 package com.therappha.tinyblocks.v2;
 
+import com.mojang.logging.LogUtils;
+import com.therappha.tinyblocks.network.PistonAnimationPayload;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -8,16 +10,22 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.network.PacketDistributor;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * Writes what a fake space's call changed back into the grid: piece states, pieces that appeared or went, the block
@@ -25,7 +33,7 @@ import java.util.Map;
  */
 public final class GridWriteBack {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private GridWriteBack() {}
 
@@ -51,7 +59,7 @@ public final class GridWriteBack {
             before.put(p.anchor, original != null ? original : VanillaBlockPiece.stateOf(p));
             written.add(p);
         }
-        written.sort(java.util.Comparator.comparingInt(p -> be.ownerAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ())));
+        written.sort(Comparator.comparingInt(p -> be.ownerAt(p.anchor.getX(), p.anchor.getY(), p.anchor.getZ())));
         // Collected rather than removed inline — removePieceAt mutates be.getPieces() itself,
         // which we're still iterating.
         List<PlacedPiece> selfDestructed = new ArrayList<>();
@@ -280,7 +288,7 @@ public final class GridWriteBack {
         // Vanilla just handed us a fully-parameterized BE for an operation it's driving (today
         // only a piston does this) — see SubgridBlockEntity's activeCaptures doc.
         owner.captureStarted(piece);
-        if (captured instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
+        if (captured instanceof PistonMovingBlockEntity moving) {
             CompoundTag beNbt = moving.saveCustomOnly(realLevel.registryAccess());
             // PistonMovingBlockEntity's constructor requires its OWN outer BlockState (MOVING_PISTON,
             // matching BlockEntityType.PISTON) — saveCustomOnly above doesn't include it (that's the
@@ -293,9 +301,9 @@ public final class GridWriteBack {
             // piece already held at that later moment, not the MOVING_PISTON state that was true when
             // this BE was actually captured.
             beNbt.put("outerState", NbtUtils.writeBlockState(VanillaBlockPiece.stateOf(piece)));
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(realLevel,
-                    new net.minecraft.world.level.ChunkPos(owner.getBlockPos()),
-                    new com.therappha.tinyblocks.network.PistonAnimationPayload(owner.getBlockPos(), ownerLocalPos, beNbt));
+            PacketDistributor.sendToPlayersTrackingChunk(realLevel,
+                    new ChunkPos(owner.getBlockPos()),
+                    new PistonAnimationPayload(owner.getBlockPos(), ownerLocalPos, beNbt));
         }
     }
 
@@ -307,7 +315,7 @@ public final class GridWriteBack {
      * (Create rebuilds its link from getBlockState), and a tiny shaft encased by a casing kept the shaft's entity.
      * A block entity vanilla code handed over itself this call (a piston's) is syncBlockEntity's business instead.
      */
-    private static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @javax.annotation.Nullable BlockState was,
+    private static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @Nullable BlockState was,
                                           BlockState now, FakeCellGetter cells) {
         if (cells.touchedBlockEntities().containsKey(piece.anchor) || cells.removedBlockEntityPositions().contains(piece.anchor)) return;
         followStateChange(be, piece, was, now);
@@ -318,7 +326,7 @@ public final class GridWriteBack {
      * into it from a neighbouring grid (SubgridBlockEntity#placePieceCrossBoundary): a Create belt laid from one
      * grid into the next turns the shaft there into a belt, and that piece needs a belt's block entity.
      */
-    public static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @javax.annotation.Nullable BlockState was,
+    public static void followStateChange(SubgridBlockEntity be, PlacedPiece piece, @Nullable BlockState was,
                                          BlockState now) {
         if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) return;
         if (was != null && now.is(was.getBlock()) && phantom.getType().isValid(now)) {

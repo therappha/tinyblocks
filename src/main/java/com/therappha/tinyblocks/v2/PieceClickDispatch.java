@@ -1,9 +1,11 @@
 package com.therappha.tinyblocks.v2;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
@@ -11,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import org.slf4j.Logger;
 
 import java.util.UUID;
 
@@ -27,7 +30,7 @@ import java.util.UUID;
  */
 public final class PieceClickDispatch {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final GameProfile PROXY = new GameProfile(
             UUID.fromString("7b1f3c2e-5d8a-4e6b-9c0d-1a2b3c4d5e6f"), "[TinyBlocks]");
@@ -41,10 +44,10 @@ public final class PieceClickDispatch {
      * A player's constructor looks for a spawn around the world's, from {@code level}. A piece's fake space answers every
      * cell of a 131072 block tall column, so that search held the server for seconds on each click.
      */
-    public static FakePlayer standIn(net.minecraft.server.level.ServerLevel level) {
+    public static FakePlayer standIn(ServerLevel level) {
         return new FakePlayer(level, PROXY) {
             @Override
-            public BlockPos adjustSpawnLocation(net.minecraft.server.level.ServerLevel spawnLevel, BlockPos pos) {
+            public BlockPos adjustSpawnLocation(ServerLevel spawnLevel, BlockPos pos) {
                 return pos;
             }
         };

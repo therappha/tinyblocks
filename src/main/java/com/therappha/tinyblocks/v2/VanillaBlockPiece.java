@@ -1,6 +1,9 @@
 package com.therappha.tinyblocks.v2;
 
+import com.mojang.logging.LogUtils;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.compat.create.CreatePhantomTransform;
+import com.therappha.tinyblocks.subgrid.GridTickScheduler;
 import com.therappha.tinyblocks.subgrid.PieceDefinition;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
@@ -13,23 +16,35 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.piston.PistonHeadBlock;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.phys.BlockHitResult;
+import org.slf4j.Logger;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * v2: a single generic PieceDefinition that can hold ANY real vanilla BlockState, instead of
@@ -41,7 +56,7 @@ import java.util.Map;
  */
 public class VanillaBlockPiece extends PieceDefinition {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public static final VanillaBlockPiece INSTANCE = new VanillaBlockPiece();
 
@@ -114,7 +129,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         piece.runtimeState = turned;
         piece.extraData.put("state", NbtUtils.writeBlockState(turned));
         if (piece.extraData.contains("be")) {
-            com.therappha.tinyblocks.compat.create.CreatePhantomTransform.transformData(turned, piece.extraData.getCompound("be"));
+            CreatePhantomTransform.transformData(turned, piece.extraData.getCompound("be"));
         }
     }
 
@@ -202,7 +217,7 @@ public class VanillaBlockPiece extends PieceDefinition {
 
     @Override
     public void clientTick(PlacedPiece piece, Level level, BlockPos subgridPos, SubgridBlockEntity be) {
-        if (piece.runtimeBlockEntity instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
+        if (piece.runtimeBlockEntity instanceof PistonMovingBlockEntity moving) {
             PistonAnimation.clientTick(piece, subgridPos, moving);
             return;
         }
@@ -228,7 +243,7 @@ public class VanillaBlockPiece extends PieceDefinition {
     @SuppressWarnings("unchecked")
     private static <T extends BlockEntity> void tickClientTyped(EntityBlock entityBlock, Level level,
                                                                   BlockState state, BlockPos pos, T phantom) {
-        var ticker = entityBlock.getTicker(level, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType());
+        var ticker = entityBlock.getTicker(level, state, (BlockEntityType<T>) phantom.getType());
         if (ticker == null) return;
         ticker.tick(level, pos, state, phantom);
     }
@@ -255,13 +270,13 @@ public class VanillaBlockPiece extends PieceDefinition {
     @SuppressWarnings("unchecked")
     private static <T extends BlockEntity> boolean hasServerTicker(EntityBlock entityBlock, ServerLevel level,
                                                                      BlockState state, T phantom) {
-        return entityBlock.getTicker(level, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType()) != null;
+        return entityBlock.getTicker(level, state, (BlockEntityType<T>) phantom.getType()) != null;
     }
 
     @SuppressWarnings("unchecked")
     private static <T extends BlockEntity> boolean tickTyped(EntityBlock entityBlock, FakeServerLevel fakeLevel,
                                                               BlockState state, BlockPos pos, T phantom) {
-        var ticker = entityBlock.getTicker(fakeLevel, state, (net.minecraft.world.level.block.entity.BlockEntityType<T>) phantom.getType());
+        var ticker = entityBlock.getTicker(fakeLevel, state, (BlockEntityType<T>) phantom.getType());
         if (ticker == null) return false;
         ticker.tick(fakeLevel, pos, state, phantom);
         return true;
@@ -285,7 +300,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         // this can query the real loot table directly against the real level — no fake position
         // space needed, loot tables are global registry data, not tied to where the piece sits.
         // The phantom goes along for what its loot table copies off the block entity: a shulker box's contents.
-        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(),
+        return Block.getDrops(state, level, be.getBlockPos(),
                 piece.runtimeBlockEntity instanceof BlockEntity phantom ? phantom : null, null, tool);
     }
 
@@ -305,7 +320,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         BlockPos realPos = be.getBlockPos();
         PhantomInteraction.remember(player, be.virtualOrigin(), be.getGridSize(), realPos);
         if (PieceClickDispatch.dispatch(be, piece, operatingServerSpace(piece, be, serverLevel), player,
-                net.minecraft.world.InteractionHand.MAIN_HAND, hit)) {
+                InteractionHand.MAIN_HAND, hit)) {
             be.setChanged(); // what a listener changed lives in the phantom, saved with the grid
             return InteractionResult.SUCCESS;
         }
@@ -322,20 +337,20 @@ public class VanillaBlockPiece extends PieceDefinition {
         // its turn too: Create's blocks place a held block of their own through their placement helpers (a shaft
         // extends a shaft), or encase themselves with a casing. Whatever such a use writes into the fake space
         // becomes a piece in applyChanges; a plain block's use passes, and SubgridEventHandler places it.
-        net.minecraft.world.item.ItemStack held = player.getMainHandItem();
+        ItemStack held = player.getMainHandItem();
         if (!held.isEmpty()) {
             // First the item's own say before the block's (NeoForge's onItemUseFirst, as ServerPlayerGameMode asks
             // it): a Create cogwheel places itself through its placement helper there, diagonal to a cog of the
             // other size.
-            InteractionResult first = held.onItemUseFirst(new net.minecraft.world.item.context.UseOnContext(
-                    fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
+            InteractionResult first = held.onItemUseFirst(new UseOnContext(
+                    fakeLevel, player, InteractionHand.MAIN_HAND, held, fakeHit));
             if (first != InteractionResult.PASS) {
                 GridWriteBack.applyChanges(be, fakeLevel, serverLevel);
                 return first;
             }
-            net.minecraft.world.ItemInteractionResult itemResult = cells.getBlockState(at).useItemOn(
-                    held, fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, fakeHit);
-            if (itemResult != net.minecraft.world.ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+            ItemInteractionResult itemResult = cells.getBlockState(at).useItemOn(
+                    held, fakeLevel, player, InteractionHand.MAIN_HAND, fakeHit);
+            if (itemResult != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
                 GridWriteBack.applyChanges(be, fakeLevel, serverLevel);
                 // Not consumed: the item's own use (a wrench turning the block) gets its turn.
                 return itemResult.consumesAction() ? itemResult.result() : InteractionResult.PASS;
@@ -346,8 +361,8 @@ public class VanillaBlockPiece extends PieceDefinition {
         // Create belt connector: first shaft, then second, then the belt between them) — a plain block item's use
         // is placing itself, which SubgridEventHandler does.
         if (result == InteractionResult.PASS && OwnUseOn.of(held)) {
-            result = held.useOn(new net.minecraft.world.item.context.UseOnContext(
-                    fakeLevel, player, net.minecraft.world.InteractionHand.MAIN_HAND, held, fakeHit));
+            result = held.useOn(new UseOnContext(
+                    fakeLevel, player, InteractionHand.MAIN_HAND, held, fakeHit));
         }
 
         GridWriteBack.applyChanges(be, fakeLevel, serverLevel);
@@ -360,16 +375,16 @@ public class VanillaBlockPiece extends PieceDefinition {
             @Override
             protected Boolean computeValue(Class<?> type) {
                 try {
-                    return type.getMethod("useOn", net.minecraft.world.item.context.UseOnContext.class).getDeclaringClass()
-                            != net.minecraft.world.item.BlockItem.class;
+                    return type.getMethod("useOn", UseOnContext.class).getDeclaringClass()
+                            != BlockItem.class;
                 } catch (NoSuchMethodException e) {
                     return false;
                 }
             }
         };
 
-        static boolean of(net.minecraft.world.item.ItemStack stack) {
-            return stack.getItem() instanceof net.minecraft.world.item.BlockItem && OVERRIDES.get(stack.getItem().getClass());
+        static boolean of(ItemStack stack) {
+            return stack.getItem() instanceof BlockItem && OVERRIDES.get(stack.getItem().getClass());
         }
     }
 
@@ -398,8 +413,8 @@ public class VanillaBlockPiece extends PieceDefinition {
             // shape-update cascade, so ongoing neighbor changes need it called explicitly too.
             BlockState current = fakeLevel.cells().getBlockState(at);
             BlockState reshaped = current.updateShape(dir, neighborState, fakeLevel, at, fakeNeighborPos);
-            net.minecraft.world.level.block.Block.updateOrDestroy(current, reshaped, fakeLevel, at,
-                    net.minecraft.world.level.block.Block.UPDATE_ALL);
+            Block.updateOrDestroy(current, reshaped, fakeLevel, at,
+                    Block.UPDATE_ALL);
         }
 
         GridWriteBack.applyChanges(be, fakeLevel, level);
@@ -410,7 +425,7 @@ public class VanillaBlockPiece extends PieceDefinition {
      * a head: a piece resting on a real block (a lever on the ground) doesn't always read that block from here.
      */
     public void reshapeAgainst(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be, Direction face) {
-        if (!(stateOf(piece) != null && stateOf(piece).getBlock() instanceof net.minecraft.world.level.block.piston.PistonHeadBlock)) return;
+        if (!(stateOf(piece) != null && stateOf(piece).getBlock() instanceof PistonHeadBlock)) return;
         FakeLevel fakeLevel = buildFakeSpace(be, level);
         BlockPos at = fakeLevel.world(piece.anchor), across = at.relative(face);
         fakeLevel.cells().set(at, fakeLevel.cells().getBlockState(at)
@@ -428,11 +443,11 @@ public class VanillaBlockPiece extends PieceDefinition {
      * per level instance, and on a new level each time it never burned out.
      */
     @Override
-    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @javax.annotation.Nullable Object type) {
+    public void scheduledTick(PlacedPiece piece, ServerLevel level, BlockPos subgridPos, SubgridBlockEntity be, @Nullable Object type) {
         BlockState state = stateOf(piece);
         if (state == null) return;
-        boolean blockTick = type == null || (type instanceof net.minecraft.world.level.block.Block block && state.is(block));
-        boolean fluidTick = type == null || (type instanceof net.minecraft.world.level.material.Fluid fluid && state.getFluidState().is(fluid));
+        boolean blockTick = type == null || (type instanceof Block block && state.is(block));
+        boolean fluidTick = type == null || (type instanceof Fluid fluid && state.getFluidState().is(fluid));
         if (!blockTick && !fluidTick) return;
 
         TickSpace space = TickSpace.acquire(be, level, null);
@@ -467,7 +482,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         BlockState state = stateOf(piece);
         if (state == null) return;
         BlockState air = Blocks.AIR.defaultBlockState();
-        int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
+        int flags = Block.UPDATE_CLIENTS;
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
             FakeServerLevel fakeLevel = space.level;
@@ -509,7 +524,7 @@ public class VanillaBlockPiece extends PieceDefinition {
         BlockState state = stateOf(piece);
         if (state == null) return;
         BlockState air = Blocks.AIR.defaultBlockState();
-        int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
+        int flags = Block.UPDATE_CLIENTS;
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
             FakeServerLevel fakeLevel = space.level;
@@ -522,8 +537,8 @@ public class VanillaBlockPiece extends PieceDefinition {
             state.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
             air.updateNeighbourShapes(fakeLevel, at, flags, 511);
             air.updateIndirectNeighbourShapes(fakeLevel, at, flags, 511);
-            fakeLevel.gameEvent(net.minecraft.world.level.gameevent.GameEvent.BLOCK_DESTROY, at,
-                    net.minecraft.world.level.gameevent.GameEvent.Context.of(state));
+            fakeLevel.gameEvent(GameEvent.BLOCK_DESTROY, at,
+                    GameEvent.Context.of(state));
             GridWriteBack.applyChanges(be, fakeLevel, level);
         } finally {
             space.release();
@@ -534,7 +549,7 @@ public class VanillaBlockPiece extends PieceDefinition {
 
     /** A block event's turn came (GridTickScheduler): it runs like any other call into the grid. */
     @Override
-    public void blockEvent(ServerLevel level, SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.GridTickScheduler.BlockEvent event) {
+    public void blockEvent(ServerLevel level, SubgridBlockEntity be, GridTickScheduler.BlockEvent event) {
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
             space.level.runBlockEvent(event.pos(), event.block(), event.id(), event.param());

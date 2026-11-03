@@ -7,7 +7,10 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+
+import java.lang.reflect.Field;
 
 /**
  * The client's copy of a piston moving in a grid: built from PistonAnimationPayload and moved on each client tick.
@@ -25,14 +28,14 @@ public final class PistonAnimation {
 
     private PistonAnimation() {}
 
-    private static final java.lang.reflect.Field PISTON_PROGRESS;
-    private static final java.lang.reflect.Field PISTON_PROGRESS_O;
-    private static final java.lang.reflect.Field PISTON_DEATH_TICKS;
+    private static final Field PISTON_PROGRESS;
+    private static final Field PISTON_PROGRESS_O;
+    private static final Field PISTON_DEATH_TICKS;
 
     static {
         try {
-            Class<net.minecraft.world.level.block.piston.PistonMovingBlockEntity> type =
-                    net.minecraft.world.level.block.piston.PistonMovingBlockEntity.class;
+            Class<PistonMovingBlockEntity> type =
+                    PistonMovingBlockEntity.class;
             PISTON_PROGRESS = type.getDeclaredField("progress");
             PISTON_PROGRESS.setAccessible(true);
             PISTON_PROGRESS_O = type.getDeclaredField("progressO");
@@ -55,7 +58,7 @@ public final class PistonAnimation {
     private static final float PISTON_PROGRESS_PER_TICK = 0.5F;
 
     static void clientTick(PlacedPiece piece, BlockPos subgridPos,
-                           net.minecraft.world.level.block.piston.PistonMovingBlockEntity moving) {
+                           PistonMovingBlockEntity moving) {
         try {
             float progress = PISTON_PROGRESS.getFloat(moving);
             if (progress >= 1.0F) {
@@ -101,7 +104,7 @@ public final class PistonAnimation {
         // requires an exact match — see GridWriteBack.syncBlockEntity's comment for the crash this used to cause.
         BlockState state = NbtUtils.readBlockState(level.holderLookup(Registries.BLOCK), beNbt.getCompound("outerState"));
         if (state.isAir()) return;
-        var moving = new net.minecraft.world.level.block.piston.PistonMovingBlockEntity(be.getBlockPos(), state);
+        var moving = new PistonMovingBlockEntity(be.getBlockPos(), state);
         moving.loadCustomOnly(beNbt, level.registryAccess());
         moving.setLevel(level);
         piece.runtimeBlockEntity = moving;

@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.v2;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import java.util.List;
 
@@ -19,10 +20,10 @@ public interface FakeSpace {
     FakeCellGetter cells();
 
     /** The real level the SubgridBlock this space was built for lives in. */
-    net.minecraft.world.level.Level realLevel();
+    Level realLevel();
 
     List<ScheduledEntry> scheduledTicks();
 
     /** Position to hand to vanilla code for local cell {@code local}. */
-    default net.minecraft.core.BlockPos world(net.minecraft.core.BlockPos local) { return cells().toWorld(local); }
+    default BlockPos world(BlockPos local) { return cells().toWorld(local); }
 }

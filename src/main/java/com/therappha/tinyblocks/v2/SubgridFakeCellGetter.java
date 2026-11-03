@@ -1,14 +1,21 @@
 package com.therappha.tinyblocks.v2;
 
+import com.therappha.tinyblocks.subgrid.GridTickScheduler;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 /**
  * Cells not explicitly touched this call fall back to the SubgridBlockEntity's real vanilla view.
@@ -20,7 +27,7 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
     /** World-frame position of local cell (0,0,0). */
     private final BlockPos origin;
     /** The local cell whose own tick/onUse this space was built for, or null when nothing is being operated. */
-    @javax.annotation.Nullable private BlockPos operatedCell;
+    @Nullable private BlockPos operatedCell;
     /**
      * Set right after the FakeLevel/FakeServerLevel wrapping this cell space is constructed —
      * can't be known at this object's own construction time, since it's built first and
@@ -29,7 +36,7 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
      */
     private Level attachedLevel;
 
-    SubgridFakeCellGetter(SubgridBlockEntity be, @javax.annotation.Nullable BlockPos operatedCell) {
+    SubgridFakeCellGetter(SubgridBlockEntity be, @Nullable BlockPos operatedCell) {
         this.be = be;
         this.origin = be.virtualOrigin();
         this.operatedCell = operatedCell;
@@ -92,8 +99,8 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
     }
 
     @Override
-    public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event, Vec3 pos,
-                          net.minecraft.world.level.gameevent.GameEvent.Context context) {
+    public void gameEvent(Holder<GameEvent> event, Vec3 pos,
+                          GameEvent.Context context) {
         GridGameEvents.post(be, event, pos, context);
     }
 
@@ -101,7 +108,7 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
     boolean live = true;
 
     @Override
-    public boolean afterItsCall(java.util.function.Consumer<Level> work) {
+    public boolean afterItsCall(Consumer<Level> work) {
         if (live || !(be.getLevel() instanceof ServerLevel level)) return false;
         TickSpace space = TickSpace.acquire(be, level, null);
         try {
@@ -124,7 +131,7 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
     @Override
     public boolean scheduleTick(BlockPos world, Object type, int delay, int priority) {
         if (be.getLevel() == null) return false;
-        long target = com.therappha.tinyblocks.subgrid.GridTickScheduler.gameTime(be.getLevel()) + delay;
+        long target = GridTickScheduler.gameTime(be.getLevel()) + delay;
         BlockPos local = toLocal(world);
         if (be.inBounds(local.getX(), local.getY(), local.getZ())) {
             be.scheduleTick(local.getX(), local.getY(), local.getZ(), target, priority, type);
@@ -156,10 +163,10 @@ final class SubgridFakeCellGetter extends FakeCellGetter {
     }
 
     @Override
-    public boolean blockEvent(BlockPos world, net.minecraft.world.level.block.Block block, int id, int param) {
+    public boolean blockEvent(BlockPos world, Block block, int id, int param) {
         if (!(be.getLevel() instanceof ServerLevel level)) return false;
-        com.therappha.tinyblocks.subgrid.GridTickScheduler.blockEvent(level,
-                new com.therappha.tinyblocks.subgrid.GridTickScheduler.BlockEvent(be, world.immutable(), block, id, param));
+        GridTickScheduler.blockEvent(level,
+                new GridTickScheduler.BlockEvent(be, world.immutable(), block, id, param));
         return true;
     }
 
