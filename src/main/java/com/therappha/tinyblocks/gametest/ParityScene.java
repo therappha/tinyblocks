@@ -30,6 +30,8 @@ final class ParityScene {
     final List<Slot> slots = new ArrayList<>();
     final List<Timed> steps = new ArrayList<>();
     final List<Proof> proofs = new ArrayList<>();
+    /** What steps place, for what is built later to be looked at too (ParityChanceGameTest). */
+    final List<BlockState> placedLater = new ArrayList<>();
     int ticks = 60;
     /** How long it runs before the comparison starts, built and, when a grid is moved, moved halfway through this. */
     int settleTicks = 12;
@@ -99,6 +101,7 @@ final class ParityScene {
 
     ParityScene placeAt(int tick, int x, int y, int z, BlockState state) {
         BlockPos cell = new BlockPos(x, y, z);
+        placedLater.add(state);
         steps.add(new Timed(tick, "place " + state + " at " + cell.toShortString(), space -> space.place(cell, state)));
         return this;
     }

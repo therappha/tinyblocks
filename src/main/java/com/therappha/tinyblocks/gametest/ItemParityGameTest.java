@@ -101,7 +101,8 @@ public class ItemParityGameTest {
 
         scenes.add(ParityScene.of("dispenser_waxes_copper", s -> {
             fired(s, Blocks.DISPENSER.defaultBlockState(), Items.HONEYCOMB, 1);
-            s.put(4, 2, 4, Blocks.COPPER_BLOCK.defaultBlockState()).runFor(50).provenBy(4, 2, 4, "waxed_copper_block");
+            // Fully oxidised: copper that can still weather does so on random ticks, which the copies draw differently.
+            s.put(4, 2, 4, Blocks.OXIDIZED_COPPER.defaultBlockState()).runFor(50).provenBy(4, 2, 4, "waxed_oxidized_copper");
         }));
 
         scenes.add(ParityScene.of("dispenser_puts_a_cart_on_a_rail", s -> {
