@@ -237,6 +237,7 @@ public class VanillaBlockPiece extends PieceDefinition {
             }
             space.busy = true;
             space.cells.live = true;
+            space.level.forgetCapabilities();
             return space;
         }
 
@@ -440,7 +441,9 @@ public class VanillaBlockPiece extends PieceDefinition {
         // Block.getDrops takes the BlockState explicitly (not read from the real position), so
         // this can query the real loot table directly against the real level — no fake position
         // space needed, loot tables are global registry data, not tied to where the piece sits.
-        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(), null, null, tool);
+        // The phantom goes along for what its loot table copies off the block entity: a shulker box's contents.
+        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(),
+                piece.runtimeBlockEntity instanceof BlockEntity phantom ? phantom : null, null, tool);
     }
 
     @Override
@@ -701,6 +704,8 @@ public class VanillaBlockPiece extends PieceDefinition {
         try {
             FakeServerLevel fakeLevel = space.level;
             BlockPos at = fakeLevel.world(piece.anchor);
+            // What a block's onRemove reads back from its cell, as a chunk still has it then: a chest spills its contents.
+            if (piece.runtimeBlockEntity instanceof BlockEntity phantom) fakeLevel.cells().setBlockEntity(at, phantom);
             BlockAccess.onRemove(state, fakeLevel, at, air, false);
             fakeLevel.blockUpdated(at, state.getBlock());
             if (state.hasAnalogOutputSignal()) fakeLevel.updateNeighbourForOutputSignal(at, state.getBlock());
@@ -851,6 +856,11 @@ public class VanillaBlockPiece extends PieceDefinition {
         @Override
         public BlockPos resolveLocal(BlockPos pos) {
             return toLocal(pos);
+        }
+
+        @Override
+        public Vec3 toReal(Vec3 virtual) {
+            return VirtualHit.toReal(virtual, be.getBlockPos(), origin, be.getGridSize());
         }
 
         /**
@@ -1256,7 +1266,9 @@ public class VanillaBlockPiece extends PieceDefinition {
             if (cells.isSettled(p.anchor)) SubgridBlockEntity.whileApplyingSettled(remove);
             else remove.run();
             PlacedPiece removed = removedPiece[0];
-            if (removed != null && !movedElsewhere) {
+            // In a server space vanilla's own code has dropped whatever this block drops (FakeServerLevel#addFreshEntity):
+            // going to air by itself drops nothing, as with burnt planks or lit TNT. A plain fake level can't drop.
+            if (removed != null && !movedElsewhere && !(fakeSpace instanceof FakeServerLevel)) {
                 // Deferred, not dropped immediately: the "moved elsewhere" scan above only sees
                 // positions touched THIS SAME call, but a piston's own move sequence can span
                 // several calls (the vacate happens now, via onNeighborChanged; the matching
