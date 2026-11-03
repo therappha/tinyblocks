@@ -248,3 +248,27 @@ moves y.
 ### Counts, round 2
 
 0 blockers, 1 major (R2-M1), 4 minors. Step 23 is still deferred.
+
+## Round 3
+
+A check of the round 2 fixes in 7d1c72d, against the code. As before, I only read: no Gradle task was run and no
+code was changed.
+
+**Verdict: approved.** 0 blockers, 0 majors, 1 minor. Step 23 is still deferred.
+
+- **R2-M1:** resolved. Step 4's test piece is now 2 by 2 by 2, with neighbours placed so that every loop order gives a
+  different `neighborsOf` sequence. "y and z swapped" is now a third one-off change, and the test must fail under each
+  of the three. A cube's footprint is the same after `PlacedPiece#rotate` on any axis (`PlacedPiece.java:66-69`), so
+  the facing doesn't matter, as the plan says.
+- **R2-m1:** resolved. Step 13's scene places the chest before the hopper, and judges by the comparator and the lamp.
+- **R2-m2:** resolved. No piece uses the id `tinyblocks:test_cube_2` today (`grep -rn test_cube src` finds nothing).
+- **R2-m3:** resolved. Step 6 makes `outOfBounds` package-private.
+- **R2-m4:** resolved. `v2/TickSpace` is out of step 11's file list, and the plan says why `SubgridFakeCellGetter`
+  stays in it: its `afterItsCall` calls `applyChanges`.
+
+### Minor
+
+- **R3-m1. Step 13:** placing the chest first sets the tick order only within one grid. Pieces tick in the order of
+  the grid's `pieces` list, which is the order they were placed in (`SubgridBlockEntity.java:704`). If the chest and
+  the hopper were in different grids, the order would depend on which grid ticks first. Build the scene with the
+  chest and the hopper in the same grid. The step's "seen to fail" rule still guards against getting this wrong.
