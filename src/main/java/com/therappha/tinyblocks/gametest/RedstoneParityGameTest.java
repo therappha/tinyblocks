@@ -464,6 +464,7 @@ public class RedstoneParityGameTest {
     @GameTestGenerator
     public Collection<TestFunction> parityRandom() {
         String shrink = System.getProperty("tinyblocks.shrinkSeed", "");
+        if (shrink.contains(":")) return List.of(); // a Create scene's: CreateRandomParityGameTest
         if (!shrink.isEmpty()) return List.of(ParityShrink.test(Long.parseLong(shrink)));
         String count = System.getProperty("tinyblocks.randomSeeds", "");
         int seeds = count.isEmpty() ? 60 : Integer.parseInt(count);

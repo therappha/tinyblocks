@@ -65,6 +65,11 @@ interface ParitySpace extends SpaceView {
         }
     }
 
+    /** What a player's click on a hand crank does: it turns for a few ticks. */
+    default void crank(BlockPos cell) {
+        if (blockEntity(cell) instanceof com.simibubi.create.content.kinetics.crank.HandCrankBlockEntity crank) crank.turn(false);
+    }
+
     default void take(BlockPos cell, int count) {
         if (!(blockEntity(cell) instanceof Container container)) return;
         for (int slot = 0; slot < container.getContainerSize(); slot++) {
@@ -104,8 +109,8 @@ interface ParitySpace extends SpaceView {
         STAYS, RELOAD, GRID_SAVE, SABLE_MOVE, SABLE_ASSEMBLE
     }
 
-    final class Real extends RealSpaceView implements ParitySpace {
-        private final ServerLevel server;
+    class Real extends RealSpaceView implements ParitySpace {
+        protected final ServerLevel server;
         private final Player player;
 
         Real(ServerLevel level, BlockPos origin, Player player) {
@@ -153,6 +158,24 @@ interface ParitySpace extends SpaceView {
         @Override
         public AABB spawnBox(int[] size) {
             return new AABB(Vec3.atLowerCornerOf(real(BlockPos.ZERO)), Vec3.atLowerCornerOf(real(new BlockPos(size[0], size[1], size[2])))).inflate(0.5);
+        }
+
+        /**
+         * The block entities of the box go and come back from what they saved, as when their chunk unloads and loads:
+         * what a grid reloaded is compared with (Move.RELOAD), since Create's own blocks don't come back unchanged either.
+         */
+        void reload(int[] size) {
+            Map<BlockPos, CompoundTag> saved = new LinkedHashMap<>();
+            for (BlockPos cell : com.therappha.tinyblocks.diff.SpaceDiff.box(size[0], size[1], size[2])) {
+                BlockPos at = real(cell);
+                var be = server.getBlockEntity(at);
+                if (be != null) saved.put(at, be.saveWithFullMetadata(server.registryAccess()));
+            }
+            for (BlockPos at : saved.keySet()) {
+                server.getBlockEntity(at).onChunkUnloaded();
+                server.removeBlockEntity(at);
+            }
+            saved.forEach((at, tag) -> server.setBlockEntity(net.minecraft.world.level.block.entity.BlockEntity.loadStatic(at, server.getBlockState(at), tag, server.registryAccess())));
         }
     }
 
@@ -274,6 +297,178 @@ interface ParitySpace extends SpaceView {
             SubgridBlockEntity be = grid(cell);
             VanillaBlockPiece.buildFakeServerSpace(be, level).gameEvent(GameEvent.BLOCK_PLACE,
                     VanillaBlockPiece.buildFakeServerSpace(be, level).world(local(cell)), GameEvent.Context.of(state));
+        }
+    }
+
+    /**
+     * Real blocks, but for the cells a scene stands a grid in for (ParityScene.StandIn): there a grid of that size, with
+     * connectors on the two faces along the block's axis and tiny parts joining them, turns what the block would have.
+     * Such a cell shows the block it stands in for, turning as the grid's connector on its downstream face turns:
+     * what leaves the grid, which is what the rest of the network sees of it. Breaking it breaks a tiny part halfway
+     * along, placing it puts that part back.
+     */
+    final class Bridged extends Real {
+        private final Map<BlockPos, ParityScene.StandIn> standIns = new java.util.HashMap<>();
+        private final Map<BlockPos, BlockState> stoodFor = new java.util.HashMap<>();
+
+        Bridged(ServerLevel level, BlockPos origin, Player player, List<ParityScene.StandIn> standIns) {
+            super(level, origin, player);
+            for (ParityScene.StandIn standIn : standIns) this.standIns.put(standIn.cell(), standIn);
+        }
+
+        record Part(BlockPos cell, BlockState state) {}
+
+        private static BlockState along(net.minecraft.world.level.block.state.BlockState block, Direction.Axis axis) {
+            return block.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, axis);
+        }
+
+        /**
+         * The tiny parts from one connector to the other: shafts on the line between a funnel's sockets, or between
+         * small cogwheels on the two gears' sides; with a jog, the line steps aside through two pairs of meshing
+         * cogwheels, which turn it back the right way.
+         */
+        static List<Part> path(ParityScene.StandIn standIn) {
+            int n = standIn.gridSize();
+            Direction.Axis axis = standIn.axis();
+            Direction low = Direction.fromAxisAndDirection(axis, Direction.AxisDirection.NEGATIVE);
+            BlockPos line;
+            int from, to;
+            boolean gear = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(n);
+            if (gear) {
+                line = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.meshCells(low, n).get(0);
+                from = 0;
+                to = n - 1;
+            } else {
+                line = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.socket(low, n);
+                from = axis.choose(line.getX(), line.getY(), line.getZ());
+                to = n - 1 - from;
+            }
+            BlockState shaft = along(com.simibubi.create.AllBlocks.SHAFT.getDefaultState(), axis);
+            BlockState cog = along(com.simibubi.create.AllBlocks.COGWHEEL.getDefaultState(), axis);
+            int jogFrom = gear ? 2 : from + 1, jogTo = gear ? n - 3 : to - 1;
+            boolean jog = standIn.jog() && jogTo >= jogFrom + 2;
+            Direction aside = null;
+            if (jog) {
+                for (Direction direction : Direction.values()) {
+                    BlockPos next = line.relative(direction);
+                    if (direction.getAxis() != axis && Math.min(Math.min(next.getX(), next.getY()), next.getZ()) >= 0
+                            && Math.max(Math.max(next.getX(), next.getY()), next.getZ()) < n) {
+                        aside = direction;
+                        break;
+                    }
+                }
+            }
+            List<Part> parts = new ArrayList<>();
+            for (int i = from; i <= to; i++) {
+                BlockPos at = withCoordinate(line, axis, i);
+                boolean end = gear && (i == from || i == to);
+                if (aside == null || i < jogFrom || i > jogTo) {
+                    parts.add(new Part(at, end ? cog : shaft));
+                } else if (i == jogFrom || i == jogTo) {
+                    parts.add(new Part(at, cog));
+                    parts.add(new Part(at.relative(aside), cog));
+                } else {
+                    parts.add(new Part(at.relative(aside), shaft));
+                }
+            }
+            return parts;
+        }
+
+        private static BlockPos withCoordinate(BlockPos cell, Direction.Axis axis, int value) {
+            return switch (axis) {
+                case X -> new BlockPos(value, cell.getY(), cell.getZ());
+                case Y -> new BlockPos(cell.getX(), value, cell.getZ());
+                case Z -> new BlockPos(cell.getX(), cell.getY(), value);
+            };
+        }
+
+        /** The part a break in the middle of the stand-in takes out. */
+        private static Part middle(ParityScene.StandIn standIn) {
+            List<Part> parts = path(standIn);
+            return parts.get(parts.size() / 2);
+        }
+
+        @javax.annotation.Nullable
+        private SubgridBlockEntity gridAt(BlockPos cell) {
+            return server.getBlockEntity(real(cell)) instanceof SubgridBlockEntity be ? be : null;
+        }
+
+        @Override
+        public void build(BlockPos cell, BlockState state, boolean shaped) {
+            ParityScene.StandIn standIn = standIns.get(cell);
+            if (standIn == null) {
+                super.build(cell, state, shaped);
+                return;
+            }
+            stoodFor.put(cell, state);
+            server.setBlock(real(cell), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+            SubgridBlockEntity be = SubgridBlockEntity.createAt(server, real(cell), standIn.gridSize());
+            if (be == null) throw new IllegalStateException("no grid at " + real(cell));
+            for (Direction.AxisDirection way : Direction.AxisDirection.values()) {
+                if (!com.therappha.tinyblocks.compat.create.ConnectorPlacement.place(be, server, Direction.fromAxisAndDirection(standIn.axis(), way))) {
+                    throw new IllegalStateException("no connector on " + way + " " + standIn.axis() + " of the 1/" + standIn.gridSize() + " grid");
+                }
+            }
+            for (Part part : path(standIn)) SubgridTestSupport.placePiece(be, server, part.cell(), part.state());
+        }
+
+        @Override
+        public void breakCell(BlockPos cell) {
+            ParityScene.StandIn standIn = standIns.get(cell);
+            SubgridBlockEntity be = standIn == null ? null : gridAt(cell);
+            if (standIn == null) super.breakCell(cell);
+            else if (be != null) be.removePieceAt(middle(standIn).cell().getX(), middle(standIn).cell().getY(), middle(standIn).cell().getZ());
+        }
+
+        @Override
+        public void place(BlockPos cell, BlockState state) {
+            ParityScene.StandIn standIn = standIns.get(cell);
+            SubgridBlockEntity be = standIn == null ? null : gridAt(cell);
+            if (standIn == null) {
+                super.place(cell, state);
+                return;
+            }
+            Part part = middle(standIn);
+            if (be != null && be.getPieceAt(part.cell().getX(), part.cell().getY(), part.cell().getZ()) == null) {
+                SubgridTestSupport.placePiece(be, server, part.cell(), part.state());
+            }
+        }
+
+        /** Whether the stand-in at {@code cell} is whole: its grid there, and the part a break takes out. */
+        private boolean whole(BlockPos cell) {
+            SubgridBlockEntity be = gridAt(cell);
+            BlockPos part = middle(standIns.get(cell)).cell();
+            return be != null && be.getPieceAt(part.getX(), part.getY(), part.getZ()) != null;
+        }
+
+        @Override
+        public BlockState state(BlockPos cell) {
+            if (!standIns.containsKey(cell)) return super.state(cell);
+            return whole(cell) && stoodFor.containsKey(cell) ? stoodFor.get(cell) : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        }
+
+        @Override
+        public BlockState drawn(BlockPos cell) {
+            return state(cell);
+        }
+
+        @Override
+        public net.minecraft.world.level.block.entity.BlockEntity blockEntity(BlockPos cell) {
+            ParityScene.StandIn standIn = standIns.get(cell);
+            SubgridBlockEntity be = standIn == null ? null : gridAt(cell);
+            if (standIn == null) return super.blockEntity(cell);
+            if (be == null || !whole(cell)) return null;
+            for (PlacedPiece piece : be.getPieces()) {
+                if (com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) == standIn.downstream()) {
+                    return VanillaBlockPiece.boundPhantom(piece, be, server);
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public int analogSignal(BlockPos cell) {
+            return standIns.containsKey(cell) ? 0 : super.analogSignal(cell);
         }
     }
 }
