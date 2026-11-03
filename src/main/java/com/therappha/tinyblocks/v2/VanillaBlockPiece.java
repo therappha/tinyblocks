@@ -853,6 +853,11 @@ public class VanillaBlockPiece extends PieceDefinition {
             return toLocal(pos);
         }
 
+        @Override
+        public Vec3 toReal(Vec3 virtual) {
+            return VirtualHit.toReal(virtual, be.getBlockPos(), origin, be.getGridSize());
+        }
+
         /**
          * A piece against a face asking the signal from the block across it: the real world's answer there (a
          * powered solid block's strong power included, which the cells can't see), or, across a SubgridBlock of
@@ -1256,7 +1261,9 @@ public class VanillaBlockPiece extends PieceDefinition {
             if (cells.isSettled(p.anchor)) SubgridBlockEntity.whileApplyingSettled(remove);
             else remove.run();
             PlacedPiece removed = removedPiece[0];
-            if (removed != null && !movedElsewhere) {
+            // In a server space vanilla's own code has dropped whatever this block drops (FakeServerLevel#addFreshEntity):
+            // going to air by itself drops nothing, as with burnt planks or lit TNT. A plain fake level can't drop.
+            if (removed != null && !movedElsewhere && !(fakeSpace instanceof FakeServerLevel)) {
                 // Deferred, not dropped immediately: the "moved elsewhere" scan above only sees
                 // positions touched THIS SAME call, but a piston's own move sequence can span
                 // several calls (the vacate happens now, via onNeighborChanged; the matching

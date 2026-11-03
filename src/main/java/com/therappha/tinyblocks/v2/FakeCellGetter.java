@@ -42,6 +42,11 @@ public class FakeCellGetter implements BlockGetter {
         settled.clear();
     }
 
+    /** Where in the real level the point {@code virtual} of this space is. */
+    public net.minecraft.world.phys.Vec3 toReal(net.minecraft.world.phys.Vec3 virtual) {
+        return virtual;
+    }
+
     /** {@code world} was written through a level's setBlock: everything that follows from the write has run. */
     public void markSettled(BlockPos world) {
         settled.add(resolveLocal(world));
