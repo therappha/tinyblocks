@@ -37,6 +37,19 @@ public final class PieceClickDispatch {
 
     private PieceClickDispatch() {}
 
+    /**
+     * A player's constructor looks for a spawn around the world's, from {@code level}. A piece's fake space answers every
+     * cell of a 131072 block tall column, so that search held the server for seconds on each click.
+     */
+    public static FakePlayer standIn(net.minecraft.server.level.ServerLevel level) {
+        return new FakePlayer(level, PROXY) {
+            @Override
+            public BlockPos adjustSpawnLocation(net.minecraft.server.level.ServerLevel spawnLevel, BlockPos pos) {
+                return pos;
+            }
+        };
+    }
+
     /** True for the stand-in a click on a piece is posted with: it aims where the real player did. */
     public static boolean isStandIn(Player player) {
         return player instanceof FakePlayer && PROXY.getId().equals(player.getUUID());
@@ -50,7 +63,7 @@ public final class PieceClickDispatch {
 
         FakePlayer proxy;
         try {
-            proxy = new FakePlayer(space, PROXY);
+            proxy = standIn(space);
         } catch (RuntimeException e) {
             LOGGER.warn("Could not create the stand-in player for a click on a piece at {}", be.getBlockPos(), e);
             return false;
