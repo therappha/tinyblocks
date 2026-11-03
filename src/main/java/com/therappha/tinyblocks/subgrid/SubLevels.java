@@ -23,7 +23,7 @@ public final class SubLevels {
 
     private static final class Sable {
         static final Object HELPER;
-        static final Method CONTAINING, INTERSECTING, POSE, INTO_PLOT;
+        static final Method CONTAINING, INTERSECTING, POSE, INTO_PLOT, PROJECT_OUT;
         static final Constructor<?> BOX;
 
         static {
@@ -32,6 +32,7 @@ public final class SubLevels {
                 CONTAINING = Class.forName("dev.ryanhcode.sable.companion.SableCompanion").getMethod("getContaining", Level.class, Vec3i.class);
                 INTERSECTING = Class.forName("dev.ryanhcode.sable.companion.SableCompanion").getMethod("getAllIntersecting", Level.class,
                         Class.forName("dev.ryanhcode.sable.companion.math.BoundingBox3dc"));
+                PROJECT_OUT = Class.forName("dev.ryanhcode.sable.companion.SableCompanion").getMethod("projectOutOfSubLevel", Level.class, Vec3.class);
                 BOX = Class.forName("dev.ryanhcode.sable.companion.math.BoundingBox3d").getConstructor(AABB.class);
                 POSE = Class.forName("dev.ryanhcode.sable.companion.SubLevelAccess").getMethod("logicalPose");
                 INTO_PLOT = Class.forName("dev.ryanhcode.sable.companion.math.Pose3dc").getMethod("transformPositionInverse", Vec3.class);
@@ -68,5 +69,17 @@ public final class SubLevels {
             LogUtils.getLogger().warn("Couldn't ask Sable which sub-levels are nearby", e);
         }
         return plots;
+    }
+
+    /** Where {@code at} is seen in the world: itself, or out of the plot of the sub-level holding it. */
+    public static Vec3 inWorld(Level level, Vec3 at) {
+        if (failed) return at;
+        try {
+            return (Vec3) Sable.PROJECT_OUT.invoke(Sable.HELPER, level, at);
+        } catch (ReflectiveOperationException | LinkageError e) {
+            failed = true;
+            LogUtils.getLogger().warn("Couldn't ask Sable where a block is seen", e);
+            return at;
+        }
     }
 }

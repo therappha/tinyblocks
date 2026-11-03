@@ -12,7 +12,7 @@ public final class CreateFacts {
     private CreateFacts() {}
 
     public static void add(BlockEntity be, String prefix, Map<String, String> facts) {
-        if (be instanceof KineticBlockEntity kinetic) facts.put(prefix + "velocidade", Float.toString(kinetic.getSpeed()));
-        if (be instanceof BeltBlockEntity belt) facts.put(prefix + "esteira", belt.index + " de " + belt.beltLength);
+        if (be instanceof KineticBlockEntity kinetic) facts.put(prefix + "speed", Float.toString(kinetic.getSpeed()));
+        if (be instanceof BeltBlockEntity belt) facts.put(prefix + "belt", belt.index + " of " + belt.beltLength);
     }
 }

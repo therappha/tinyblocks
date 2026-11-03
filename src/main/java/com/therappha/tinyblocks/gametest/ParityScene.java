@@ -70,32 +70,32 @@ final class ParityScene {
 
     ParityScene use(int tick, int x, int y, int z) {
         BlockPos cell = new BlockPos(x, y, z);
-        steps.add(new Timed(tick, "usa " + cell.toShortString(), space -> space.use(cell)));
+        steps.add(new Timed(tick, "use " + cell.toShortString(), space -> space.use(cell)));
         return this;
     }
 
     ParityScene breakAt(int tick, int x, int y, int z) {
         BlockPos cell = new BlockPos(x, y, z);
-        steps.add(new Timed(tick, "quebra " + cell.toShortString(), space -> space.breakCell(cell)));
+        steps.add(new Timed(tick, "break " + cell.toShortString(), space -> space.breakCell(cell)));
         return this;
     }
 
     ParityScene placeAt(int tick, int x, int y, int z, BlockState state) {
         BlockPos cell = new BlockPos(x, y, z);
-        steps.add(new Timed(tick, "coloca " + state + " em " + cell.toShortString(), space -> space.place(cell, state)));
+        steps.add(new Timed(tick, "place " + state + " at " + cell.toShortString(), space -> space.place(cell, state)));
         return this;
     }
 
     ParityScene insert(int tick, int x, int y, int z, Item item, int count) {
         BlockPos cell = new BlockPos(x, y, z);
-        steps.add(new Timed(tick, "poe " + count + " " + item + " em " + cell.toShortString(),
+        steps.add(new Timed(tick, "put " + count + " " + item + " at " + cell.toShortString(),
                 space -> space.insert(cell, new ItemStack(item, count))));
         return this;
     }
 
     ParityScene take(int tick, int x, int y, int z, int count) {
         BlockPos cell = new BlockPos(x, y, z);
-        steps.add(new Timed(tick, "tira " + count + " de " + cell.toShortString(), space -> space.take(cell, count)));
+        steps.add(new Timed(tick, "take " + count + " from " + cell.toShortString(), space -> space.take(cell, count)));
         return this;
     }
 
