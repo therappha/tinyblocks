@@ -710,7 +710,7 @@ public class SubgridBlockEntity extends BlockEntity {
         sampleRandomTicks(level);
         tickPendingDrops(level);
         flushPhantomData(level);
-        updateRedstoneOutputs(level);
+        signals.updateRedstoneOutputs(level);
         removeIfLeftEmpty(level);
     }
 
@@ -1024,18 +1024,6 @@ public class SubgridBlockEntity extends BlockEntity {
         cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
     }
 
-    // --- Redstone through the faces ---
-
-    /**
-     * Each face gives the block on that side the strongest signal among the pieces against it, weak and strong
-     * alike (SubgridBlock#getSignal), and, for a SubgridBlock of another size on that side, cell by cell
-     * (overlapSignal). Per face, indexed by the cell's two coordinates across it (faceIndex).
-     */
-    private int[][] weakCells = new int[6][0], strongCells = new int[6][0];
-    private final int[] weakFace = new int[6], strongFace = new int[6];
-    private int signalKey;
-    private boolean signalsBuilt = false;
-
     /**
      * Bumped whenever a piece may have been added, removed or changed state (issue #64): what the faces give and the
      * outline shape are rebuilt when it moved. It used to be a hash over every piece, recomputed on every tick and
@@ -1060,56 +1048,14 @@ public class SubgridBlockEntity extends BlockEntity {
         super.setChanged();
     }
 
-    /** Index of the cell (x,y,z) on a face along {@code axis}: its two other coordinates, in x, y, z order. */
-    private int faceIndex(Direction.Axis axis, int x, int y, int z) {
-        return switch (axis) {
-            case X -> y * gridSize + z;
-            case Y -> x * gridSize + z;
-            case Z -> x * gridSize + y;
-        };
-    }
+    // --- Redstone through the faces ---
 
-    private static boolean onFace(Direction face, int x, int y, int z, int size) {
-        int coordinate = face.getAxis().choose(x, y, z);
-        return coordinate == (face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? size - 1 : 0);
-    }
-
-    private void refreshSignals() {
-        int key = pieceVersion;
-        if (signalsBuilt && key == signalKey) return;
-        signalsBuilt = true;
-        signalKey = key;
-        weakCells = new int[6][gridSize * gridSize];
-        strongCells = new int[6][gridSize * gridSize];
-        Arrays.fill(weakFace, 0);
-        Arrays.fill(strongFace, 0);
-        if (!(level instanceof ServerLevel server)) return;
-        net.minecraft.world.level.Level space = null;
-        for (PlacedPiece p : pieces) {
-            if (!(p.runtimeState instanceof BlockState state) || !state.isSignalSource()) continue;
-            for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-                for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                    for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                        for (Direction face : Direction.values()) {
-                            if (!onFace(face, x, y, z, gridSize)) continue;
-                            if (space == null) space = com.therappha.tinyblocks.v2.VanillaBlockPiece.buildFakeSpace(this, server);
-                            // Asked as the block across that face would: the direction points from it into the grid.
-                            BlockPos at = virtualPosOf(new BlockPos(x, y, z));
-                            Direction towards = face.getOpposite();
-                            int weak = state.getSignal(space, at, towards), strong = state.getDirectSignal(space, at, towards);
-                            int f = face.ordinal(), i = faceIndex(face.getAxis(), x, y, z);
-                            weakCells[f][i] = Math.max(weakCells[f][i], weak);
-                            strongCells[f][i] = Math.max(strongCells[f][i], strong);
-                            weakFace[f] = Math.max(weakFace[f], weak);
-                            strongFace[f] = Math.max(strongFace[f], strong);
-                        }
-        }
-    }
+    /** What the faces give in redstone (GridSignals). */
+    private final GridSignals signals = new GridSignals(this);
 
     /** The signal this grid gives the block across {@code face}: the strongest of the pieces against it. */
     public int faceSignal(Direction face, boolean strong) {
-        refreshSignals();
-        return (strong ? strongFace : weakFace)[face.ordinal()];
+        return signals.faceSignal(face, strong);
     }
 
     /**
@@ -1117,50 +1063,19 @@ public class SubgridBlockEntity extends BlockEntity {
      * the strongest of the pieces whose squares on the shared face overlap that cell's.
      */
     public int overlapSignal(Direction face, int otherSize, int u, int v, boolean strong) {
-        refreshSignals();
-        int[] cells = (strong ? strongCells : weakCells)[face.ordinal()];
-        int best = 0;
-        for (int i = u * gridSize / otherSize; i < gridSize && i * otherSize < (u + 1) * gridSize; i++) {
-            if ((i + 1) * otherSize <= u * gridSize) continue;
-            for (int j = v * gridSize / otherSize; j < gridSize && j * otherSize < (v + 1) * gridSize; j++) {
-                if ((j + 1) * otherSize <= v * gridSize) continue;
-                best = Math.max(best, cells[i * gridSize + j]);
-            }
-        }
-        return best;
+        return signals.overlapSignal(face, otherSize, u, v, strong);
     }
 
-    /** The two coordinates across {@code axis} of the cell (x,y,z), as faceIndex orders them. */
+    /** The two coordinates across {@code axis} of the cell (x,y,z), as GridSignals indexes a face. */
     public static int[] acrossFace(Direction.Axis axis, int x, int y, int z) {
-        return switch (axis) {
-            case X -> new int[] {y, z};
-            case Y -> new int[] {x, z};
-            case Z -> new int[] {x, y};
-        };
-    }
-
-    /** Once a tick: when what the faces give changed, the blocks around are told, as a lever tells them. */
-    private void updateRedstoneOutputs(ServerLevel level) {
-        if (signalsBuilt && pieceVersion == signalKey) return;
-        int[][] weakBefore = weakCells, strongBefore = strongCells;
-        int[] strongFaceBefore = strongFace.clone();
-        refreshSignals();
-        if (Arrays.deepEquals(weakBefore, weakCells) && Arrays.deepEquals(strongBefore, strongCells)) return;
-        Block block = getBlockState().getBlock();
-        level.updateNeighborsAt(worldPosition, block);
-        for (Direction face : Direction.values()) {
-            if (strongFaceBefore[face.ordinal()] != strongFace[face.ordinal()]) {
-                // What that block now powers in turn; not back to this grid, whose pieces have nothing new to hear.
-                level.updateNeighborsAtExceptFromFacing(worldPosition.relative(face), block, face.getOpposite());
-            }
-        }
+        return GridSignals.acrossFace(axis, x, y, z);
     }
 
     /** The block across {@code face} changed: the pieces against that face look again (a signal there, for one). */
     public void notifyFace(Direction face) {
         if (!(level instanceof ServerLevel serverLevel)) return;
         for (PlacedPiece piece : new ArrayList<>(pieces)) {
-            boolean against = piece.anyCell((x, y, z) -> onFace(face, x, y, z, gridSize));
+            boolean against = piece.anyCell((x, y, z) -> GridSignals.onFace(face, x, y, z, gridSize));
             if (!against || !pieces.contains(piece)) continue;
             try {
                 piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
