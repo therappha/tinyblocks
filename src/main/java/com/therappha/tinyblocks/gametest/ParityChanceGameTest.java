@@ -32,6 +32,9 @@ public class ParityChanceGameTest {
         scenes.addAll(ItemParityGameTest.scenes());
         scenes.addAll(ReactiveParityGameTest.scenes());
         scenes.addAll(FluidParityGameTest.scenes());
+        for (RandomCreateScene.Kind kind : RandomCreateScene.Kind.values()) {
+            for (int seed = 0; seed < 60; seed++) scenes.add(RandomCreateScene.generate(seed, kind));
+        }
         return scenes;
     }
 

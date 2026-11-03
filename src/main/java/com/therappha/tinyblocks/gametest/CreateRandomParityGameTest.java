@@ -162,6 +162,7 @@ public class CreateRandomParityGameTest {
         ParityScene copy = new ParityScene(scene.name).settingsFrom(scene).knownBroken(why);
         copy.blocks.addAll(scene.blocks);
         copy.steps.addAll(scene.steps);
+        copy.placedLater.addAll(scene.placedLater);
         copy.proofs.addAll(scene.proofs);
         return copy;
     }
