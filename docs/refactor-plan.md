@@ -186,19 +186,23 @@ taking them out changes nothing. **Client** (`SubgridVisual`): a log line only.
 Step 5 rewrites the loops that decide in which order a piece's neighbours hear of a change, so first make sure a test
 would see that order change:
 
-1. One-off, not committed: in `neighborsOf`, iterate z outer instead of x, and separately `Direction.values()` in
-   reverse; run the redstone and Create parity tests (`-PgameTestFilter=parity_`) and the connector GameTests.
+1. One-off, not committed, each change on its own: in `neighborsOf`, iterate z outer instead of x; swap the y and z
+   loops; iterate `Direction.values()` in reverse. Run the redstone and Create parity tests
+   (`-PgameTestFilter=parity_`) and the connector GameTests under each.
 2. Write down in the commit message what failed. For single-cell pieces only the direction order matters; the
-   footprint order only shows on pieces larger than a cell (shaft connectors), so it is likely that nothing fails for
-   the footprint change.
+   footprint order only shows on pieces larger than a cell (shaft connectors, `w x w x d`, which turns to `d x w x w`
+   on the X axis, so y and z both span several cells), so it is likely that nothing fails for the footprint changes.
 3. Whatever the result, add a unit test to `SubgridBlockEntityTest` (a new test; no existing one changes): a grid
-   without a level, a multi-cell piece from a test-only `PieceDefinition` with a footprint of 2 by 1 by 2, single-cell
-   pieces around it, and an assertion on the exact order of `neighborsOf`. Seen to fail with the one-off change of
-   step 1 applied, then passing without it.
+   without a level, a multi-cell piece from a test-only `PieceDefinition` with a footprint of 2 by 2 by 2, single-cell
+   pieces around it placed so that every loop order gives a different `neighborsOf` sequence, and an assertion on that
+   exact sequence. The piece registers itself in the global `PieceDefinition` registry from its constructor, so it gets
+   an id no real piece uses (`tinyblocks:test_cube_2`). A footprint turns with its facing's axis
+   (`PlacedPiece#rotate`); a 2 by 2 by 2 one is the same on every axis, so the facing doesn't matter. Seen to fail
+   under each of the three one-off changes of point 1, then passing without them.
 
 Files: `src/test/.../subgrid/SubgridBlockEntityTest` (new test only).
 
-Check: the new test fails with either one-off change and passes on the unchanged code; tests.
+Check: the new test fails under each of the three one-off changes and passes on the unchanged code; tests.
 
 ### 5. Cell iteration on PlacedPiece
 
@@ -227,7 +231,8 @@ Move `resolve(Direction,…)`, `resolve(int,int,int)`, `resolveOrCreate`, `direc
 the grid). The code stays the same except that `level` and `worldPosition`, protected fields of `BlockEntity` in
 another package, become `grid.getLevel()` and `grid.getBlockPos()`, which return those same fields. The two hop loops
 stay two loops: they differ in which level they read (`resolve` checks `this.level` first, `resolveOrCreate` uses its
-argument throughout) and in the real `setBlock` the creating one does mid-loop. `SubgridBlockEntity` keeps `resolve`,
+argument throughout) and in the real `setBlock` the creating one does mid-loop. `SubgridBlockEntity.outOfBounds`
+becomes package-private, since `GridResolver` calls it on each grid it hops through. `SubgridBlockEntity` keeps `resolve`,
 `resolveOrCreate`, `singleStepOverflowAxis` and `foldRemainingIntoRealWorld` as delegates, and `wrap` as it is (tests
 call all of them on it); `CellRef` stays nested in it. The logger name in `[xgrid]` lines changes to `GridResolver`.
 
@@ -289,8 +294,8 @@ public class whose only public methods are the two that were public. They are ca
 `SubgridBlockEntity.placeOrUpdatePiece` and `SubgridEventHandler`; those calls change to `GridWriteBack`. No test calls
 them.
 
-Files: `v2/VanillaBlockPiece`, new `v2/GridWriteBack`, `v2/SubgridFakeCellGetter`, `v2/TickSpace`,
-`subgrid/SubgridBlockEntity`, `setup/SubgridEventHandler`.
+Files: `v2/VanillaBlockPiece`, new `v2/GridWriteBack`, `v2/SubgridFakeCellGetter` (its `afterItsCall` calls
+`applyChanges`), `subgrid/SubgridBlockEntity`, `setup/SubgridEventHandler`.
 
 Check: tests, every parity scene (each one goes through `applyChanges`).
 
@@ -321,8 +326,11 @@ true, that write lands in a space nobody reads.
 2. If one of them fails, it is the check for step 14; name it in the commit message.
 3. If none fails, add a parity scene to `ItemParityGameTest`'s scenes as a new scene (no existing one changes): a
    hopper fed from above emptying into a chest, a comparator reading the chest, dust from the comparator to a lamp,
-   run until the chest fills. It is compared with the real copies every tick. Seen to fail with the one-off applied,
-   passing without it.
+   run until the chest fills. It is compared with the real copies every tick. The chest is placed before the hopper,
+   so the chest's own `tick` builds its phantom first and binds it to an operating space; a phantom first built by a
+   reader would be bound to a `TickSpace`, which `release` makes not live, and the scene would pass either way. The
+   scene is judged by the comparator and the lamp, not the items: with `live` wrongly true the items still arrive, and
+   only the comparator's update is lost. Seen to fail with the one-off applied, passing without it.
 
 Files: none, or `gametest/ItemParityGameTest` (a new scene only).
 
@@ -575,3 +583,14 @@ added (new 4 and 13).
 - **m10:** not done. The branching on what was clicked ends in about eight different side effects and returns; step 15
   explains why it stays in the handler.
 - **m11:** `docs/performance.md` is left as it is, knowingly: it records what was done at the time.
+
+## Response to review round 2
+
+- **R2-M1:** step 4's test piece is 2 by 2 by 2, with neighbours placed so every loop order gives a different
+  sequence; "y and z swapped" is a third one-off, and the test must fail under each of the three.
+- **R2-m1:** step 13's scene places the chest before the hopper, so the chest's own tick binds its phantom to an
+  operating space, and it is judged by the comparator and the lamp, not the items.
+- **R2-m2:** step 4's test piece has an id no real piece uses (`tinyblocks:test_cube_2`); the step notes that a
+  footprint turns with its facing, which a 2 by 2 by 2 cube makes moot.
+- **R2-m3:** step 6 makes `SubgridBlockEntity.outOfBounds` package-private.
+- **R2-m4:** `v2/TickSpace` is out of step 11's file list; `SubgridFakeCellGetter` stays, with the reason.
