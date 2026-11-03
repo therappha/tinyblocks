@@ -43,7 +43,7 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape cachedShape = Shapes.empty();
     /** The fake server space this grid's ticking pieces share (VanillaBlockPiece.TickSpace); runtime only. */
     public Object tickSpace;
-    /** Client only: the renderer's cached mesh of this grid's static pieces (SubgridRenderer.StaticMesh). */
+    /** Client only: the renderer's cached mesh of this grid's static pieces (client StaticMesh). */
     public Object renderCache;
 
     /** A piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */

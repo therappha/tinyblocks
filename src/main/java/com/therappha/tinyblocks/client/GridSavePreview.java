@@ -266,7 +266,7 @@ public final class GridSavePreview {
         int light = LightTexture.FULL_BRIGHT, overlay = OverlayTexture.NO_OVERLAY;
         SubgridRenderer.drawingPhantom = true;
         try {
-            if (SubgridRenderer.isGear(grid, piece)) {
+            if (PieceTransforms.isGearConnector(grid, piece)) {
                 if (phantom instanceof KineticBlockEntity gear) {
                     GearConnectorDrawing.draw(gear, slice, poseStack, source, light, BlockPos.ZERO.relative(piece.facing));
                 }

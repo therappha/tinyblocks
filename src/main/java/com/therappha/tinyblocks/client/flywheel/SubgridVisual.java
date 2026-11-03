@@ -97,7 +97,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
             PlacedPiece piece = e.getKey();
             // A connector whose neighbour across changed (a grid placed or broken there) is rebuilt to match it.
             if (alive.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()
-                    && builtAcross.getOrDefault(piece, 0) == com.therappha.tinyblocks.client.SubgridRenderer.acrossOf(blockEntity, piece)) {
+                    && builtAcross.getOrDefault(piece, 0) == com.therappha.tinyblocks.client.PieceTransforms.acrossOf(blockEntity, piece)) {
                 return false;
             }
             e.getValue().forEach(this::destroy);
@@ -128,12 +128,11 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         if (visualizer == null) return List.of();
 
         List<Child> slices = new ArrayList<>();
-        int across = com.therappha.tinyblocks.client.SubgridRenderer.acrossOf(blockEntity, piece);
+        int across = com.therappha.tinyblocks.client.PieceTransforms.acrossOf(blockEntity, piece);
         builtAcross.put(piece, across);
         List<com.therappha.tinyblocks.client.PieceTransforms.Slice> transforms =
                 com.therappha.tinyblocks.client.PieceTransforms.slices(piece, blockEntity.gridSize, across);
-        boolean gear = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null
-                && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(blockEntity.gridSize)
+        boolean gear = com.therappha.tinyblocks.client.PieceTransforms.isGearConnector(blockEntity, piece)
                 && phantom instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity;
         for (int i = 0; i < transforms.size(); i++) {
             int slice = i;
@@ -264,6 +263,10 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void updateLight(float partialTick) {
+        relightChildren(partialTick);
+    }
+
+    private void relightChildren(float partialTick) {
         for (Child child : allChildren()) {
             if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
@@ -280,13 +283,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         reconcile(ctx.partialTick());
         // Safety net: re-run the children's first-light pass about once a second, in case anything
         // reset or skipped it. Cheap (one relight per hosted visual).
-        if (++frames % 120 == 0 && lightSections != null) {
-            for (Child child : allChildren()) {
-                if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
-                    lit.updateLight(ctx.partialTick());
-                }
-            }
-        }
+        if (++frames % 120 == 0 && lightSections != null) relightChildren(ctx.partialTick());
         for (Child child : allChildren()) {
             if (child.visual() instanceof DynamicVisual dynamic) {
                 Plan<DynamicVisual.Context> plan = dynamic.planFrame();
