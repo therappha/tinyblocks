@@ -50,9 +50,17 @@ public class CreateRandomParityGameTest {
         return ParitySpace.Move.values()[(int) ((seed / LAYOUTS.size()) % ParitySpace.Move.values().length)];
     }
 
-    /** A moved grid gets a while to settle again before the comparison starts, as a chunk that loads does. */
+    /**
+     * A moved grid gets a while to settle again before the comparison starts, as a chunk that loads does. A hand crank
+     * isn't turned until it has moved: one moved while turning loses its speed and only joins its network again once it
+     * has stopped, as Create does with one a contraption moves (it saves no speed for a moved block, and a crank still in
+     * use never asks again), which no real copy that stayed can show.
+     */
     private static ParityScene settled(ParityScene scene, ParitySpace.Move move) {
-        if (move != ParitySpace.Move.STAYS) scene.settleTicks = Math.max(scene.settleTicks, 40);
+        if (move == ParitySpace.Move.STAYS) return scene;
+        scene.settleTicks = Math.max(scene.settleTicks, 40);
+        int moved = -scene.settleTicks / 2;
+        scene.steps.removeIf(step -> step.what().startsWith("crank") && step.tick() <= moved);
         return scene;
     }
 

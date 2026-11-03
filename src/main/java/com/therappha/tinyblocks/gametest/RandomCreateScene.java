@@ -549,7 +549,7 @@ final class RandomCreateScene {
         }
         if (items) {
             end = Math.max(end, 300);
-            scene.endOnlyField("working.held").endOnlyField("working.on_belt").endOnlyField("working.items");
+            scene.endOnlyField("working.held").endOnlyField("working.on_belt").endOnlyField("working.items").endOnlyField("working.analog_signal");
         }
         if (drops) scene.compareEntities();
         scene.runFor(end);

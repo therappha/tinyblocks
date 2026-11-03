@@ -8,6 +8,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 
 import java.io.IOException;
@@ -123,8 +124,11 @@ final class ParityRun {
         var level = helper.getLevel();
         BlockPos far = base.offset(2 * gap + size[0], size[1], gap + size[2]);
         int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS | net.minecraft.world.level.block.Block.UPDATE_SUPPRESS_DROPS;
-        for (BlockPos at : BlockPos.betweenClosed(base, far)) {
-            if (!level.getBlockState(at).isAir()) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), flags);
+        for (BlockPos at : BlockPos.betweenClosed(base.below(), far)) {
+            // Ground to stand on while it runs, as by the test: a sub-level assembled in the air falls.
+            BlockState wanted = at.getY() < base.getY() && !letGo ? net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()
+                    : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            if (level.getBlockState(at) != wanted) level.setBlock(at, wanted, flags);
         }
         var box = new net.minecraft.world.phys.AABB(Vec3.atLowerCornerOf(base), Vec3.atLowerCornerOf(far)).inflate(4);
         for (var entity : level.getEntitiesOfClass(net.minecraft.world.entity.Entity.class, box, e -> !(e instanceof Player))) entity.discard();

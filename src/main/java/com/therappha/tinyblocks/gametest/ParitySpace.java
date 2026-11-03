@@ -87,6 +87,10 @@ interface ParitySpace extends SpaceView {
      */
     AABB spawnBox(int[] size);
 
+    default boolean bornIn(int[] size, Vec3 at) {
+        return spawnBox(size).contains(at);
+    }
+
     /** The entities that appeared in this space while it was watched (ParityEntities). */
     List<Entity> born();
 
@@ -188,6 +192,8 @@ interface ParitySpace extends SpaceView {
         }
 
         @javax.annotation.Nullable private Object subLevel;
+        /** Where the copy stood before it was assembled: the sub-level is still there in the world, and what drops from it falls there. */
+        @javax.annotation.Nullable private BlockPos assembledFrom;
 
         /** The grids of this space, by real position, lowest corner first. */
         private List<BlockPos> grids() {
@@ -232,6 +238,7 @@ interface ParitySpace extends SpaceView {
                     origin = to.subtract(shift);
                 }
                 case SABLE_ASSEMBLE -> {
+                    assembledFrom = origin;
                     subLevel = SableSupport.assemble(level, low, grids, low, high);
                     origin = SableSupport.plotCenter(subLevel).subtract(shift);
                 }
@@ -255,6 +262,14 @@ interface ParitySpace extends SpaceView {
         @Override
         public AABB spawnBox(int[] size) {
             return new AABB(Vec3.atLowerCornerOf(gridPos(BlockPos.ZERO)), Vec3.atLowerCornerOf(gridPos(new BlockPos(size[0], size[1], size[2]))).add(1, 1, 1)).inflate(0.5);
+        }
+
+        @Override
+        public boolean bornIn(int[] size, Vec3 at) {
+            AABB box = spawnBox(size);
+            if (box.contains(at) || assembledFrom == null) return box.contains(at);
+            BlockPos shift = assembledFrom.subtract(origin);
+            return box.move(shift.getX(), shift.getY(), shift.getZ()).contains(at);
         }
 
         private SubgridBlockEntity gridFor(BlockPos cell) {
