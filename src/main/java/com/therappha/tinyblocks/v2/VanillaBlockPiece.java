@@ -440,7 +440,9 @@ public class VanillaBlockPiece extends PieceDefinition {
         // Block.getDrops takes the BlockState explicitly (not read from the real position), so
         // this can query the real loot table directly against the real level — no fake position
         // space needed, loot tables are global registry data, not tied to where the piece sits.
-        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(), null, null, tool);
+        // The phantom goes along for what its loot table copies off the block entity: a shulker box's contents.
+        return net.minecraft.world.level.block.Block.getDrops(state, level, be.getBlockPos(),
+                piece.runtimeBlockEntity instanceof BlockEntity phantom ? phantom : null, null, tool);
     }
 
     @Override
@@ -701,6 +703,8 @@ public class VanillaBlockPiece extends PieceDefinition {
         try {
             FakeServerLevel fakeLevel = space.level;
             BlockPos at = fakeLevel.world(piece.anchor);
+            // What a block's onRemove reads back from its cell, as a chunk still has it then: a chest spills its contents.
+            if (piece.runtimeBlockEntity instanceof BlockEntity phantom) fakeLevel.cells().setBlockEntity(at, phantom);
             BlockAccess.onRemove(state, fakeLevel, at, air, false);
             fakeLevel.blockUpdated(at, state.getBlock());
             if (state.hasAnalogOutputSignal()) fakeLevel.updateNeighbourForOutputSignal(at, state.getBlock());
