@@ -110,7 +110,6 @@ final class PiecePlacement {
             resyncLater(serverLevel, subgridPos, serverLevel.getBlockState(subgridPos).getBlock());
         }
     }
-    }
 
     /**
      * The real hit, moved onto the face of the cell at (in the grid's virtual world frame) it was placed against.
