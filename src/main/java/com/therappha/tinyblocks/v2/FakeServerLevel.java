@@ -123,6 +123,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             instance.delegate = delegateLevel;
             instance.realServer = (ServerLevel) real;
             instance.scheduled = new ArrayList<>();
+            instance.capabilityListeners = new ArrayList<>();
             instance.blockTicks = new FakeTicks<>(cells);
             instance.fluidTicks = new FakeTicks<>(cells);
 
@@ -311,29 +312,62 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
         return delegate.getEntities();
     }
 
+    /**
+     * Whatever block logic spawns (an item it drops, an arrow, primed TNT, a mob) goes into the real level, at the real
+     * spot of the cell it came from: no entity lives in the fake cell space. Real ServerLevel.addFreshEntity hands it to
+     * this.entityManager, which is null here.
+     *
+     * The exception is a falling block (FallingBlock.tick: sand, gravel, concrete powder, anvils, ...), which is not
+     * let out at full size. FallingBlockEntity.fall() has already cleared the origin cell, so the block goes one cell
+     * down instead, and its own onPlace schedules the next fall check: cell by cell over real scheduled ticks, ending
+     * where the entity would have.
+     */
     @Override
     public boolean addFreshEntity(Entity entity) {
-        // Real ServerLevel.addFreshEntity hands the entity to this.entityManager (a
-        // PersistentEntitySectionManager), a ServerLevel-only field the create() field-transplant
-        // never touches (it only copies Level-declared fields) — guaranteed null here, so the real
-        // implementation would NPE the instant anything spawns an entity from inside a Tier 3 tick
-        // call. FallingBlock.tick (sand, gravel, concrete powder, anvil, scaffolding — all share
-        // this one base class, so this is generic, not block-specific) is the vanilla call path
-        // that reaches this today. No GENUINE entity lives in the fake cell space (same documented
-        // simplification as getEntities() above) — but FallingBlockEntity.fall() already cleared
-        // the origin cell to air via its own setBlock() call right before this runs, so simulate
-        // the actual point of that entity (the block relocating one cell down) directly instead of
-        // just dropping it: write the state into the cell below. VanillaBlockPiece.applyChanges'
-        // "a touched cell that wasn't an existing piece" scan (added once fluid spreading needed
-        // the exact same capability) turns that write into a real placed piece, and fires its
-        // onPlace so FallingBlock schedules its next fall check — the fall then continues cell by
-        // cell over successive real scheduled ticks, never needing a genuine tracked entity.
-        if (entity instanceof net.minecraft.world.entity.item.FallingBlockEntity falling) {
-            BlockPos below = BlockPos.containing(entity.getX(), entity.getY() - 1, entity.getZ());
-            cells().set(below, falling.getBlockState());
-            return true;
+        if (entity instanceof net.minecraft.world.entity.item.FallingBlockEntity falling) return fallOneCell(falling);
+        entity.setPos(cells().toReal(entity.position()));
+        ((com.therappha.tinyblocks.mixin.EntityAccessor) entity).tinyblocks$setLevel(realServer);
+        return realServer.addFreshEntity(entity);
+    }
+
+    private boolean fallOneCell(net.minecraft.world.entity.item.FallingBlockEntity falling) {
+        BlockPos into = BlockPos.containing(falling.getX(), falling.getY() - 1, falling.getZ());
+        // Through a fluid at once: the entity goes by and leaves it, where a block stopping in it would take its place.
+        for (int depth = 0; depth < 64 && !getBlockState(into).isAir() && net.minecraft.world.level.block.FallingBlock.isFree(getBlockState(into.below())); depth++) {
+            into = into.below();
         }
-        return false;
+        BlockPos under = into.below();
+        BlockState state = falling.getBlockState(), replaced = getBlockState(into), beneath = getBlockState(under);
+        boolean lands = !net.minecraft.world.level.block.FallingBlock.isFree(beneath);
+        // The entity comes down into the cell of anything lower than a whole block (a torch, a slab), has nowhere to
+        // settle, and breaks into its item.
+        if (lands && beneath.getCollisionShape(this, under).max(Direction.Axis.Y) < 1) {
+            net.minecraft.world.phys.Vec3 at = net.minecraft.world.phys.Vec3.atCenterOf(under);
+            return addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(this, at.x, at.y, at.z, new net.minecraft.world.item.ItemStack(state.getBlock())));
+        }
+        if (replaced.isAir()) cells().set(into, state);
+        else setBlock(into, state, Block.UPDATE_ALL); // over a fluid, which has its own say and whose cell is a piece already
+        if (lands && state.getBlock() instanceof net.minecraft.world.level.block.Fallable fallable) {
+            fallable.onLand(this, into, state, replaced, falling);
+        }
+        return true;
+    }
+
+    /** The caches block entities keep of a neighbour's capability, told each use to look again (forgetCapabilities). */
+    private List<net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener> capabilityListeners;
+
+    @Override
+    public void registerCapabilityListener(BlockPos pos, net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener listener) {
+        capabilityListeners.add(listener);
+    }
+
+    /**
+     * A chunk tells these listeners when the block entity at their position changes. Nothing tells a fake space that:
+     * a piece can go at any time, from any space. So a cache (a Create chute's, of what is below it) never outlives a
+     * use of the space.
+     */
+    public void forgetCapabilities() {
+        capabilityListeners.removeIf(listener -> !listener.onInvalidate());
     }
 
     // --- The rest of this section exists because ServerLevel re-overrides essentially every

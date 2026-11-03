@@ -56,8 +56,13 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
     /** Grid resolution: 2, 4, 8, or 16. Determines how many cells fit per block axis. */
     public final int gridSize;
 
+    /**
+     * Solid as far as fluids go: a block that isn't counts as one a fluid may replace (BlockBehaviour#canBeReplaced),
+     * and real water running onto a grid with room at the top washed it away, pieces and all. Its shapes still come
+     * from its pieces.
+     */
     public SubgridBlock(Properties properties, int gridSize) {
-        super(properties);
+        super(properties.forceSolidOn());
         this.gridSize = gridSize;
     }
 

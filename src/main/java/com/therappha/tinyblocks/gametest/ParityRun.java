@@ -51,6 +51,7 @@ final class ParityRun {
     private int tick;
     private final ParitySpace.Move move;
     private int lastHash, changesSeen;
+    private String entitiesSeen = "";
     private boolean built;
     private final int gap;
     /** Off for a run that is only asked whether it still fails. */
@@ -123,6 +124,10 @@ final class ParityRun {
     }
 
     void buildAll() {
+        if (scene.entitiesAt != null) {
+            int[] size = scene.size();
+            for (ParitySpace space : all()) ParityEntities.watch(helper.getLevel(), space, size);
+        }
         for (ParitySpace space : all()) build(space);
     }
 
@@ -149,18 +154,23 @@ final class ParityRun {
         if (tick > scene.ticks) return;
         if (tick >= 0) compare();
         // Its next spot is a row over, past the space it was built in.
-        if (tick == -scene.settleTicks / 2 && move != ParitySpace.Move.STAYS) ((ParitySpace.Tiny) tiny).move(move, new BlockPos(0, 0, gap));
+        int moveTick = scene.moveAt != null ? scene.moveAt : -scene.settleTicks / 2;
+        if (tick == moveTick && move != ParitySpace.Move.STAYS) ((ParitySpace.Tiny) tiny).move(move, new BlockPos(0, 0, gap));
         for (ParityScene.Timed step : scene.steps) {
             if (step.tick() != tick) continue;
             eventsSeen.add("tick " + tick + ": " + step.what());
             for (ParitySpace space : all()) step.step().run(space);
         }
-        if (tick == scene.ticks) ((ParitySpace.Tiny) tiny).cleanUp();
+        if (tick == scene.ticks) {
+            ((ParitySpace.Tiny) tiny).cleanUp();
+            for (ParitySpace space : all()) ParityEntities.stopWatching(space);
+        }
         if (tick == scene.ticks && reports) finish();
         tick++;
     }
 
     private void compare() {
+        if (scene.onlyAtTheEnd && tick != scene.ticks) return;
         List<BlockPos> cells = tick == scene.ticks ? allCells : this.cells; // nothing can have hidden elsewhere by the end
         int hash = 0;
         for (BlockPos cell : cells) hash = 31 * hash + SpaceDiff.facts(world, cell).hashCode();
@@ -168,10 +178,16 @@ final class ParityRun {
         lastHash = hash;
         List<SpaceDiff.Difference> reals = new ArrayList<>();
         for (ParitySpace control : controls) reals.addAll(SpaceDiff.compare(world, control, cells));
+        List<SpaceDiff.Difference> againstWorld = SpaceDiff.compare(world, tiny, cells);
+        if (scene.entitiesAt != null && tick == (scene.entitiesAt < 0 ? scene.ticks : scene.entitiesAt)) {
+            for (ParitySpace control : controls) reals.addAll(SpaceDiff.compareTotals(world.entities(), control.entities()));
+            againstWorld.addAll(SpaceDiff.compareTotals(world.entities(), tiny.entities()));
+            entitiesSeen = world.entities().toString();
+        }
         betweenReals.record(tick, reals);
         for (SpaceDiff.Difference d : reals) undecided.add(d.cell().toShortString() + d.field());
         List<SpaceDiff.Difference> counted = new ArrayList<>();
-        for (SpaceDiff.Difference d : SpaceDiff.compare(world, tiny, cells)) {
+        for (SpaceDiff.Difference d : againstWorld) {
             if (!undecided.contains(d.cell().toShortString() + d.field())) counted.add(d);
         }
         againstTiny.record(tick, counted);
@@ -180,6 +196,10 @@ final class ParityRun {
     private void finish() {
         List<String> failing = new ArrayList<>();
         for (SpaceDiff.Span span : againstTiny.spans()) failing.add(againstTiny.describe(span, "world", "tiny"));
+        for (ParityScene.Proof proof : scene.proofs) {
+            String facts = SpaceDiff.facts(world, proof.cell()).toString();
+            if (!facts.contains(proof.fact())) failing.add("the world never showed " + proof.fact() + " at " + proof.cell().toShortString() + ", only " + facts);
+        }
         List<String> report = new ArrayList<>();
         report.add((failing.isEmpty() ? "PASSED " : "FAILED ") + testName + " (" + scene.ticks + " ticks, "
                 + changesSeen + " changes in the world)");
@@ -192,6 +212,7 @@ final class ParityRun {
         }
         if (!undecided.isEmpty()) report.add("--- left out of the comparison, the real against real control diverged: " + undecided.size());
         for (SpaceDiff.Span span : betweenReals.spans()) report.add("  " + betweenReals.describe(span, "world", "control"));
+        if (!entitiesSeen.isEmpty()) report.add("--- entities in the world: " + entitiesSeen);
         report.add("--- final state in the world");
         for (BlockPos cell : allCells) {
             if (!world.state(cell).isAir()) report.add(cell.toShortString() + " " + world.state(cell));

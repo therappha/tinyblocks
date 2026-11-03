@@ -237,8 +237,8 @@ public class SubgridKineticGameTest {
     @GameTest(template = PLATFORM, timeoutTicks = 200)
     public void aGridNearTheWorldOriginStillTurns(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        BlockPos at = new BlockPos(1, 100, 1);
-        level.setChunkForced(0, 0, true);
+        BlockPos at = new BlockPos(17, 100, 1); // not in the chunk parityBeltMovedNearTheWorldOrigin uses: tests run side by side
+        level.setChunkForced(1, 0, true);
         level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
         SubgridBlockEntity be = SubgridBlockEntity.createAt(level, at, 7);
         if (be == null) throw new IllegalStateException("no grid at " + at);
@@ -259,7 +259,7 @@ public class SubgridKineticGameTest {
                         synced = e;
                     }
                     level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
-                    level.setChunkForced(0, 0, false);
+                    level.setChunkForced(1, 0, false);
                     helper.assertTrue(synced == null, "the shaft's sendData threw: " + synced);
                     helper.assertTrue(motorBE instanceof KineticBlockEntity k && k.getSpeed() != 0, "motor still: " + motorBE);
                     helper.assertTrue(shaftBE instanceof KineticBlockEntity k && k.getSpeed() != 0, "shaft still: " + shaftBE);

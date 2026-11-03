@@ -119,6 +119,20 @@ final class SubgridTestSupport {
         return player;
     }
 
+    /** A property of the piece at {@code anchor}; a failure of the test, not a crash of the server, when there is none. */
+    static <T extends Comparable<T>> T valueAt(GameTestHelper helper, SubgridBlockEntity be, BlockPos anchor,
+                                               net.minecraft.world.level.block.state.properties.Property<T> property) {
+        BlockState state = stateOf(be, anchor);
+        if (state == null || !state.hasProperty(property)) throw new net.minecraft.gametest.framework.GameTestAssertException("no " + property.getName() + " at " + anchor.toShortString() + ": " + state);
+        return state.getValue(property);
+    }
+
+    /** Whether the piece at {@code anchor} is of {@code block}; false when there is none. */
+    static boolean pieceIs(SubgridBlockEntity be, BlockPos anchor, net.minecraft.world.level.block.Block block) {
+        BlockState state = stateOf(be, anchor);
+        return state != null && state.is(block);
+    }
+
     static BlockState stateOf(SubgridBlockEntity be, BlockPos anchor) {
         PlacedPiece piece = be.getPieceAt(anchor.getX(), anchor.getY(), anchor.getZ());
         return piece == null ? null : (BlockState) piece.runtimeState;

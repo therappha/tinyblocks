@@ -25,7 +25,7 @@ public final class SpaceDiff {
 
     private SpaceDiff() {}
 
-    public static final String STATE = "state.", WORKING = "working.", VISUAL = "visual.";
+    public static final String STATE = "state.", WORKING = "working.", VISUAL = "visual.", ENTITY = "entity.";
 
     /** {@code left} and {@code right} are what each space has for {@code field} at {@code cell}; "" when it has none. */
     public record Difference(BlockPos cell, String field, String left, String right) {}
@@ -94,6 +94,18 @@ public final class SpaceDiff {
             String x = a.getOrDefault(field, ""), y = b.getOrDefault(field, "");
             if (!x.equals(y)) into.add(new Difference(cell, field, x, y));
         }
+    }
+
+    /** Totals that belong to a whole space rather than to a cell of it, such as the entities around it: one difference for each that isn't equal. */
+    public static List<Difference> compareTotals(Map<String, Integer> left, Map<String, Integer> right) {
+        Set<String> names = new TreeSet<>(left.keySet());
+        names.addAll(right.keySet());
+        List<Difference> differences = new ArrayList<>();
+        for (String name : names) {
+            int x = left.getOrDefault(name, 0), y = right.getOrDefault(name, 0);
+            if (x != y) differences.add(new Difference(BlockPos.ZERO, ENTITY + name, Integer.toString(x), Integer.toString(y)));
+        }
+        return differences;
     }
 
     /** Every cell of the box from (0,0,0) up to, and not including, {@code size}. */

@@ -12,19 +12,27 @@ import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** A space a scene can be built in and acted on, in each case through the entry points the game itself uses. */
 interface ParitySpace extends SpaceView {
@@ -34,6 +42,8 @@ interface ParitySpace extends SpaceView {
     void use(BlockPos cell);
 
     void breakCell(BlockPos cell);
+
+    void clear(BlockPos cell);
 
     void place(BlockPos cell, BlockState state);
 
@@ -65,9 +75,33 @@ interface ParitySpace extends SpaceView {
         }
     }
 
+    /**
+     * Where an entity that appears belongs to this space: in its cells, or in the blocks of its grids. Entities are
+     * counted by where they came from, not where they are: a full-size item out of a tiny piece can be pushed out of
+     * its block, and water carries items along, into the box of the space next door.
+     */
+    AABB spawnBox(int[] size);
+
+    /** The entities that appeared in this space while it was watched (ParityEntities). */
+    List<Entity> born();
+
+    /** How many of each entity that came out of this space are still there; dropped items count by what they hold. */
+    default Map<String, Integer> entities() {
+        Map<String, Integer> found = new TreeMap<>();
+        for (Entity entity : born()) {
+            if (entity.isRemoved()) continue;
+            if (entity instanceof ItemEntity item) {
+                found.merge("item " + BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).getPath(), item.getItem().getCount(), Integer::sum);
+            } else {
+                found.merge(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath(), 1, Integer::sum);
+            }
+        }
+        return found;
+    }
+
     /** What can happen to a tiny copy once it is running. */
     enum Move {
-        STAYS, GRID_SAVE, SABLE_MOVE, SABLE_ASSEMBLE
+        STAYS, RELOAD, GRID_SAVE, SABLE_MOVE, SABLE_ASSEMBLE
     }
 
     final class Real extends RealSpaceView implements ParitySpace {
@@ -99,9 +133,26 @@ interface ParitySpace extends SpaceView {
         }
 
         @Override
+        public void clear(BlockPos cell) {
+            server.setBlockAndUpdate(real(cell), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        }
+
+        @Override
         public void place(BlockPos cell, BlockState state) {
             build(cell, state, true);
             server.gameEvent(GameEvent.BLOCK_PLACE, real(cell), GameEvent.Context.of(state));
+        }
+
+        private final List<Entity> born = new ArrayList<>();
+
+        @Override
+        public List<Entity> born() {
+            return born;
+        }
+
+        @Override
+        public AABB spawnBox(int[] size) {
+            return new AABB(Vec3.atLowerCornerOf(real(BlockPos.ZERO)), Vec3.atLowerCornerOf(real(new BlockPos(size[0], size[1], size[2])))).inflate(0.5);
         }
     }
 
@@ -133,6 +184,16 @@ interface ParitySpace extends SpaceView {
                 case STAYS -> {
                     return;
                 }
+                case RELOAD -> {
+                    // As a chunk unloading and loading back does: saved first, all of them, then each comes back from its tag.
+                    Map<BlockPos, CompoundTag> saved = new LinkedHashMap<>();
+                    for (BlockPos at : grids) saved.put(at, level.getBlockEntity(at).saveWithFullMetadata(level.registryAccess()));
+                    for (BlockPos at : grids) {
+                        level.getBlockEntity(at).onChunkUnloaded();
+                        level.removeBlockEntity(at);
+                    }
+                    saved.forEach((at, tag) -> level.setBlockEntity(net.minecraft.world.level.block.entity.BlockEntity.loadStatic(at, level.getBlockState(at), tag, level.registryAccess())));
+                }
                 case GRID_SAVE -> {
                     ItemStack save = new ItemStack(Registration.GRID_SAVE.get());
                     if (!(grids.size() == 1 ? GridSaveItem.pickUp(level, low, save, player) : GridSaveItem.pickUpBox(level, low, high, save, player))) {
@@ -159,6 +220,18 @@ interface ParitySpace extends SpaceView {
 
         void cleanUp() {
             if (subLevel != null) SableSupport.remove(level, subLevel);
+        }
+
+        private final List<Entity> born = new ArrayList<>();
+
+        @Override
+        public List<Entity> born() {
+            return born;
+        }
+
+        @Override
+        public AABB spawnBox(int[] size) {
+            return new AABB(Vec3.atLowerCornerOf(gridPos(BlockPos.ZERO)), Vec3.atLowerCornerOf(gridPos(new BlockPos(size[0], size[1], size[2]))).add(1, 1, 1)).inflate(0.5);
         }
 
         private SubgridBlockEntity gridFor(BlockPos cell) {
@@ -188,6 +261,11 @@ interface ParitySpace extends SpaceView {
             SubgridBlockEntity be = grid(cell);
             BlockPos at = local(cell);
             if (be != null) be.removePieceAt(at.getX(), at.getY(), at.getZ());
+        }
+
+        @Override
+        public void clear(BlockPos cell) {
+            breakCell(cell);
         }
 
         @Override
