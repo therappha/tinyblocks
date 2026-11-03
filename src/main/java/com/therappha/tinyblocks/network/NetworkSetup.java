@@ -116,7 +116,7 @@ public class NetworkSetup {
         ctx.enqueueWork(() -> {
             Level level = ctx.player().level();
             if (level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid) {
-                com.therappha.tinyblocks.v2.VanillaBlockPiece.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
+                com.therappha.tinyblocks.v2.PistonAnimation.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
             }
         });
     }
