@@ -1,5 +1,6 @@
 package com.therappha.tinyblocks.client.flywheel;
 
+import com.therappha.tinyblocks.subgrid.GridSight;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
@@ -47,7 +48,13 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         @Override public int threadCount() { return 1; }
     };
 
-    private record Child(BlockState state, VisualEmbedding embedding, BlockEntityVisual<?> visual) {}
+    /** {@code own}: the embedding is this child's alone, not the grid's shared one. */
+    private record Child(BlockState state, VisualEmbedding embedding, boolean own, Matrix4f transform, BlockEntityVisual<?> visual) {}
+
+    /** Scale, not an all-zero matrix: w must stay 1, or the shader divides by zero. */
+    private static final Matrix4f COLLAPSED = new Matrix4f().scale(0);
+    /** Blocks added around a grid before asking if it's on screen, so it's back before its edge is seen. */
+    private static final double SCREEN_MARGIN = 2;
 
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static int lightLogBudget = 3;
@@ -61,10 +68,19 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     /** For a shaft connector's children, the grid size across its face they were built for (its funnel's start). */
     private final Map<PlacedPiece, Integer> builtAcross = new IdentityHashMap<>();
 
+    /** The embedding the plain pieces share: identical ones in a grid draw as one instanced batch. */
+    private VisualEmbedding sharedEmbedding;
+    /** Every child, between changes to {@link #children}. */
+    private List<Child> cachedChildren;
+    private boolean hidden;
+    private final GridSight sight = new GridSight();
+
     private List<Child> allChildren() {
-        List<Child> all = new ArrayList<>();
-        children.values().forEach(all::addAll);
-        return all;
+        if (cachedChildren == null) {
+            cachedChildren = new ArrayList<>();
+            children.values().forEach(cachedChildren::addAll);
+        }
+        return cachedChildren;
     }
 
     public SubgridVisual(VisualizationContext context, SubgridBlockEntity blockEntity, float partialTick) {
@@ -78,21 +94,27 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     private void reconcile(float partialTick) {
         List<PlacedPiece> live = new ArrayList<>(blockEntity.getPieces());
+        java.util.Set<PlacedPiece> alive = java.util.Collections.newSetFromMap(new IdentityHashMap<>(live.size() * 2));
+        alive.addAll(live);
         children.entrySet().removeIf(e -> {
             PlacedPiece piece = e.getKey();
             // A connector whose neighbour across changed (a grid placed or broken there) is rebuilt to match it.
-            if (live.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()
+            if (alive.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()
                     && builtAcross.getOrDefault(piece, 0) == com.therappha.tinyblocks.client.SubgridRenderer.acrossOf(blockEntity, piece)) {
                 return false;
             }
-            e.getValue().forEach(SubgridVisual::destroy);
+            e.getValue().forEach(this::destroy);
             builtAcross.remove(piece);
+            cachedChildren = null;
             return true;
         });
         for (PlacedPiece piece : live) {
             if (!children.containsKey(piece)) {
                 List<Child> slices = createChildren(piece, partialTick);
-                if (!slices.isEmpty()) children.put(piece, slices);
+                if (!slices.isEmpty()) {
+                    children.put(piece, slices);
+                    cachedChildren = null;
+                }
             }
         }
     }
@@ -134,8 +156,23 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         // Anchor the embedding at the phantom's OWN position so the hosted visual (which places itself at
         // blockEntity.getBlockPos() - renderOrigin) sits at the embedding's origin; sliceTransform then
         // carries it to the slice's real-world place.
-        VisualEmbedding embedding = context.createEmbedding(phantom.getBlockPos());
-        embedding.transforms(sliceTransform(slice), new Matrix3f());
+        boolean shared = isPlainCell(phantom, slice);
+        Matrix4f transform;
+        VisualEmbedding embedding;
+        if (shared) {
+            float cell = 1f / blockEntity.gridSize;
+            transform = sliceTransform(new com.therappha.tinyblocks.client.PieceTransforms.Slice(
+                    new org.joml.Vector3f(), new org.joml.Vector3f(cell, cell, cell)));
+            if (sharedEmbedding == null) {
+                sharedEmbedding = newEmbedding(blockEntity.virtualOrigin());
+                sharedEmbedding.transforms(hidden ? COLLAPSED : transform, new Matrix3f());
+            }
+            embedding = sharedEmbedding;
+        } else {
+            transform = sliceTransform(slice);
+            embedding = newEmbedding(phantom.getBlockPos());
+            embedding.transforms(hidden ? COLLAPSED : transform, new Matrix3f());
+        }
         BlockEntityVisual<?> visual = visualOf.apply(embedding);
         if (lightSections != null && visual instanceof SectionTrackedVisual tracked) {
             tracked.setSectionCollector(lightSections);
@@ -145,7 +182,44 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         if (lightSections != null && visual instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
             lit.updateLight(partialTick);
         }
-        return new Child(state, embedding, visual);
+        return new Child(state, embedding, !shared, transform, visual);
+    }
+
+    private VisualEmbedding newEmbedding(BlockPos origin) {
+        return context.createEmbedding(origin);
+    }
+
+    /** One cell at its cell scale: drawn where the shared embedding would put it. A connector's funnel isn't. */
+    private boolean isPlainCell(BlockEntity phantom, com.therappha.tinyblocks.client.PieceTransforms.Slice slice) {
+        float cell = 1f / blockEntity.gridSize;
+        BlockPos local = phantom.getBlockPos().subtract(blockEntity.virtualOrigin());
+        return slice.scale().equals(cell, cell, cell)
+                && slice.translation().equals(local.getX() * cell, local.getY() * cell, local.getZ() * cell);
+    }
+
+    private void deleteSharedEmbedding() {
+        if (sharedEmbedding == null) return;
+        sharedEmbedding.delete();
+        sharedEmbedding = null;
+    }
+
+    /** Collapses this grid's embeddings to nothing, or gives them back their place. */
+    private void setHidden(boolean hide) {
+        if (hide == hidden) return;
+        hidden = hide;
+        for (Child child : allChildren()) {
+            child.embedding().transforms(hide ? COLLAPSED : child.transform(), new Matrix3f());
+        }
+    }
+
+    private void updateSight(DynamicVisual.Context ctx) {
+        net.minecraft.world.phys.Vec3 seen = com.therappha.tinyblocks.subgrid.SubLevels.inWorld(level,
+                net.minecraft.world.phys.Vec3.atCenterOf(blockEntity.getBlockPos()));
+        double distance = seen.distanceTo(ctx.camera().getPosition());
+        double renderDistance = net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
+        boolean onScreen = net.minecraft.client.Minecraft.getInstance().levelRenderer.getFrustum()
+                .isVisible(new net.minecraft.world.phys.AABB(seen, seen).inflate(1 + SCREEN_MARGIN));
+        sight.update(distance, renderDistance, onScreen);
     }
 
     /** Embedded space -> world (relative to the parent's render origin): the slice's translate, then its scale. */
@@ -159,9 +233,9 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
                 .scale(slice.scale());
     }
 
-    private static void destroy(Child child) {
+    private void destroy(Child child) {
         child.visual().delete();
-        child.embedding().delete();
+        if (child.own()) child.embedding().delete();
     }
 
     // --- Flywheel hooks ------------------------------------------------------------------------
@@ -212,6 +286,10 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void beginFrame(DynamicVisual.Context ctx) {
+        updateSight(ctx);
+        // Only what's far is collapsed: collapsing what's merely off screen made nearby blocks vanish.
+        setHidden(sight.far());
+        if (sight.away()) return;
         reconcile(ctx.partialTick());
         // Safety net: re-run the children's first-light pass about once a second, in case anything
         // reset or skipped it. Cheap (one relight per hosted visual).
@@ -249,8 +327,10 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     protected void _delete() {
-        allChildren().forEach(SubgridVisual::destroy);
+        allChildren().forEach(this::destroy);
         children.clear();
         builtAcross.clear();
+        cachedChildren = null;
+        deleteSharedEmbedding();
     }
 }

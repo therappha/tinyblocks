@@ -46,7 +46,11 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
         // Static pieces come from a cached, culled mesh (StaticMesh); only the rest go through the loop below.
         StaticMesh mesh = StaticMesh.of(be, blockRenderer);
-        mesh.draw(poseStack, bufferSource, packedLight, packedOverlay);
+        // In the game's own level they're in the chunk (SubgridChunkMesh), once a compile has taken them. A schematic's
+        // preview or a contraption draws the grid from a level of its own, where no chunk will.
+        boolean ownLevel = be.getLevel() == Minecraft.getInstance().level;
+        if (ownLevel) mesh.requestChunk(be);
+        if (!ownLevel || !mesh.inChunk) mesh.draw(poseStack, bufferSource, packedLight, packedOverlay);
         if (crackedPiece != null && mesh.baked.contains(crackedPiece)) {
             BlockState state = crackedPiece.definition.renderState(crackedPiece);
             RenderType crumbleType = RenderType.crumbling(ResourceLocation.withDefaultNamespace(
@@ -60,6 +64,10 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 poseStack.popPose();
             }
         }
+
+        // Past vanilla's distance for a block entity nothing else is drawn here: this renderer only gets that far to
+        // notice a changed grid, for the chunk's sake.
+        if (ownLevel && !com.therappha.tinyblocks.subgrid.GridSight.drawnPerFrame(seenDistance(be))) return;
 
         for (PlacedPiece piece : mesh.dynamic) {
             BlockState state = piece.definition.renderState(piece);
@@ -155,6 +163,12 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         }
     }
 
+    /** From the camera to the grid where it's seen: it may be on a sub-level. */
+    private static double seenDistance(SubgridBlockEntity be) {
+        return com.therappha.tinyblocks.subgrid.SubLevels.inWorld(be.getLevel(), net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()))
+                .distanceTo(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
+    }
+
     /** The cells of a grid, as a model or a fluid reads its neighbours. */
     private static SubgridFluidView viewOf(SubgridBlockEntity be) {
         // The grid's own level: a schematic's preview or a contraption draws it from a level of their own.
@@ -192,6 +206,11 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         final java.util.Set<PlacedPiece> baked = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         final List<PlacedPiece> dynamic = new java.util.ArrayList<>();
         private final java.util.Map<RenderType, List<PieceQuads>> batches = new java.util.LinkedHashMap<>();
+        /** The same pieces by chunk render type, which is all a section's buffers take. */
+        private final java.util.Map<RenderType, List<PieceQuads>> chunkBatches = new java.util.LinkedHashMap<>();
+        /** Whether a section compile has taken this mesh, and whether one was asked for. */
+        boolean inChunk;
+        private boolean chunkRequested;
         int quadCount;
 
         private StaticMesh(SubgridBlockEntity be, net.minecraft.client.renderer.block.BlockRenderDispatcher blockRenderer) {
@@ -237,9 +256,11 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                     quads.addAll(bakedModel.getQuads(state, null, random, modelData, rt));
                     if (quads.isEmpty()) continue;
                     quadCount += quads.size();
+                    PieceQuads pieceQuads = new PieceQuads(slice.translation(), slice.scale(), r, g, b, quads);
                     batches.computeIfAbsent(net.neoforged.neoforge.client.RenderTypeHelper.getEntityRenderType(rt, false),
                                     k -> new java.util.ArrayList<>())
-                            .add(new PieceQuads(slice.translation(), slice.scale(), r, g, b, quads));
+                            .add(pieceQuads);
+                    chunkBatches.computeIfAbsent(rt, k -> new java.util.ArrayList<>()).add(pieceQuads);
                 }
                 baked.add(piece);
             }
@@ -255,6 +276,42 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             StaticMesh mesh = new StaticMesh(be, blockRenderer);
             be.renderCache = mesh;
             return mesh;
+        }
+
+        /** Asks once for this grid's section to be compiled again, when this mesh isn't the one in it. */
+        private void requestChunk(SubgridBlockEntity be) {
+            if (inChunk || chunkRequested) return;
+            chunkRequested = true;
+            BlockPos pos = be.getBlockPos();
+            Minecraft.getInstance().levelRenderer.setSectionDirty(net.minecraft.core.SectionPos.blockToSectionCoord(pos.getX()),
+                    net.minecraft.core.SectionPos.blockToSectionCoord(pos.getY()),
+                    net.minecraft.core.SectionPos.blockToSectionCoord(pos.getZ()));
+        }
+
+        /**
+         * Writes this mesh in a section being compiled, off the render thread. {@code x, y, z}: the grid in the section.
+         * A chunk's shader has no directional light, so each quad gets its side's shade here, as a block model does.
+         */
+        void writeToChunk(net.neoforged.neoforge.client.event.AddSectionGeometryEvent.SectionRenderingContext context,
+                          int x, int y, int z, int light) {
+            PoseStack poseStack = context.getPoseStack();
+            var region = context.getRegion();
+            for (var batch : chunkBatches.entrySet()) {
+                var consumer = context.getOrCreateChunkBuffer(batch.getKey());
+                for (PieceQuads piece : batch.getValue()) {
+                    poseStack.pushPose();
+                    poseStack.translate(x + piece.translation().x, y + piece.translation().y, z + piece.translation().z);
+                    poseStack.scale(piece.scale().x, piece.scale().y, piece.scale().z);
+                    PoseStack.Pose pose = poseStack.last();
+                    for (var quad : piece.quads()) {
+                        float shade = region.getShade(quad.getDirection(), quad.isShade());
+                        boolean tinted = quad.isTinted();
+                        consumer.putBulkData(pose, quad, (tinted ? piece.r() : 1) * shade, (tinted ? piece.g() : 1) * shade,
+                                (tinted ? piece.b() : 1) * shade, 1.0F, light, net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY);
+                    }
+                    poseStack.popPose();
+                }
+            }
         }
 
         void draw(PoseStack poseStack, MultiBufferSource bufferSource, int light, int overlay) {
@@ -299,6 +356,12 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
     static boolean isGear(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
         return com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null
                 && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(be.getGridSize());
+    }
+
+    /** Past vanilla's 64 blocks too, or a changed grid out there would never ask for its section to be rebuilt. */
+    @Override
+    public int getViewDistance() {
+        return Minecraft.getInstance().options.getEffectiveRenderDistance() * 16;
     }
 
     @Override

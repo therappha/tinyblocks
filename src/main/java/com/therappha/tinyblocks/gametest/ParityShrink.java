@@ -129,11 +129,11 @@ final class ParityShrink {
 
     private void finish() {
         List<String> report = new ArrayList<>();
-        report.add("REDUZIDA " + testName + " em " + layout.name() + ", " + attempts + " tentativas, " + best.ticks + " ticks");
+        report.add("SHRUNK " + testName + " in " + layout.name() + ", " + attempts + " attempts, " + best.ticks + " ticks");
         best.blocks.forEach(p -> report.add(p.cell().toShortString() + " " + p.state()));
         best.slots.forEach(s -> report.add("item " + s.cell().toShortString() + " slot " + s.slot() + " " + s.stack()));
         best.steps.forEach(t -> report.add("tick " + t.tick() + ": " + t.what()));
-        ParityRun.writeReport(testName + "_cena", report);
+        ParityRun.writeReport(testName + "_scene", report);
         // Once more with its report on: it says what the smallest scene still gets wrong, and fails the test with it.
         clear();
         trying = best;
