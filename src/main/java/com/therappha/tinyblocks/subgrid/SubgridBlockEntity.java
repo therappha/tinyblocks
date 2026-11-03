@@ -674,6 +674,11 @@ public class SubgridBlockEntity extends BlockEntity {
         chunkUnloaded = true;
     }
 
+    /** Whether this grid went with its chunk: a loaded chunk brings a new one, with new pieces, in its place. */
+    public boolean isChunkUnloaded() {
+        return chunkUnloaded;
+    }
+
     /**
      * The SubgridBlock itself was removed: every piece goes with it, so each gets the same onRemoved a single
      * broken piece gets (a Create shaft inside lets the network around it know at once). Not on a chunk
