@@ -92,7 +92,8 @@ public class FluidParityGameTest {
             bath(s, 0, 3, 15, 5, 2);
             s.put(5, 1, 4, Blocks.REDSTONE_WIRE.defaultBlockState()).put(6, 1, 4, Blocks.TORCH.defaultBlockState());
             s.put(7, 1, 4, Blocks.LEVER.defaultBlockState().setValue(LeverBlock.FACE, AttachFace.FLOOR).setValue(LeverBlock.FACING, Direction.NORTH));
-            s.put(8, 1, 4, Blocks.WHEAT.defaultBlockState());
+            // A flower, not a crop: a crop grows on random ticks, which the real copies and the grid draw differently.
+            s.put(8, 1, 4, Blocks.POPPY.defaultBlockState());
             s.raw(2, 1, 4, WATER).runFor(60).compareEntities().provenBy(7, 1, 4, "water");
         }));
 

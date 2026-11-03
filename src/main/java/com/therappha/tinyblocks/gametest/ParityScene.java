@@ -44,6 +44,8 @@ final class ParityScene {
     final List<Slot> slots = new ArrayList<>();
     final List<Timed> steps = new ArrayList<>();
     final List<Proof> proofs = new ArrayList<>();
+    /** What steps place, for what is built later to be looked at too (ParityChanceGameTest). */
+    final List<BlockState> placedLater = new ArrayList<>();
     final List<StandIn> standIns = new ArrayList<>();
     /** Compared only at the end, these fields everywhere and every field of these cells: what may get there on another tick. */
     final Set<String> endOnlyFields = new HashSet<>();
@@ -118,6 +120,7 @@ final class ParityScene {
 
     ParityScene placeAt(int tick, int x, int y, int z, BlockState state) {
         BlockPos cell = new BlockPos(x, y, z);
+        placedLater.add(state);
         steps.add(new Timed(tick, "place " + state + " at " + cell.toShortString(), space -> space.place(cell, state)));
         return this;
     }
