@@ -437,19 +437,24 @@ public class RedstoneParityGameTest {
 
     static TestFunction test(ParityScene scene, ParityRun.Layout layout, ParitySpace.Move move) {
         String name = "parity_" + scene.name + "_" + layout.name() + (move == ParitySpace.Move.STAYS ? "" : "_" + move.name().toLowerCase());
-        return new TestFunction("parity", name, TinyBlocks.MOD_ID + ":" + layout.template(), ParityRun.timeout(scene), 0L, true,
+        return new TestFunction("parity", name, TinyBlocks.MOD_ID + ":" + layout.template(), ParityRun.timeout(scene), 0L, scene.knownBroken == null,
                 helper -> new ParityRun(helper, scene, layout, name, move).start());
     }
 
-    @GameTestGenerator
-    public Collection<TestFunction> parity() {
+    /** Each scene in a whole 16, and cut by seams in two ways. */
+    static List<TestFunction> everyLayout(List<ParityScene> scenes) {
         List<TestFunction> tests = new ArrayList<>();
-        for (ParityScene scene : scenes()) {
+        for (ParityScene scene : scenes) {
             for (ParityRun.Layout layout : List.of(ParityRun.Layout.ONE_16, ParityRun.Layout.FOUR_8, ParityRun.Layout.FOUR_8_SHIFTED)) {
                 tests.add(test(scene, layout));
             }
         }
         return tests;
+    }
+
+    @GameTestGenerator
+    public Collection<TestFunction> parity() {
+        return everyLayout(scenes());
     }
 
     /**

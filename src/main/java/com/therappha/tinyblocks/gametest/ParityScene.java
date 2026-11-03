@@ -23,16 +23,26 @@ final class ParityScene {
     record Placement(BlockPos cell, BlockState state, boolean shaped) {}
     record Slot(BlockPos cell, int slot, ItemStack stack) {}
     record Timed(int tick, String what, Step step) {}
+    record Proof(BlockPos cell, String fact) {}
 
     final String name;
     final List<Placement> blocks = new ArrayList<>();
     final List<Slot> slots = new ArrayList<>();
     final List<Timed> steps = new ArrayList<>();
+    final List<Proof> proofs = new ArrayList<>();
     int ticks = 60;
     /** How long it runs before the comparison starts, built and, when a grid is moved, moved halfway through this. */
     int settleTicks = 12;
     /** Compared tick by tick only around what was built; the whole box still at the end. */
     boolean watchOnlyAround = false;
+    /** Compared only at the end: for what gets to the same place by another way (a falling block is an entity in the world, not in a grid). */
+    boolean onlyAtTheEnd = false;
+    /** Set when this scene shows a bug with an issue of its own: its tests stay, as not required, until that is fixed. */
+    @javax.annotation.Nullable String knownBroken = null;
+    /** The tick at which the entities around each space are compared; none when null. */
+    @javax.annotation.Nullable Integer entitiesAt = null;
+    /** The tick at which a grid that moves does so; halfway through the settling when null. */
+    @javax.annotation.Nullable Integer moveAt = null;
 
     ParityScene(String name) {
         this.name = name;
@@ -80,6 +90,13 @@ final class ParityScene {
         return this;
     }
 
+    /** Takes what is there away and leaves nothing: breaking water, in the world, leaves the water. */
+    ParityScene clearAt(int tick, int x, int y, int z) {
+        BlockPos cell = new BlockPos(x, y, z);
+        steps.add(new Timed(tick, "clear " + cell.toShortString(), space -> space.clear(cell)));
+        return this;
+    }
+
     ParityScene placeAt(int tick, int x, int y, int z, BlockState state) {
         BlockPos cell = new BlockPos(x, y, z);
         steps.add(new Timed(tick, "place " + state + " at " + cell.toShortString(), space -> space.place(cell, state)));
@@ -101,6 +118,40 @@ final class ParityScene {
 
     ParityScene runFor(int ticks) {
         this.ticks = ticks;
+        return this;
+    }
+
+    /**
+     * Not what should happen, only that the real run did something worth comparing: a scene whose press never pressed
+     * would pass with a press that doesn't work. {@code fact} is looked for in what SpaceDiff knows of the cell at the end.
+     */
+    ParityScene provenBy(int x, int y, int z, String fact) {
+        proofs.add(new Proof(new BlockPos(x, y, z), fact));
+        return this;
+    }
+
+    ParityScene knownBroken(String why) {
+        knownBroken = why;
+        return this;
+    }
+
+    ParityScene compareOnlyAtTheEnd() {
+        onlyAtTheEnd = true;
+        return this;
+    }
+
+    /** Also what is left lying around at the end: dropped items, by what they hold, and any other entity. */
+    ParityScene compareEntities() {
+        return compareEntitiesAt(-1);
+    }
+
+    ParityScene compareEntitiesAt(int tick) {
+        entitiesAt = tick;
+        return this;
+    }
+
+    ParityScene moveAt(int tick) {
+        moveAt = tick;
         return this;
     }
 
