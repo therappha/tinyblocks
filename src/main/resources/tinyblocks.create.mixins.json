@@ -6,6 +6,7 @@
   "mixins": [
     "BlockEntityConfigurationPacketMixin",
     "ContraptionMixin",
+    "DirectionalShaftHalvesBlockEntityMixin",
     "KineticBlockEntityMixin",
     "KineticNetworkAccessor",
     "KineticNetworkMixin",

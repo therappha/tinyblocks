@@ -331,6 +331,27 @@ public final class KineticBridge {
         return found;
     }
 
+    // --- DirectionalShaftHalvesBlockEntity.getSourceFacing ------------------------------------------------
+
+    /**
+     * The face of a real clutch or gearshift its rotation comes in by, when it comes from a plate: Create reads that side
+     * off the difference between its position and its source's, and a plate's is in the grid's frame. Taken for some
+     * other side, a powered gearshift reversed its input, clashed with it and broke; a clutch cut the wrong side.
+     * Null when Create's own reading holds.
+     */
+    @Nullable
+    public static Direction sourceFaceAcross(KineticBlockEntity self) {
+        BlockPos source = self.source;
+        if (source == null || isPhantom(self) || !(self.getLevel() instanceof ServerLevel level)) return null;
+        for (Direction face : Direction.values()) {
+            if (level.getBlockEntity(self.getBlockPos().relative(face)) instanceof SubgridBlockEntity grid) {
+                KineticBlockEntity connector = connectorOn(grid, face.getOpposite(), level);
+                if (connector != null && connector.getBlockPos().equals(source)) return face;
+            }
+        }
+        return null;
+    }
+
     // --- RotationPropagator.propagateMissingSource ---------------------------------------------------------
 
     /**
