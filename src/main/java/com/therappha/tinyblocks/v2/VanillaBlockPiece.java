@@ -566,10 +566,7 @@ public class VanillaBlockPiece extends PieceDefinition {
      * solid ground — still gets the light of the block it visually sits in.
      */
     public static FakeLevel buildClientFakeSpace(SubgridBlockEntity be, Level clientLevel) {
-        SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
-        FakeLevel fakeLevel = new FakeLevel(clientLevel, cells, be.getBlockPos());
-        cells.attachLevel(fakeLevel);
-        return fakeLevel;
+        return plainFakeSpace(be, clientLevel);
     }
 
     /**
@@ -580,8 +577,13 @@ public class VanillaBlockPiece extends PieceDefinition {
      * that are statically typed to require one.
      */
     public static FakeLevel buildFakeSpace(SubgridBlockEntity be, ServerLevel serverLevel) {
+        return plainFakeSpace(be, serverLevel);
+    }
+
+    /** A FakeLevel over {@code be}'s cells, wrapping {@code real}: buildFakeSpace and buildClientFakeSpace. */
+    private static FakeLevel plainFakeSpace(SubgridBlockEntity be, Level real) {
         SubgridFakeCellGetter cells = (SubgridFakeCellGetter) cellsFor(be);
-        FakeLevel fakeLevel = new FakeLevel(serverLevel, cells, be.getBlockPos());
+        FakeLevel fakeLevel = new FakeLevel(real, cells, be.getBlockPos());
         cells.attachLevel(fakeLevel);
         return fakeLevel;
     }
