@@ -75,13 +75,21 @@ interface ParitySpace extends SpaceView {
         }
     }
 
-    /** How many of each entity are in and around the cells up to {@code size}. */
-    Map<String, Integer> entities(int[] size);
+    /**
+     * Where an entity that appears belongs to this space: in its cells, or in the blocks of its grids. Entities are
+     * counted by where they came from, not where they are: a full-size item out of a tiny piece can be pushed out of
+     * its block, and water carries items along, into the box of the space next door.
+     */
+    AABB spawnBox(int[] size);
 
-    /** Dropped items count by what they hold, however they have stacked up. A player here is only a test's. */
-    private static Map<String, Integer> entitiesIn(ServerLevel level, AABB box) {
+    /** The entities that appeared in this space while it was watched (ParityEntities). */
+    List<Entity> born();
+
+    /** How many of each entity that came out of this space are still there; dropped items count by what they hold. */
+    default Map<String, Integer> entities() {
         Map<String, Integer> found = new TreeMap<>();
-        for (Entity entity : level.getEntities((Entity) null, box, e -> !(e instanceof Player))) {
+        for (Entity entity : born()) {
+            if (entity.isRemoved()) continue;
             if (entity instanceof ItemEntity item) {
                 found.merge("item " + BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).getPath(), item.getItem().getCount(), Integer::sum);
             } else {
@@ -135,9 +143,16 @@ interface ParitySpace extends SpaceView {
             server.gameEvent(GameEvent.BLOCK_PLACE, real(cell), GameEvent.Context.of(state));
         }
 
+        private final List<Entity> born = new ArrayList<>();
+
         @Override
-        public Map<String, Integer> entities(int[] size) {
-            return entitiesIn(server, new AABB(Vec3.atLowerCornerOf(real(BlockPos.ZERO)), Vec3.atLowerCornerOf(real(new BlockPos(size[0], size[1], size[2])))).inflate(1));
+        public List<Entity> born() {
+            return born;
+        }
+
+        @Override
+        public AABB spawnBox(int[] size) {
+            return new AABB(Vec3.atLowerCornerOf(real(BlockPos.ZERO)), Vec3.atLowerCornerOf(real(new BlockPos(size[0], size[1], size[2])))).inflate(0.5);
         }
     }
 
@@ -207,11 +222,16 @@ interface ParitySpace extends SpaceView {
             if (subLevel != null) SableSupport.remove(level, subLevel);
         }
 
+        private final List<Entity> born = new ArrayList<>();
+
         @Override
-        public Map<String, Integer> entities(int[] size) {
-            Vec3 low = Vec3.atLowerCornerOf(gridPos(BlockPos.ZERO));
-            // Wider than the grids: what comes out of a piece is full size, and so are its steps. Still far short of the next space.
-            return entitiesIn(level, new AABB(low, Vec3.atLowerCornerOf(gridPos(new BlockPos(size[0], size[1], size[2]))).add(1, 1, 1)).inflate(4));
+        public List<Entity> born() {
+            return born;
+        }
+
+        @Override
+        public AABB spawnBox(int[] size) {
+            return new AABB(Vec3.atLowerCornerOf(gridPos(BlockPos.ZERO)), Vec3.atLowerCornerOf(gridPos(new BlockPos(size[0], size[1], size[2]))).add(1, 1, 1)).inflate(0.5);
         }
 
         private SubgridBlockEntity gridFor(BlockPos cell) {

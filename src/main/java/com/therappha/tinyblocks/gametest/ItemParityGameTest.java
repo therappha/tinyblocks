@@ -90,7 +90,8 @@ public class ItemParityGameTest {
         scenes.add(dispensing("dispenser_places_a_shulker_box", Items.SHULKER_BOX, 1));
         scenes.add(dispensing("dispenser_places_a_pumpkin", Items.CARVED_PUMPKIN, 1));
         scenes.add(dispensing("dispenser_stands_an_armor_stand", Items.ARMOR_STAND, 1));
-        scenes.add(dispensing("dispenser_hatches_a_spawn_egg", Items.COW_SPAWN_EGG, 1));
+        // Counted as it comes out: a cow walks off wherever it likes.
+        scenes.add(shooting("dispenser_hatches_a_spawn_egg", Items.COW_SPAWN_EGG));
 
         scenes.add(ParityScene.of("dispenser_takes_water", s -> {
             fired(s, Blocks.DISPENSER.defaultBlockState(), Items.BUCKET, 1);

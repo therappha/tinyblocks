@@ -124,6 +124,10 @@ final class ParityRun {
     }
 
     void buildAll() {
+        if (scene.entitiesAt != null) {
+            int[] size = scene.size();
+            for (ParitySpace space : all()) ParityEntities.watch(helper.getLevel(), space, size);
+        }
         for (ParitySpace space : all()) build(space);
     }
 
@@ -157,7 +161,10 @@ final class ParityRun {
             eventsSeen.add("tick " + tick + ": " + step.what());
             for (ParitySpace space : all()) step.step().run(space);
         }
-        if (tick == scene.ticks) ((ParitySpace.Tiny) tiny).cleanUp();
+        if (tick == scene.ticks) {
+            ((ParitySpace.Tiny) tiny).cleanUp();
+            for (ParitySpace space : all()) ParityEntities.stopWatching(space);
+        }
         if (tick == scene.ticks && reports) finish();
         tick++;
     }
@@ -173,10 +180,9 @@ final class ParityRun {
         for (ParitySpace control : controls) reals.addAll(SpaceDiff.compare(world, control, cells));
         List<SpaceDiff.Difference> againstWorld = SpaceDiff.compare(world, tiny, cells);
         if (scene.entitiesAt != null && tick == (scene.entitiesAt < 0 ? scene.ticks : scene.entitiesAt)) {
-            int[] size = scene.size();
-            for (ParitySpace control : controls) reals.addAll(SpaceDiff.compareTotals(world.entities(size), control.entities(size)));
-            againstWorld.addAll(SpaceDiff.compareTotals(world.entities(size), tiny.entities(size)));
-            entitiesSeen = world.entities(size).toString();
+            for (ParitySpace control : controls) reals.addAll(SpaceDiff.compareTotals(world.entities(), control.entities()));
+            againstWorld.addAll(SpaceDiff.compareTotals(world.entities(), tiny.entities()));
+            entitiesSeen = world.entities().toString();
         }
         betweenReals.record(tick, reals);
         for (SpaceDiff.Difference d : reals) undecided.add(d.cell().toShortString() + d.field());

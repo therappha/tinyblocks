@@ -152,17 +152,24 @@ public class SubgridGrowthGameTest {
         }).thenSucceed();
     }
 
-    /** Random tick speed 0 stops growth in the world; issue #51: a grid has its own sampler that doesn't read the rule. */
-    @GameTest(template = "empty_platform", timeoutTicks = 1400, required = false)
+    /**
+     * Random tick speed 0 stops growth in the world; issue #51: a grid has its own sampler that doesn't read the rule.
+     * The rule is the whole server's, so it is 0 only while this grid's own ticks are run here, 1200 of them in one go.
+     */
+    @GameTest(template = "empty_platform", timeoutTicks = 40, required = false)
     public void randomTickSpeedZeroStopsAGridToo(GameTestHelper helper) {
-        GameRules.IntegerValue rule = helper.getLevel().getGameRules().getRule(GameRules.RULE_RANDOMTICKING);
-        int speed = rule.get();
-        rule.set(0, helper.getLevel().getServer());
         SubgridBlockEntity be = grid(helper, 2);
         BlockPos at = new BlockPos(0, 1, 0);
         wheat(be, helper.getLevel(), at, 0);
-        helper.startSequence().thenIdle(1200).thenExecute(() -> {
-            rule.set(speed, helper.getLevel().getServer());
+        helper.startSequence().thenIdle(2).thenExecute(() -> {
+            GameRules.IntegerValue rule = helper.getLevel().getGameRules().getRule(GameRules.RULE_RANDOMTICKING);
+            int speed = rule.get();
+            rule.set(0, helper.getLevel().getServer());
+            try {
+                for (int i = 0; i < 1200; i++) be.serverTick(helper.getLevel());
+            } finally {
+                rule.set(speed, helper.getLevel().getServer());
+            }
             helper.assertTrue(SubgridTestSupport.valueAt(helper, be, at, CropBlock.AGE) == 0, "it grew with random tick speed 0");
         }).thenSucceed();
     }

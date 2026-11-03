@@ -6,7 +6,6 @@ import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.entity.item.PrimedTnt;
@@ -15,6 +14,7 @@ import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.gametest.GameTestHolder;
+import java.util.List;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /** What is too random to compare two runs of: fire, melting, leaves falling off, and what TNT leaves behind. */
@@ -38,78 +38,106 @@ public class SubgridReactiveGameTest {
     }
 
     /**
-     * The test server keeps fire from ticking (doFireTick false). Turned on while a fire test runs, and back off when
-     * the last one running is done: tests run side by side.
+     * Fire's ticks are random, so a test of them run by the clock passes or fails by chance. Instead each fire is ticked
+     * here, {@code times} times in one go, with the level's random seeded: the same draws, so the same outcome, every
+     * run. The test server keeps fire from ticking (doFireTick false); it is on only for this call, so no other test's
+     * fire runs meanwhile. {@code tick} is one tick of every fire there is; {@code done} stops early.
      */
-    private static int fireTests = 0;
-
-    private static GameTestSequence withFireTicking(GameTestHelper helper, Runnable until) {
-        GameRules.BooleanValue rule = helper.getLevel().getGameRules().getRule(GameRules.RULE_DOFIRETICK);
-        if (fireTests++ == 0) rule.set(true, helper.getLevel().getServer());
-        return helper.startSequence().thenWaitUntil(until).thenExecute(() -> {
-            if (--fireTests == 0) rule.set(false, helper.getLevel().getServer());
-        });
+    private static void burn(GameTestHelper helper, int times, long seed, Runnable tick, java.util.function.BooleanSupplier done) {
+        ServerLevel level = helper.getLevel();
+        GameRules.BooleanValue rule = level.getGameRules().getRule(GameRules.RULE_DOFIRETICK);
+        boolean was = rule.get();
+        rule.set(true, level.getServer());
+        level.random.setSeed(seed);
+        try {
+            for (int i = 0; i < times && !done.getAsBoolean(); i++) tick.run();
+        } finally {
+            rule.set(was, level.getServer());
+        }
     }
 
-    @GameTest(template = "empty_platform", timeoutTicks = 1200)
+    /** One scheduled tick of each fire piece in the grid, through the piece, as the grid's tick queue runs it. */
+    private static Runnable fireTicks(SubgridBlockEntity be, ServerLevel level) {
+        return () -> {
+            for (PlacedPiece piece : new java.util.ArrayList<>(be.getPieces())) {
+                if (piece.definition.renderState(piece).is(Blocks.FIRE)) piece.definition.scheduledTick(piece, level, be.getBlockPos(), be, Blocks.FIRE);
+            }
+        };
+    }
+
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
     public void fireOnStoneBurnsOut(GameTestHelper helper) {
         SubgridBlockEntity be = grid(helper, 8);
         SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 0, 3), Blocks.STONE.defaultBlockState());
         SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 1, 3), Blocks.FIRE.defaultBlockState());
-        withFireTicking(helper, () -> helper.assertTrue(!has(be, Blocks.FIRE), "still burning")).thenSucceed();
+        helper.startSequence().thenIdle(2).thenExecute(() -> {
+            // It goes once it has aged past 3, about every third tick: some 12 ticks, far short of 200.
+            burn(helper, 200, 1L, fireTicks(be, helper.getLevel()), () -> !has(be, Blocks.FIRE));
+            helper.assertTrue(!has(be, Blocks.FIRE), "fire on stone still burns after 200 of its ticks");
+        }).thenSucceed();
     }
 
-    @GameTest(template = "empty_platform", timeoutTicks = 3000)
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
     public void fireOnNetherrackBurnsOn(GameTestHelper helper) {
         SubgridBlockEntity be = grid(helper, 8);
         SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 0, 3), Blocks.NETHERRACK.defaultBlockState());
         SubgridTestSupport.placePiece(be, helper.getLevel(), new BlockPos(3, 1, 3), Blocks.FIRE.defaultBlockState());
-        int[] ticks = {0};
-        // Long enough for fire on stone to have gone out many times over, and aged all the way.
-        withFireTicking(helper, () -> {
+        helper.startSequence().thenIdle(2).thenExecute(() -> {
+            // Netherrack burns forever: no draw of the random puts it out, so any seed will do.
+            burn(helper, 200, 2L, fireTicks(be, helper.getLevel()), () -> false);
             helper.assertTrue(has(be, Blocks.FIRE), "fire on netherrack went out");
-            helper.assertTrue(++ticks[0] > 1000, "not yet");
         }).thenSucceed();
     }
 
     /**
-     * Fire gets from the plank it was lit on to another cell, and what it burns goes without a trace. How soon is up to
-     * chance, so the same fire is lit on real planks beside it: once the real one has spread, the tiny one has had
-     * long enough when it hasn't done so 3000 ticks later.
+     * Fire gets from the plank it was lit on to another cell, and what it burns goes without a trace. The same fire on
+     * real planks beside it, ticked as many times with the same seed, shows that this many ticks is enough to spread.
      */
-    @GameTest(template = "empty_platform", timeoutTicks = 12000)
+    @GameTest(template = "empty_platform", timeoutTicks = 40)
     public void fireSpreadsAlongPlanksAsInTheWorld(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
         SubgridBlockEntity be = grid(helper, 8);
         int planks = 0;
         for (BlockPos cell : BlockPos.betweenClosed(1, 0, 3, 6, 0, 4)) {
-            SubgridTestSupport.placePiece(be, helper.getLevel(), cell.immutable(), Blocks.OAK_PLANKS.defaultBlockState());
+            SubgridTestSupport.placePiece(be, level, cell.immutable(), Blocks.OAK_PLANKS.defaultBlockState());
             planks++;
         }
         int all = planks;
         BlockPos lit = new BlockPos(1, 1, 3);
-        SubgridTestSupport.placePiece(be, helper.getLevel(), lit, Blocks.FIRE.defaultBlockState());
+        SubgridTestSupport.placePiece(be, level, lit, Blocks.FIRE.defaultBlockState());
         BlockPos real = new BlockPos(0, 2, 5), realLit = real.above();
-        for (BlockPos pos : BlockPos.betweenClosed(real, real.offset(5, 0, 1))) helper.setBlock(pos, Blocks.OAK_PLANKS);
-        for (BlockPos pos : BlockPos.betweenClosed(real.above(), real.offset(5, 3, 1))) helper.setBlock(pos, Blocks.AIR);
+        List<BlockPos> realArea = new java.util.ArrayList<>();
+        for (BlockPos pos : BlockPos.betweenClosed(real, real.offset(5, 0, 1))) {
+            helper.setBlock(pos, Blocks.OAK_PLANKS);
+            realArea.add(helper.absolutePos(pos)); // a burnt plank can leave fire in its place
+        }
+        for (BlockPos pos : BlockPos.betweenClosed(real.above(), real.offset(5, 3, 1))) {
+            helper.setBlock(pos, Blocks.AIR);
+            realArea.add(helper.absolutePos(pos));
+        }
         helper.setBlock(realLit, Blocks.FIRE);
-        boolean[] spread = new boolean[1];
-        int[] tick = {0}, realSpreadAt = {-1};
-        withFireTicking(helper, () -> {
-            tick[0]++;
-            spread[0] |= be.getPieces().stream().anyMatch(p -> p.definition.renderState(p).is(Blocks.FIRE) && !p.anchor.equals(lit));
-            if (realSpreadAt[0] < 0) {
-                for (BlockPos pos : BlockPos.betweenClosed(real.above(), real.offset(5, 3, 1))) {
-                    if (!pos.equals(realLit) && helper.getBlockState(pos).is(Blocks.FIRE)) realSpreadAt[0] = tick[0];
+        BlockPos realLitAt = helper.absolutePos(realLit);
+        java.util.function.BooleanSupplier tinySpread = () -> be.getPieces().stream()
+                .anyMatch(p -> p.definition.renderState(p).is(Blocks.FIRE) && !p.anchor.equals(lit));
+        java.util.function.BooleanSupplier realSpread = () -> realArea.stream()
+                .anyMatch(pos -> !pos.equals(realLitAt) && level.getBlockState(pos).is(Blocks.FIRE));
+        int ticks = 400;
+        helper.startSequence().thenIdle(2).thenExecute(() -> {
+            burn(helper, ticks, 3L, () -> {
+                for (BlockPos pos : realArea) {
+                    if (level.getBlockState(pos).is(Blocks.FIRE)) level.getBlockState(pos).tick(level, pos, level.random);
                 }
-            }
+            }, realSpread);
+            helper.assertTrue(realSpread.getAsBoolean(), "the real fire didn't spread in " + ticks + " ticks either: the test proves nothing");
+            boolean[] burnt = new boolean[1];
+            burn(helper, ticks, 3L, fireTicks(be, level), () -> burnt[0] = tinySpread.getAsBoolean()
+                    && be.getPieces().stream().filter(p -> p.definition.renderState(p).is(Blocks.OAK_PLANKS)).count() < all);
             long left = be.getPieces().stream().filter(p -> p.definition.renderState(p).is(Blocks.OAK_PLANKS)).count();
-            if (realSpreadAt[0] >= 0 && tick[0] > realSpreadAt[0] + 3000 && !spread[0]) {
-                throw new net.minecraft.gametest.framework.GameTestAssertException("the real fire spread at tick " + realSpreadAt[0]
-                        + ", the tiny one hasn't by " + tick[0] + " (" + left + " of " + all + " planks left)");
-            }
-            helper.assertTrue(spread[0] && left < all, "not yet");
-        }).thenExecute(() -> helper.assertTrue(helper.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
-                new AABB(be.getBlockPos()).inflate(3)).isEmpty(), "burnt planks dropped items")).thenSucceed();
+            helper.assertTrue(tinySpread.getAsBoolean() && left < all, "after " + ticks + " ticks the tiny fire spread: "
+                    + tinySpread.getAsBoolean() + ", " + left + " of " + all + " planks left");
+            helper.assertTrue(level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(be.getBlockPos()).inflate(3)).isEmpty(),
+                    "burnt planks dropped items");
+        }).thenSucceed();
     }
 
     @GameTest(template = "empty_platform", timeoutTicks = 40)
@@ -140,17 +168,20 @@ public class SubgridReactiveGameTest {
         SubgridBlockEntity be = grid(helper, 16);
         BlockPos log = new BlockPos(4, 4, 4), near = log.east(), far = near.east();
         SubgridTestSupport.placePiece(be, helper.getLevel(), log, Blocks.OAK_LOG.defaultBlockState());
-        PlacedPiece leaf = SubgridTestSupport.placePiece(be, helper.getLevel(), near, Blocks.OAK_LEAVES.defaultBlockState());
-        PlacedPiece next = SubgridTestSupport.placePiece(be, helper.getLevel(), far, Blocks.OAK_LEAVES.defaultBlockState());
+        // Counted already, so no random tick of the grid's can take them before the log goes.
+        PlacedPiece leaf = SubgridTestSupport.placePiece(be, helper.getLevel(), near, Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.DISTANCE, 1));
+        PlacedPiece next = SubgridTestSupport.placePiece(be, helper.getLevel(), far, Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.DISTANCE, 2));
         helper.startSequence().thenIdle(10).thenExecute(() -> {
             helper.assertTrue(SubgridTestSupport.valueAt(helper, be, near, LeavesBlock.DISTANCE) == 1, "no count");
             randomTicks(be, leaf, helper.getLevel(), 5);
             helper.assertTrue(SubgridTestSupport.stateOf(be, near) != null, "a leaf by a log fell off");
             be.removePieceAt(log.getX(), log.getY(), log.getZ());
         }).thenIdle(20).thenExecute(() -> {
-            helper.assertTrue(SubgridTestSupport.valueAt(helper, be, near, LeavesBlock.DISTANCE) == 7, "still counts");
-            randomTicks(be, leaf, helper.getLevel(), 1);
-            randomTicks(be, next, helper.getLevel(), 1);
+            BlockState left = SubgridTestSupport.stateOf(be, near);
+            helper.assertTrue(left == null || left.getValue(LeavesBlock.DISTANCE) == 7, "still counts");
+            // The grid's own random ticks may have taken one already: whichever is left goes on its next one.
+            if (SubgridTestSupport.stateOf(be, near) != null) randomTicks(be, leaf, helper.getLevel(), 1);
+            if (SubgridTestSupport.stateOf(be, far) != null) randomTicks(be, next, helper.getLevel(), 1);
             helper.assertTrue(be.getPieces().isEmpty(), "leaves left with no log: " + be.getPieces().size());
         }).thenSucceed();
     }
