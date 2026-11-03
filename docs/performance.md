@@ -79,6 +79,28 @@ All GameTests pass (`All 96 required tests passed`), and so do the unit tests.
 
 **After the rebase on `master` (with #74):** rotating, placing and picking up grids already change `pieceVersion`, because they go through `addToGridNoShape`, `rebuildAfterRemove`, `setChanged` or `notifyNeighbors`. New code that changes `runtimeState` without going through one of these leaves the outline, redstone output and mesh stale. All 121 GameTests pass.
 
+## Static pieces in the chunk mesh (issue #103)
+
+Measured on Intel Iris Xe, one view, one run of 10 s per step. The same setting twice gave 94.6 and 110.0 FPS, so read small differences as noise.
+
+| Setting | FPS | p50 | p99 |
+|---|---|---|---|
+| Before, first run | 94.6 | 9.85 ms | 22.01 ms |
+| One Flywheel embedding per grid | 113.9 | 7.49 ms | 17.68 ms |
+| Skipping frames away from view | 106.5 | 8.34 ms | 18.11 ms |
+| Set in `reconcile` | 107.9 | 8.24 ms | 16.85 ms |
+| Collapsing far grids | 105.6 | 8.24 ms | 19.69 ms |
+| Static pieces in the chunk mesh | 154.1 | 5.72 ms | 12.08 ms |
+| Everything | 169.4 | 5.15 ms | 12.51 ms |
+| Before, last run | 110.0 | 8.07 ms | 15.86 ms |
+
+Only the chunk mesh stands clear of the noise.
+
+- `SubgridChunkMesh` writes a grid's `StaticMesh` when its section compiles, through NeoForge's `AddSectionGeometryEvent`. Vanilla then keeps it on the GPU, culls it and draws it to the render distance. It also gets mipmaps, which the entity sheets it went through before don't have: 98.4% of the quads in the test world, the rest being `cutout`, as in vanilla.
+- `SubgridRenderer` draws the mesh itself until a compile has taken it, and always in a level of its own, like a schematic's preview. Its `getViewDistance` is the render distance so that a changed grid can ask for a rebuild, and what it draws per frame stops at 64 blocks (`GridSight`).
+- A section compile applies a side's shade by hand, because a chunk's shader has no directional light. Light is still one value per grid.
+- A change to a grid rebuilds its whole section, on a worker thread. Fast redstone in a grid may show it.
+
 ## What still weighs
 
 - **Rendering is still immediate**: the cached mesh still sends all vertices to the buffer every frame (far fewer, and
