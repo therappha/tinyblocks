@@ -12,8 +12,10 @@ The last run also has `-PrandomSeeds=60`.
 - The save format: the NBT keys of `SubgridBlockEntity` (`pieces`, `scheduledTicks`), `PlacedPiece`
   (`type`, `ax`/`ay`/`az`, `facing`, `speed`, `extra`), `VanillaBlockPiece` (`state`, `be`) and the Grid Save item.
 - Network payloads: their types, ids, codecs and the protocol version `"1"`.
-- Mixins and their json: no mixin class, target or injected member is renamed (step 23, if accepted, adds one). Two
-  members the mixins read stay where they are: `SubgridRenderer.drawingPhantom` and `VanillaBlockPiece.boundPhantom`.
+- Mixins and their json: no mixin class, target or injected member is renamed (step 23, deferred, would add one). What
+  the mixins call stays where it is: `SubgridRenderer.drawingPhantom`, `VanillaBlockPiece.boundPhantom`,
+  `SubgridBlockEntity.markPhantomDataDirty` (`SyncedBlockEntityMixin`), `turnMovedQuietly` and `lookAroundMoved`
+  (`SubLevelAssemblyHelperMixin`).
 - Test code. `src/test` and `gametest/` keep their logic. A step that moves something a test calls keeps that member
   where it is, as a delegate, so no test needs to change. The list of what tests reach is at the end.
 
@@ -92,18 +94,20 @@ by its full package instead of importing it. The worst: `VanillaBlockPiece` (60 
 
 ## Target structure
 
-Same packages, same public entry points. What moves goes into package-private classes next to where it was; only
+Same packages, same public entry points. Helper classes read a grid through `getLevel()` and `getBlockPos()` (the
+protected `level` and `worldPosition` aren't visible outside `BlockEntity`'s package). What moves goes into
+package-private classes next to where it was; only
 `GridWriteBack` and `PistonAnimation` are public, because callers in other packages need one or two of their methods.
 
 ```
 subgrid/
-  SubgridBlockEntity   ~900   cells, pieces, placement and removal, lifecycle, ticks, rotation, NBT, sync;
+  SubgridBlockEntity   ~980   cells, pieces, placement and removal, lifecycle, ticks, drops held for pistons,
+                              rotation, NBT, sync;
                               one-line delegates for what moved, so callers and tests keep calling it here
   GridResolver         ~230   where a local cell lands: this grid, a neighbour grid, the real world (CellRef stays
                               nested in SubgridBlockEntity)
   GridSignals          ~130   what the six faces give in redstone, cell by cell and per face
   GridShapes            ~90   collision (occupancy) and outline shapes
-  PendingDrops          ~80   drops held while a piston's capture is still moving (PendingDrop stays nested)
   PhantomSync           ~70   pushing phantom block entity data to clients
   PlacedPiece                 + forEachCell / anyCell
 v2/
@@ -131,22 +135,22 @@ the user to check in game.
 For a step that only moves text (comments, imports), a stronger check exists: build before and after and compare
 `javap -c -p` of every class under `build/classes/java/main` (without `-l`, so line numbers don't count). It must be
 identical (if javac numbered the constant pool differently, compare with the `#n` indices stripped). Steps 1 and 19 to
-22 use it.
+22 use it, every file included.
 
 ### 1. Leftover markers, stale labels, misplaced comments
 
 Comments only. Each `#TODO remove before release` becomes a short comment that says why the code is there (fluids
 have no baked model and render through `renderLiquid`, which takes no pose; buckets only override `use`, so the
-dispenser's position-based hooks are called directly). Stale "v2 prototype", "Tier 3", "EXPERIMENT" labels go or are
-reworded to what the class is now. The three misplaced javadocs go back over their members. The duplicate import goes.
+dispenser's position-based hooks are called directly), and the "#TODO removal" reference in `ScaledVertexConsumer`
+goes with them. Stale "v2 prototype", "Tier 3", "EXPERIMENT" labels go or are reworded to what the class is now. The
+three misplaced javadocs go back over their members. The duplicate import goes.
 
 Files: `client/SubgridFluidView`, `client/ScaledVertexConsumer`, `client/SubgridRenderer`, `client/flywheel/SubgridVisual`,
 `setup/SubgridEventHandler`, `subgrid/SubgridBlockEntity`, `subgrid/SubgridBlock`, `subgrid/PieceDefinition`,
 `v2/FakeLevel`, `v2/FakeServerLevel`, `v2/FakeCellGetter`, `v2/FakeSpace`, `v2/VanillaBlockPiece`,
 `META-INF/neoforge.mods.toml` (comments), `build.gradle` (comment).
 
-Check: `grep -rn "TODO remove before release" src` is empty; `javap` identical; tests. **Client** in name only: no
-client code changes.
+Check: `grep -rn "TODO" src/main` is empty; `javap` identical; tests. **Client** in name only: no client code changes.
 
 The "Phase C debug convenience" comment on `onLeftClickBlock` stays true to what it does: a block item in hand
 removes a piece at once, in survival too. That looks like a debug shortcut that shipped: #117, left as it is here.
@@ -171,71 +175,80 @@ an investigation and costs nothing while debug is off.
 
 Files: `subgrid/SubgridBlockEntity`, `v2/VanillaBlockPiece`, `v2/FakeLevel`, `client/flywheel/SubgridVisual`.
 
-Check: `grep -rn "piston-anim\|xgrid-fluid\|fw-light" src/main` is empty; tests. Only log output changes, and only at
-DEBUG, except the three `[fw-light]` INFO lines. The removed reads in `runBlockEvent` and the signal loop are reads of
-the fake space with no effect on it; the signal loop only ran with debug logging on. **Client** (`SubgridVisual`): a
-log line only.
+Check: `grep -rn "piston-anim\|xgrid-fluid\|fw-light" src/main` is empty; tests. Only log output changes. Two kinds of
+read go with the logs, for different reasons. The six-signal loop only runs with debug logging on, which no run has.
+The before/after reads in `runBlockEvent` and the "AFTER" read in `onNeighborChanged` run on every call, but they are
+`getBlockState` of the fake space at an in-grid cell (`getPieceAt`): no write, no cache filled, nothing created, so
+taking them out changes nothing. **Client** (`SubgridVisual`): a log line only.
 
-### 4. Cell iteration on PlacedPiece
+### 4. A test of the order neighbours hear in (before step 5)
 
-Add `PlacedPiece.forEachCell(CellVisitor)` and `anyCell(CellTest)` (small functional interfaces on ints, no
-allocation per cell) and use them for the seven footprint loops in `SubgridBlockEntity`. The order stays x outer, then
-y, then z: `neighborsOf` fills a `LinkedHashSet`, and that order is the order neighbours hear of a change. `canFit` and
-`notifyFace` stop at the first hit, as they do now. Merge the two identical arms of `placePieceCrossBoundary`.
+Step 5 rewrites the loops that decide in which order a piece's neighbours hear of a change, so first make sure a test
+would see that order change:
+
+1. One-off, not committed: in `neighborsOf`, iterate z outer instead of x, and separately `Direction.values()` in
+   reverse; run the redstone and Create parity tests (`-PgameTestFilter=parity_`) and the connector GameTests.
+2. Write down in the commit message what failed. For single-cell pieces only the direction order matters; the
+   footprint order only shows on pieces larger than a cell (shaft connectors), so it is likely that nothing fails for
+   the footprint change.
+3. Whatever the result, add a unit test to `SubgridBlockEntityTest` (a new test; no existing one changes): a grid
+   without a level, a multi-cell piece from a test-only `PieceDefinition` with a footprint of 2 by 1 by 2, single-cell
+   pieces around it, and an assertion on the exact order of `neighborsOf`. Seen to fail with the one-off change of
+   step 1 applied, then passing without it.
+
+Files: `src/test/.../subgrid/SubgridBlockEntityTest` (new test only).
+
+Check: the new test fails with either one-off change and passes on the unchanged code; tests.
+
+### 5. Cell iteration on PlacedPiece
+
+Add `PlacedPiece.forEachCell(CellVisitor)` and `anyCell(CellTest)` (small functional interfaces on ints) and use them
+for six footprint loops in `SubgridBlockEntity`: `takeOut`, `neighborsOf`, `canFit`, `addToGridNoShape`,
+`rebuildAfterRemove` and `notifyFace`. The order stays x outer, then y, then z. `canFit` and `notifyFace` stop at the
+first hit, as they do now. A lambda can only capture what is effectively final: in `rebuildAfterRemove` the owner index
+goes into a final local first (`final short owner = (short) i;`).
+
+The loop in `refreshSignals` stays as it is: it sets a local (`space`, the fake space built on first need) that a lambda
+can't assign. It moves unchanged in step 7. The relative loop in `buildOutlineShape` also stays (it iterates
+offsets, not cells).
+
+Merge the two identical arms of `placePieceCrossBoundary` through a small private helper,
+`placeIn(SubgridBlockEntity grid, int x, int y, int z, …)`, called from both arms; Java 21 has no case with two
+bindings.
 
 Files: `subgrid/PlacedPiece`, `subgrid/SubgridBlockEntity`.
 
-Check: tests, the redstone and Create parity scenes above all (they hear neighbours in order).
+Check: tests, the new order test of step 4 first.
 
-### 5. GridResolver out of SubgridBlockEntity
+### 6. GridResolver out of SubgridBlockEntity
 
-Move, unchanged, `resolve(Direction,…)`, `resolve(int,int,int)`, `resolveOrCreate`, `directlyInGrid`,
-`peelOneGridWidth`, `MAX_CHAIN_HOPS`, `logResolve` and `describeCellRef` into `subgrid/GridResolver` (package-private,
-static methods taking the grid). `SubgridBlockEntity` keeps `resolve`, `resolveOrCreate`, `singleStepOverflowAxis` and
-`foldRemainingIntoRealWorld` as delegates, and `wrap` as it is (tests call all of them on it); `CellRef` stays nested in
-it.
-The logger name in `[xgrid]` lines changes to `GridResolver`.
+Move `resolve(Direction,…)`, `resolve(int,int,int)`, `resolveOrCreate`, `directlyInGrid`, `peelOneGridWidth`,
+`MAX_CHAIN_HOPS`, `logResolve` and `describeCellRef` into `subgrid/GridResolver` (package-private, static methods taking
+the grid). The code stays the same except that `level` and `worldPosition`, protected fields of `BlockEntity` in
+another package, become `grid.getLevel()` and `grid.getBlockPos()`, which return those same fields. The two hop loops
+stay two loops: they differ in which level they read (`resolve` checks `this.level` first, `resolveOrCreate` uses its
+argument throughout) and in the real `setBlock` the creating one does mid-loop. `SubgridBlockEntity` keeps `resolve`,
+`resolveOrCreate`, `singleStepOverflowAxis` and `foldRemainingIntoRealWorld` as delegates, and `wrap` as it is (tests
+call all of them on it); `CellRef` stays nested in it. The logger name in `[xgrid]` lines changes to `GridResolver`.
 
 Files: `subgrid/SubgridBlockEntity`, new `subgrid/GridResolver`.
 
-Check: tests; `SubgridBlockEntityTest` and `SubgridCrossBoundaryGameTest` cover the hops.
-
-### 6. One hop loop for resolve and resolveOrCreate
-
-The two loops become one, with a `create` flag. What must hold: the read-only path never calls `createAt` and never
-asks `getBlockState(target).isAir()`; it tests `getBlockEntity(target) instanceof SubgridBlockEntity` of the same size,
-as now. The creating path asks `isAir` before `createAt`, reports `Created` only when a hop made a grid, and
-`InAdjacentGrid` otherwise. Both fold into `RealWorld` the same way and log the same first hop.
-
-Files: `subgrid/GridResolver`.
-
-Check: tests. This is the one merge of logic in the plan; if the reviewer finds it not worth the risk, it is dropped and
-the rest doesn't depend on it.
+Check: tests; `SubgridBlockEntityTest`, `SubgridCrossBoundaryGameTest` and the fluid-leak GameTests cover the hops.
 
 ### 7. GridSignals out of SubgridBlockEntity
 
 Move the face redstone state (`weakCells`, `strongCells`, `weakFace`, `strongFace`, `signalKey`, `signalsBuilt`) and
-`refreshSignals`, `faceSignal`, `overlapSignal`, `updateRedstoneOutputs`, `faceIndex`, `onFace` into
-`subgrid/GridSignals`, one per grid. `SubgridBlockEntity` keeps `faceSignal`, `overlapSignal` and the static
-`acrossFace` as delegates; `notifyFace` stays in it (it walks pieces) and asks `GridSignals.onFace`. The tick order in
-`serverTick` (`updateRedstoneOutputs` after the phantom flush) doesn't change.
+`refreshSignals` (its loop unchanged), `faceSignal`, `overlapSignal`, `updateRedstoneOutputs`, `faceIndex`, `onFace`
+into `subgrid/GridSignals`, one per grid, reading the grid through `getLevel()`, `getBlockPos()`, `getPieces()` and
+`pieceVersion()`. `SubgridBlockEntity` keeps `faceSignal`, `overlapSignal` and the static `acrossFace` as delegates;
+`notifyFace` stays in it (it walks pieces) and asks `GridSignals.onFace`. The order in `serverTick`
+(`updateRedstoneOutputs` after the phantom flush) doesn't change.
 
 Files: `subgrid/SubgridBlockEntity`, new `subgrid/GridSignals`.
 
 Check: tests, `SubgridRedstoneFacesGameTest` and the redstone parity scenes above all.
 
-### 8. PendingDrops out of SubgridBlockEntity
-
-Move `pendingDrops`, `activeCaptures`, `deferDrop`, `cancelPendingDrop`, `drainReadyDrops`, `tickPendingDrops`,
-`hasActiveCaptures`, `captureStarted`/`captureEnded` and the drop half of `turn` (moving drop points) into
-`subgrid/PendingDrops`. The `PendingDrop` record stays nested in `SubgridBlockEntity` (`SubgridBlockEntityTest` names
-it); every method stays on `SubgridBlockEntity` as a delegate.
-
-Files: `subgrid/SubgridBlockEntity`, new `subgrid/PendingDrops`.
-
-Check: tests, `SubgridBlockEntityTest`, the piston GameTests.
-
-### 9. GridShapes out of SubgridBlockEntity
+### 8. GridShapes out of SubgridBlockEntity
 
 Move the body of `rebuildShape` (occupancy from `cellOwner`), `buildOutlineShape`, `joinAll` and `pieceShape` into
 `subgrid/GridShapes`. `SubgridBlockEntity` keeps `rebuildShape` with the `shapeRebuildCount++` in it (the unit test
@@ -246,57 +259,85 @@ Files: `subgrid/SubgridBlockEntity`, new `subgrid/GridShapes`.
 
 Check: tests, `SubgridCollisionGameTest`, `SubgridTickSpaceGameTest` (outline after a state change).
 
-### 10. PhantomSync out of SubgridBlockEntity
+### 9. PhantomSync out of SubgridBlockEntity
 
 Move `phantomDataDirty`, `phantomDataFlushes`, `PHANTOM_CHANGE_SCAN_INTERVAL`, `flushPhantomData` and
-`markNeighbouringPhantomsDirty` into `subgrid/PhantomSync`. `markPhantomDataDirty` and `phantomDataFlushes` stay as
-delegates (GameTests and `FakeLevel` call them).
+`markNeighbouringPhantomsDirty` into `subgrid/PhantomSync`, reading the grid through `getLevel()` and `getBlockPos()`.
+`markPhantomDataDirty` stays on `SubgridBlockEntity` as a delegate (`FakeLevel`, `SubgridFakeCellGetter` and
+`SyncedBlockEntityMixin` call it), and so does `phantomDataFlushes` (GameTests). `notifyUpdate` keeps
+`markNeighbouringPhantomsDirty` as its last call.
 
 Files: `subgrid/SubgridBlockEntity`, new `subgrid/PhantomSync`.
 
 Check: tests, the Create GameTests that count flushes.
 
-### 11. SubgridFakeCellGetter and TickSpace out of VanillaBlockPiece
+### 10. SubgridFakeCellGetter and TickSpace out of VanillaBlockPiece
 
-Move both nested classes, unchanged, to their own package-private files. What they call in `VanillaBlockPiece`
-(`stateOf`, `applyChanges`, `blockEntityFor`, `peekBlockEntity`) becomes package-private where it was private.
-`SubgridBlockEntity.tickSpace` stays an `Object` holding a `TickSpace`.
+Move both nested classes, unchanged, to their own package-private files. What crosses between them and
+`VanillaBlockPiece` becomes package-private where it was private: `stateOf`, `applyChanges`, `blockEntityFor`'s helper
+`peekBlockEntity`, and `SubgridFakeCellGetter`'s `be` field (`applyChanges` reads it). `SubgridBlockEntity.tickSpace`
+stays an `Object` holding a `TickSpace`.
 
 Files: `v2/VanillaBlockPiece`, new `v2/SubgridFakeCellGetter`, new `v2/TickSpace`.
 
 Check: tests.
 
-### 12. GridWriteBack out of VanillaBlockPiece
+### 11. GridWriteBack out of VanillaBlockPiece
 
 Move `applyChanges`, `syncBlockEntity`, both `followStateChange` and `scheduleCaptured` into `v2/GridWriteBack`, a
-public class whose only public methods are the two that were public. They are called from `SubgridBlockEntity.placeOrUpdatePiece` and `SubgridEventHandler`; those calls
-change to `GridWriteBack`. No test calls them.
+public class whose only public methods are the two that were public. They are called from
+`SubgridBlockEntity.placeOrUpdatePiece` and `SubgridEventHandler`; those calls change to `GridWriteBack`. No test calls
+them.
 
-Files: `v2/VanillaBlockPiece`, new `v2/GridWriteBack`, `v2/SubgridFakeCellGetter`, `subgrid/SubgridBlockEntity`,
-`setup/SubgridEventHandler`.
+Files: `v2/VanillaBlockPiece`, new `v2/GridWriteBack`, `v2/SubgridFakeCellGetter`, `v2/TickSpace`,
+`subgrid/SubgridBlockEntity`, `setup/SubgridEventHandler`.
 
 Check: tests, every parity scene (each one goes through `applyChanges`).
 
-### 13. PistonAnimation out of VanillaBlockPiece
+### 12. PistonAnimation out of VanillaBlockPiece
 
 Move the reflected piston fields, `PISTON_LINGER_TICKS`, `PISTON_PROGRESS_PER_TICK`, `clientTickPiston` and
 `applyClientAnimation` into `v2/PistonAnimation` (public, `applyClientAnimation` its only public method).
-`VanillaBlockPiece.clientTick` calls it; `NetworkSetup`'s handler calls it directly. One difference: the reflection now runs when the class is first used rather than when
-`VanillaBlockPiece` loads. It can't fail on 1.21.1; if it did, only the piston animation would go, not every piece.
+`VanillaBlockPiece.clientTick` calls it; `NetworkSetup`'s handler calls it directly. One difference: the reflection now
+runs when the class is first used, on the client's first moving piston, rather than when `VanillaBlockPiece` loads. It
+can't fail on 1.21.1. If it ever did, the failure would be an `Error` (`ExceptionInInitializerError`, then
+`NoClassDefFoundError`), which neither `SubgridBlockEntity.clientTick` (it catches `Exception`) nor the payload handler
+catches: the client would crash at the first moving piston instead of when the mod loads.
 
 Files: `v2/VanillaBlockPiece`, new `v2/PistonAnimation`, `network/NetworkSetup`.
 
 Check: tests. **Client**: a piston in a grid still animates out and back, a sticky piston pulls its block smoothly.
 
-### 14. One builder of fake spaces
+### 13. A test that the phantom binding space is never live (before step 14)
 
-`buildFakeSpace` and `buildClientFakeSpace` go through one private builder; `operatingServerSpace` goes through the
-same path as `buildFakeServerSpace`, with an operated cell. Public signatures stay (tests call `buildFakeSpace`,
-`buildFakeServerSpace`).
+`operatingServerSpace` sets `cells.live = false`: the space only binds phantoms (the tick candidate, `boundPhantom`,
+`PieceClickDispatch`) and nothing applies what is written to it. With `live` false, a later write through a phantom
+still bound to it, such as a hopper filling a chest that never ticks, which then tells its comparator through
+`updateNeighbourForOutputSignal`, goes through `afterItsCall` into a fresh `TickSpace` that is applied. With `live`
+true, that write lands in a space nobody reads.
+
+1. One-off, not committed: delete `cells.live = false;` from `operatingServerSpace` and run `SubgridTickSpaceGameTest`,
+   `SubgridHopperGameTest` and the item parity scenes (`ItemParityGameTest`, which has hoppers into chests).
+2. If one of them fails, it is the check for step 14; name it in the commit message.
+3. If none fails, add a parity scene to `ItemParityGameTest`'s scenes as a new scene (no existing one changes): a
+   hopper fed from above emptying into a chest, a comparator reading the chest, dust from the comparator to a lamp,
+   run until the chest fills. It is compared with the real copies every tick. Seen to fail with the one-off applied,
+   passing without it.
+
+Files: none, or `gametest/ItemParityGameTest` (a new scene only).
+
+Check: the failing run with the one-off, and tests.
+
+### 14. One builder of client and plain fake spaces
+
+`buildFakeSpace` and `buildClientFakeSpace`, the same three lines over a `Level`, go through one private builder.
+`buildFakeServerSpace` and `operatingServerSpace` are left as they are: the second one's `cells.live = false` is the
+point of it. Public signatures stay (tests call `buildFakeSpace`, `buildFakeServerSpace`).
 
 Files: `v2/VanillaBlockPiece`.
 
-Check: tests. **Client**: `buildClientFakeSpace` hosts `SubgridVisual`'s phantoms and the placement preview.
+Check: tests, and the test named in step 13 (it must still pass, showing `operatingServerSpace` kept its flag).
+**Client**: `buildClientFakeSpace` hosts `SubgridVisual`'s phantoms and the placement preview.
 
 ### 15. PiecePlacement out of SubgridEventHandler
 
@@ -308,11 +349,16 @@ the block read from the level, and that stays as it is. `MinimizerShapes` calls 
 `resyncLater`. The event methods keep their early returns in the same order. `handleMinePiece` stays public on
 `SubgridEventHandler` (GameTests and `NetworkSetup` call it).
 
+The branching earlier in `onRightClickBlock` on what was clicked (connector, wrench, the piece's own use, the item's
+use, then which cell the placement lands in) stays in the handler. Each branch ends the click with its own side effect
+and return; moving it out would need a result type for some eight outcomes, and the handler would still have to
+switch on it.
+
 Files: `setup/SubgridEventHandler`, new `setup/PiecePlacement`, `setup/MinimizerShapes`.
 
 Check: tests, `SubgridMiningGameTest`, `SubgridPieceDropsGameTest`, `SubgridFluidGameTest` (buckets),
-`SubgridFacingPlacementGameTest`, `MinimizerShapesGameTest`. A real right click goes through
-`onRightClickBlock`, which GameTests only reach in part: placing by hand in game is on the user's list.
+`SubgridFacingPlacementGameTest`, `MinimizerShapesGameTest`; the GameTests that post `RightClickBlock` reach the moved
+code. Placing by hand in game is on the user's list.
 
 ### 16. SubgridClientHandler into its own file
 
@@ -324,19 +370,23 @@ Files: `client/ClientSetup`, new `client/SubgridClientHandler`.
 
 Check: compiles; tests. **Client**: the outline of the aimed piece and the Minimizer's face grid.
 
-### 17. StaticMesh out of SubgridRenderer
+### 17. StaticMesh out of SubgridRenderer; SubgridVisual's light passes
 
 Move `StaticMesh` into `client/StaticMesh.java` (package-private; `SubgridChunkMesh` is in the same package). Move
 `acrossOf` and `isGear` into `PieceTransforms` as `acrossOf` and `isGearConnector`, used by `SubgridRenderer`,
-`SubgridVisual` and `GridSavePreview`. One helper for push/translate/scale of a slice, one for the crumbling buffer.
+`SubgridVisual` and `GridSavePreview`. A helper `pushSlice(poseStack, slice)` does push, translate and scale, and the
+call site pops: no lambda, so nothing is allocated per slice per frame. One helper for the crumbling buffer.
 `drawingPhantom` stays on `SubgridRenderer` (a mixin reads it).
+
+In `SubgridVisual`, `updateLight` and the periodic pass in `beginFrame` are the same loop over the children; both
+call one `relightChildren(partialTick)`. The loops in `update` and `setSectionCollector` do more per child and stay.
 
 Files: `client/SubgridRenderer`, new `client/StaticMesh`, `client/PieceTransforms`, `client/SubgridChunkMesh`,
 `client/GridSavePreview`, `client/flywheel/SubgridVisual`.
 
 Check: compiles; tests (`PieceTransformsTest`). **Client**: everything a grid draws: static pieces in the chunk and
 per frame, the crack while mining, fluids, chests and other block entities, gear connectors and funnels, the Grid Save
-ghost.
+ghost, and Create parts drawn by Flywheel keeping their light.
 
 ### 18. GridSaveItem's shared refusals
 
@@ -354,29 +404,30 @@ One commit per group, after the moves, so each file is cleaned once:
 19. `v2/`
 20. `subgrid/`
 21. `setup/`, `items/`, `network/`, `command/`, `diff/`, `compat/create/` (not `compat/create/client/`), `TinyBlocks`
-22. `client/`, `client/flywheel/`, `compat/create/client/`, and the light-update loops of `SubgridVisual` that are the
-    same (`updateLight`, the periodic pass in `beginFrame`) as one `relightChildren` **(client)**
+22. `client/`, `client/flywheel/`, `compat/create/client/` **(client)**
 
-Not `gametest/` and not `src/test`. A name stays qualified where its simple name clashes or is already taken in that
-file, and in javadoc.
+Imports only. Not `gametest/` and not `src/test`. A name stays qualified where its simple name clashes or is already
+taken in that file, and in javadoc.
 
-Check: `javap` identical for 19 to 21, and for 22 apart from `SubgridVisual`; tests. **Client** for 22.
+Check: `javap` identical for every class in all four; tests. **Client** for 22, though `javap` already proves it
+unchanged.
 
-### 23. The test server writes its chunks without waiting for the disk (needs a decision)
+### 23. The test server writes its chunks without waiting for the disk (deferred)
+
+Deferred by the review until the user says yes; not part of this refactor until then, and nothing depends on it.
 
 See "Why a GameTest run is slow". `MinecraftServer#forceSynchronousWrites` answers true unless a dedicated server's
 `sync-chunk-writes` says otherwise, and `GameTestServer` doesn't override it, so every region file of the test world is
-opened with `DSYNC`. A mixin on `MinecraftServer#forceSynchronousWrites` answers false when the server is a
+opened with `DSYNC`. A mixin on `MinecraftServer#forceSynchronousWrites` would answer false when the server is a
 `GameTestServer`, and nothing else. A real server, dedicated or integrated, is not a `GameTestServer`, so the mod
 behaves as before there; the test world loses only durability across a power cut, and it is deleted before the next run
 anyway (`build.gradle`).
 
-Files: new `mixin/MinecraftServerMixin` (or a name the reviewer prefers), `tinyblocks.mixins.json`.
+Files: new `mixin/MinecraftServerMixin`, `tinyblocks.mixins.json`.
 
 Check: tests (`LifecycleParityGameTest` and the reload moves still read back what they wrote); the time from "Saving
 chunks for level … overworld" to "… the_nether" in `run/logs/latest.log` drops from about 4 minutes to seconds.
 
-It is the only step that adds a mixin, so it needs the reviewer's and the user's yes; without it, it is dropped.
 The alternative, ending the JVM with `Runtime.halt` before the save, skips the shutdown hooks and leaves no world to
 look at, so this plan doesn't propose it.
 
@@ -398,7 +449,7 @@ and the nether's line, the server thread sits in `ChunkStorage.flushWorker` and 
 files are opened with `DSYNC` because `MinecraftServer#forceSynchronousWrites` answers true and `GameTestServer` doesn't
 override it; each chunk is two synchronous writes, its data and the 8 KB header. On this machine one 8 KB `DSYNC` write
 took about 15 ms during a save (`dd … oflag=dsync` in `build/`: 547 kB/s, against 2.5 GB/s without), and the world holds
-37,777 chunks: some 75,000 such writes are the 4 minutes. Step 23 takes `DSYNC` away for the test server only.
+37,777 chunks: some 75,000 such writes are the 4 minutes. Step 23 (deferred) would take `DSYNC` away for the test server only.
 
 **Why it got worse with `73a5487`.** With the world kept between runs, the places that don't move from run to run
 (`NEAR_ORIGIN`, `FRAME_SEAM`, and what they load) were generated once and then only read back; with a new world every
@@ -423,26 +474,30 @@ changes without changing test logic, so the plan leaves it.
 
 ## Risks
 
-- **Order of neighbour updates** (step 4). Changing the loop order would change which neighbour hears first. The step
-  keeps x, y, z and `Direction.values()`; the parity scenes compare with real blocks every tick, so a change shows.
-- **Resolution** (steps 5 and 6). Step 6 is the only real merge of logic. `SubgridBlockEntityTest` pins the hop math,
+- **Order of neighbour updates** (step 5). Step 4 first shows whether a test sees a change of order, and adds a unit
+  test of `neighborsOf`'s order either way. Step 5 keeps x, y, z and `Direction.values()`.
+- **The `live` flag of the binding space** (step 14). Step 13 finds or adds the test that fails without it; step 14
+  doesn't touch `operatingServerSpace`.
+- **Resolution** (step 6). Moved code only; the two hop loops stay apart. `SubgridBlockEntityTest` pins the hop math,
   the cross-boundary and fluid-leak GameTests pin where writes land.
-- **Write-back** (step 12). The heart of every fake-space call. Moved unchanged; the risk is a private helper resolved
+- **Write-back** (step 11). The heart of every fake-space call. Moved unchanged; the risk is a private helper resolved
   to a different overload after the move, which the compiler catches only partly: run every parity scene.
+- **`getLevel()`/`getBlockPos()` in helper classes** (steps 6 to 9). They return the same fields; `getLevel()` is not
+  overridden anywhere in the mod (`SubgridBlockEntity` doesn't override it).
 - **Static initialisation**. `VanillaBlockPiece.INSTANCE` registers the piece on class load and `TinyBlocks` forces
-  that load (`VanillaBlockPiece.init()`); nothing in this plan moves it. The piston reflection becomes lazy (step 13).
+  that load (`VanillaBlockPiece.init()`); nothing in this plan moves it. The piston reflection becomes lazy (step 12);
+  a failure there would now crash the client at the first moving piston instead of at load (it can't fail on 1.21.1).
 - **Access widening**. Private members become package-private for the moved classes; nothing becomes public that
-  wasn't.
+  wasn't, apart from the classes `GridWriteBack` and `PistonAnimation` holding methods that already were.
 - **Merge conflicts**. The branches listed in `goal.md`'s "Extra branches" stack on this one: #112's frame seam
   touches `SubgridBlockEntity.virtualOrigin`, which stays put; #116 will touch phantom binding in `VanillaBlockPiece`,
-  which steps 11 to 14 move around, so it goes after them.
-- **The mixin of step 23** runs in every server; what it changes is gated on `GameTestServer`.
-- **Client rendering, not checked by any GameTest**: steps 13, 14, 16, 17 and 22, plus the log line in step 3. For the
-  user to check in game, with Flywheel and without it: a grid of mixed blocks near and far (chunk mesh, per frame
-  drawing, culling of hidden faces); the crack while mining a piece; water and lava in a grid; a chest opening; a piston
-  and a sticky piston in a grid; tiny Create shafts and cogs turning, a gear connector and a funnel connector; the
-  aimed piece's outline and the Minimizer's face grid; the Grid Save ghost, turned with R; placing blocks, buckets and
-  items by hand.
+  which steps 10 to 14 move around, so it goes after them.
+- **Client rendering, not checked by any GameTest**: steps 12, 14, 16 and 17, plus the log line in step 3 (step 22 is
+  proven unchanged by `javap`). For the user to check in game, with Flywheel and without it: a grid of mixed blocks
+  near and far (chunk mesh, per frame drawing, culling of hidden faces); the crack while mining a piece; water and lava
+  in a grid; a chest opening; a piston and a sticky piston in a grid; tiny Create shafts and cogs turning and lit, a
+  gear connector and a funnel connector; the aimed piece's outline and the Minimizer's face grid; the Grid Save ghost,
+  turned with R; placing blocks, buckets and items by hand.
 
 ## Left alone, on purpose
 
@@ -462,6 +517,16 @@ changes without changing test logic, so the plan leaves it.
 - **Mixins**, **GameTests and unit tests** (the rules), **resources** other than two comments.
 - **`SubgridBlockEntity`'s scheduled ticks, rotation and NBT.** Interwoven with the cell storage; moving them would
   give a class of delegates and no clearer code.
+- **Held drops and piston captures.** The same reason: every member would stay on `SubgridBlockEntity` as a delegate
+  (tests, `GridSaveItem`), and `removeIfLeftEmpty`, `transform` and `turn` read the state, so it would end up split
+  across two classes.
+- **The two hop loops of `resolve` and `resolveOrCreate`.** They look alike but read different levels and the creating
+  one writes the real world mid-loop; one test tells their results apart. Merging saves about 30 lines.
+- **The branching of `onRightClickBlock`** on what was clicked (step 15 says why).
+- **`docs/performance.md`.** It names `runItemInteraction` in `SubgridEventHandler` and `VanillaBlockPiece.TickSpace`,
+  which move. It is a history of what was done and measured then, so it keeps the names of that time.
+- **Scheduled ticks losing their priority and type** on save, load, turn and `scheduleCaptured`: a possible bug, #118,
+  not this refactor.
 
 ## What tests reach, which stays in place
 
@@ -474,3 +539,39 @@ From `src/test` and `gametest/`: on `SubgridBlockEntity`, `placePiece`, `removeP
 `blockEntityFor`, `boundPhantom`, `buildFakeSpace`, `buildFakeServerSpace`, `snapshotStates`, `directionTo`; on
 `SubgridEventHandler`, `handleMinePiece`; `PieceTransforms.slices`; `FakeCellGetter.setRaw`, `getStateRaw`,
 `aliasOffset`.
+
+## Response to review round 1
+
+The review is `docs/refactor-review.md` (9c9487f). Steps were renumbered: old 6 and 8 are gone, two test steps were
+added (new 4 and 13).
+
+- **Step 23:** deferred, as decided. Marked so; nothing depends on it.
+- **M1, hop-loop merge:** dropped. The loops are moved as two (new step 6), with the reasons under "Left alone".
+- **M2, PendingDrops:** dropped. Listed under "Left alone"; the target structure no longer has it.
+- **M3, `operatingServerSpace`:** step 14 now shares a builder only between `buildFakeSpace` and
+  `buildClientFakeSpace` and leaves `operatingServerSpace` with its `cells.live = false`. New step 13 deletes the line
+  once, runs `SubgridTickSpaceGameTest`, `SubgridHopperGameTest` and the item parity scenes, and if none fails adds a
+  parity scene (hopper into chest, comparator off the chest) that does.
+- **M4, neighbour order:** new step 4 does the one-off (z outer; directions reversed), records what fails, and adds a
+  unit test of `neighborsOf`'s order around a multi-cell piece either way, seen to fail with the one-off. The
+  footprint order only matters for pieces larger than a cell, so no parity scene is expected to catch it. The
+  `refreshSignals` loop is left as it is in step 5 and moves unchanged in step 7; `rebuildAfterRemove` copies its index
+  into a final local.
+- **M5, `relightChildren`:** moved into step 17, next to the other `SubgridVisual` change. Steps 19 to 22 are imports
+  only and `javap`-identical for every class.
+- **m1:** step 12 now says a reflection failure would be an `Error` that nothing catches, crashing the client at the
+  first moving piston; the risk list says the same.
+- **m2:** `SubgridFakeCellGetter.be` added to what becomes package-private (step 10).
+- **m3:** steps 6, 7 and 9 and the target structure say the helpers read `getLevel()`/`getBlockPos()`; step 9 keeps
+  `markNeighbouringPhantomsDirty` last in `notifyUpdate`.
+- **m4:** step 5 merges the two arms through a private `placeIn` helper.
+- **m5:** step 3 now gives the right reason for each removed read: the signal loop runs only with debug on; the
+  `runBlockEvent` and "AFTER" reads run always but only read in-grid cells.
+- **m6:** step 1's check is `grep -rn "TODO" src/main`.
+- **m7:** "What doesn't change" lists every member a mixin calls, `markPhantomDataDirty`, `turnMovedQuietly` and
+  `lookAroundMoved` included; step 9 names the mixin.
+- **m8:** step 17's helper is `pushSlice(poseStack, slice)`, popped at the call site.
+- **m9:** opened as #118, kept out of the refactor (listed under "Left alone").
+- **m10:** not done. The branching on what was clicked ends in about eight different side effects and returns; step 15
+  explains why it stays in the handler.
+- **m11:** `docs/performance.md` is left as it is, knowingly: it records what was done at the time.
