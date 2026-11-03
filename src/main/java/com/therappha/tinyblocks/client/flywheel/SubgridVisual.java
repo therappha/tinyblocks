@@ -56,9 +56,6 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     /** Blocks added around a grid before asking if it's on screen, so it's back before its edge is seen. */
     private static final double SCREEN_MARGIN = 2;
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-    private static int lightLogBudget = 3;
-
     private final VisualizationContext context;
     /** Level the hosted phantoms are bound to; answers light at this SubgridBlock's real position. */
     private final net.minecraft.world.level.Level hostLevel;
@@ -267,21 +264,11 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     @Override
     public void updateLight(float partialTick) {
-        logLight("updateLight");
         for (Child child : allChildren()) {
             if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
             }
         }
-    }
-
-    private void logLight(String where) {
-        if (lightLogBudget <= 0) return;
-        lightLogBudget--;
-        int packed = net.minecraft.client.renderer.LevelRenderer.getLightColor(level, blockEntity.getBlockPos());
-        LOGGER.info("[fw-light] {} subgrid={} sections={} packed=0x{} (block={} sky={}) children={}",
-                where, blockEntity.getBlockPos(), lightSections != null, Integer.toHexString(packed),
-                (packed >> 4) & 0xF, (packed >> 20) & 0xF, children.size());
     }
 
     @Override

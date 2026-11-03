@@ -841,7 +841,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * hops (into the side neighbor, then down from THAT grid's own frame) to find the real
      * answer; the old single-hop-only version reported every such compound query as bare air
      * regardless of what was actually there, which is what drew fluid spread toward every
-     * air-adjacent edge (confirmed live via the [xgrid-fluid] trace: local=(8,-1,4) on an 8-cell
+     * air-adjacent edge (confirmed live in a trace: local=(8,-1,4) on an 8-cell
      * grid hit OutOfScope 194 times in one short GameTest run). In-bounds -> Local without
      * touching level at all. Each hop fully resolves whatever magnitude of overflow that axis has
      * (via wrap's floorMod, not a fixed ±1 collapse — a piston chain-pushing a second block past
@@ -993,24 +993,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /**
-     * Diagnostic-only (issue #43): set true around FluidState.tick calls (VanillaBlockPiece
-     * .scheduledTick) so logResolve can trace which boundary reads happen mid fluid-spread at
-     * INFO — the regular [xgrid] DEBUG line turned out not to actually be captured anywhere by
-     * this project's default logging config (checked: debug.log has zero [xgrid] entries even
-     * with LOGGER.isDebugEnabled() guarding it), so a targeted, narrowly-scoped INFO trace is the
-     * only way to get real visibility without reintroducing the volume problem #42's downgrade
-     * fixed. Safe at INFO specifically because fluid ticks are throttled/infrequent, unlike the
-     * constant hasSignal/canSurvive traffic every resolve() call sees generally. Single-threaded
-     * server tick — no concurrency concerns with this being static.
-     */
-    private static boolean tracingFluid = false;
-
-    public static void setTracingFluid(boolean value) {
-        tracingFluid = value;
-    }
-
-    /**
-     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
+     * DEBUG, not INFO — unlike a trace gated on rare, specific events, this
      * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
      * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
      * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
@@ -1021,10 +1004,6 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
         // The description is only built when it is logged: formatting it on every resolve weighed in a profile.
-        if (tracingFluid && LOGGER.isDebugEnabled()) {
-            LOGGER.debug("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
-                    dir, worldPosition, x, y, z, describeCellRef(ref));
-        }
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
                     dir, worldPosition, x, y, z, describeCellRef(ref));
