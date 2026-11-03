@@ -21,7 +21,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.ticks.ScheduledTick;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -43,7 +42,7 @@ public final class MinimizerShapes {
     public static void destroy(ServerLevel level, Player player, com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) {
         BlockPos pos = grid.getBlockPos();
         if (!MinimizerItem.mayBreak(player, level, pos) || !com.therappha.tinyblocks.items.GridSaveItem.mayBreak(level, pos, player)) return;
-        for (var piece : List.copyOf(grid.getPieces())) SubgridEventHandler.removeAndDrop(grid, level, pos, piece.anchor, player);
+        for (var piece : List.copyOf(grid.getPieces())) PiecePlacement.removeAndDrop(grid, level, pos, piece.anchor, player);
         if (grid.getPieces().isEmpty()) level.removeBlock(pos, false);
     }
 
@@ -112,7 +111,7 @@ public final class MinimizerShapes {
             BlockPos pos = grid.getBlockPos();
             grid.notifyUpdate();
             // The same delayed resync a hand placement schedules, for grids created just now.
-            level.getBlockTicks().schedule(new ScheduledTick<>(level.getBlockState(pos).getBlock(), pos, level.getGameTime() + 2, 0L));
+            PiecePlacement.resyncLater(level, pos, level.getBlockState(pos).getBlock());
         }
         finish(level, player, minimizer, hit, state, placed);
     }
