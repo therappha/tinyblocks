@@ -211,7 +211,7 @@ public class VanillaBlockPiece extends PieceDefinition {
     @Override
     public boolean requiresClientTick() {
         // Checked per-piece inside clientTick below, same reasoning as requiresTick() above —
-        // cheap for the vast majority of pieces that aren't mid piston-animation.
+        // cheap for the vast majority of pieces that aren't mid piston animation.
         return true;
     }
 
