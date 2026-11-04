@@ -21,8 +21,20 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # Sable is compileOnly; in dev its jar sits in run/mods, which isn't in git. Without it the mod doesn't load.
+      - name: Put Sable in run/mods
+        run: |
+          version=$(grep -oP 'maven\.modrinth:sable:\K[^"]+' build.gradle | head -1)
+          test -n "$version"
+          mkdir -p run/mods
+          curl -fsSL -o "run/mods/sable-$version.jar" \
+            "https://api.modrinth.com/maven/maven/modrinth/sable/${version//+/%2B}/sable-${version//+/%2B}.jar"
+
+      # The server exits 0 even when mod loading fails, so success is read from the log.
       - name: Run GameTest server
-        run: ./gradlew runGameTestServer -Pmod_version=0.0.0
+        run: |
+          ./gradlew runGameTestServer -Pmod_version=0.0.0 2>&1 | tee gametest.log
+          grep -E 'All [0-9]+ required tests passed' gametest.log
 
       - name: Upload GameTest crash reports
         if: failure()
