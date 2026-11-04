@@ -1,13 +1,19 @@
 package com.therappha.tinyblocks.client.flywheel;
 
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.therappha.tinyblocks.client.PieceTransforms;
+import com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing;
 import com.therappha.tinyblocks.subgrid.GridSight;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
+import dev.engine_room.flywheel.api.instance.Instance;
 import dev.engine_room.flywheel.api.task.Plan;
 import dev.engine_room.flywheel.api.task.TaskExecutor;
 import dev.engine_room.flywheel.api.visual.BlockEntityVisual;
 import dev.engine_room.flywheel.api.visual.DynamicVisual;
+import dev.engine_room.flywheel.api.visual.LightUpdatedVisual;
 import dev.engine_room.flywheel.api.visual.SectionTrackedVisual;
 import dev.engine_room.flywheel.api.visual.TickableVisual;
 import dev.engine_room.flywheel.api.visualization.BlockEntityVisualizer;
@@ -17,18 +23,27 @@ import dev.engine_room.flywheel.api.visualization.VisualizerRegistry;
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual;
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
 import dev.engine_room.flywheel.lib.visual.SimpleTickableVisual;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * One Flywheel visual per SubgridBlockEntity that
@@ -58,7 +73,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     private final VisualizationContext context;
     /** Level the hosted phantoms are bound to; answers light at this SubgridBlock's real position. */
-    private final net.minecraft.world.level.Level hostLevel;
+    private final Level hostLevel;
     private int frames = 0;
     /** One child per slice of the piece's model (PieceTransforms): one for most pieces, several for a funnel. */
     private final Map<PlacedPiece, List<Child>> children = new IdentityHashMap<>();
@@ -91,13 +106,13 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     private void reconcile(float partialTick) {
         List<PlacedPiece> live = new ArrayList<>(blockEntity.getPieces());
-        java.util.Set<PlacedPiece> alive = java.util.Collections.newSetFromMap(new IdentityHashMap<>(live.size() * 2));
+        Set<PlacedPiece> alive = Collections.newSetFromMap(new IdentityHashMap<>(live.size() * 2));
         alive.addAll(live);
         children.entrySet().removeIf(e -> {
             PlacedPiece piece = e.getKey();
             // A connector whose neighbour across changed (a grid placed or broken there) is rebuilt to match it.
             if (alive.contains(piece) && piece.definition.renderState(piece) == e.getValue().get(0).state()
-                    && builtAcross.getOrDefault(piece, 0) == com.therappha.tinyblocks.client.PieceTransforms.acrossOf(blockEntity, piece)) {
+                    && builtAcross.getOrDefault(piece, 0) == PieceTransforms.acrossOf(blockEntity, piece)) {
                 return false;
             }
             e.getValue().forEach(this::destroy);
@@ -128,18 +143,18 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         if (visualizer == null) return List.of();
 
         List<Child> slices = new ArrayList<>();
-        int across = com.therappha.tinyblocks.client.PieceTransforms.acrossOf(blockEntity, piece);
+        int across = PieceTransforms.acrossOf(blockEntity, piece);
         builtAcross.put(piece, across);
-        List<com.therappha.tinyblocks.client.PieceTransforms.Slice> transforms =
-                com.therappha.tinyblocks.client.PieceTransforms.slices(piece, blockEntity.gridSize, across);
-        boolean gear = com.therappha.tinyblocks.client.PieceTransforms.isGearConnector(blockEntity, piece)
-                && phantom instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+        List<PieceTransforms.Slice> transforms =
+                PieceTransforms.slices(piece, blockEntity.gridSize, across);
+        boolean gear = PieceTransforms.isGearConnector(blockEntity, piece)
+                && phantom instanceof KineticBlockEntity;
         for (int i = 0; i < transforms.size(); i++) {
             int slice = i;
             // A gear connector is drawn from Create's parts (shaftless gear, shaft end), not as the cogwheel it stands in as.
             slices.add(createChild(gear
-                    ? embedding -> com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.visual(embedding,
-                            (com.simibubi.create.content.kinetics.base.KineticBlockEntity) phantom, slice, partialTick,
+                    ? embedding -> GearConnectorDrawing.visual(embedding,
+                            (KineticBlockEntity) phantom, slice, partialTick,
                             blockEntity.getBlockPos().relative(piece.facing))
                     : embedding -> visualizer.createVisual(embedding, phantom, partialTick),
                     phantom, state, transforms.get(i), partialTick));
@@ -147,8 +162,8 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         return slices;
     }
 
-    private Child createChild(java.util.function.Function<VisualizationContext, BlockEntityVisual<?>> visualOf, BlockEntity phantom,
-                              BlockState state, com.therappha.tinyblocks.client.PieceTransforms.Slice slice, float partialTick) {
+    private Child createChild(Function<VisualizationContext, BlockEntityVisual<?>> visualOf, BlockEntity phantom,
+                              BlockState state, PieceTransforms.Slice slice, float partialTick) {
         // Anchor the embedding at the phantom's OWN position so the hosted visual (which places itself at
         // blockEntity.getBlockPos() - renderOrigin) sits at the embedding's origin; sliceTransform then
         // carries it to the slice's real-world place.
@@ -157,8 +172,8 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         VisualEmbedding embedding;
         if (shared) {
             float cell = 1f / blockEntity.gridSize;
-            transform = sliceTransform(new com.therappha.tinyblocks.client.PieceTransforms.Slice(
-                    new org.joml.Vector3f(), new org.joml.Vector3f(cell, cell, cell)));
+            transform = sliceTransform(new PieceTransforms.Slice(
+                    new Vector3f(), new Vector3f(cell, cell, cell)));
             if (sharedEmbedding == null) {
                 sharedEmbedding = newEmbedding(blockEntity.virtualOrigin());
                 sharedEmbedding.transforms(hidden ? COLLAPSED : transform, new Matrix3f());
@@ -175,7 +190,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         }
         // Flywheel only calls updateLight on visuals IT created; a child built here would otherwise
         // never get its first light pass and render black (light 0).
-        if (lightSections != null && visual instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+        if (lightSections != null && visual instanceof LightUpdatedVisual lit) {
             lit.updateLight(partialTick);
         }
         return new Child(state, embedding, !shared, transform, visual);
@@ -186,7 +201,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     }
 
     /** One cell at its cell scale: drawn where the shared embedding would put it. A connector's funnel isn't. */
-    private boolean isPlainCell(BlockEntity phantom, com.therappha.tinyblocks.client.PieceTransforms.Slice slice) {
+    private boolean isPlainCell(BlockEntity phantom, PieceTransforms.Slice slice) {
         float cell = 1f / blockEntity.gridSize;
         BlockPos local = phantom.getBlockPos().subtract(blockEntity.virtualOrigin());
         return slice.scale().equals(cell, cell, cell)
@@ -209,17 +224,17 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     }
 
     private void updateSight(DynamicVisual.Context ctx) {
-        net.minecraft.world.phys.Vec3 seen = com.therappha.tinyblocks.subgrid.SubLevels.inWorld(level,
-                net.minecraft.world.phys.Vec3.atCenterOf(blockEntity.getBlockPos()));
+        Vec3 seen = SubLevels.inWorld(level,
+                Vec3.atCenterOf(blockEntity.getBlockPos()));
         double distance = seen.distanceTo(ctx.camera().getPosition());
-        double renderDistance = net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
-        boolean onScreen = net.minecraft.client.Minecraft.getInstance().levelRenderer.getFrustum()
-                .isVisible(new net.minecraft.world.phys.AABB(seen, seen).inflate(1 + SCREEN_MARGIN));
+        double renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
+        boolean onScreen = Minecraft.getInstance().levelRenderer.getFrustum()
+                .isVisible(new AABB(seen, seen).inflate(1 + SCREEN_MARGIN));
         sight.update(distance, renderDistance, onScreen);
     }
 
     /** Embedded space -> world (relative to the parent's render origin): the slice's translate, then its scale. */
-    private Matrix4f sliceTransform(com.therappha.tinyblocks.client.PieceTransforms.Slice slice) {
+    private Matrix4f sliceTransform(PieceTransforms.Slice slice) {
         Vec3i origin = context.renderOrigin();
         BlockPos pos = blockEntity.getBlockPos();
         return new Matrix4f()
@@ -246,7 +261,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
             // updateLight when a light section changes, so redo it right away instead of leaving the
             // piece dark until the periodic pass below.
             if (lightSections != null
-                    && child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+                    && child.visual() instanceof LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
             }
         }
@@ -257,7 +272,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
         super.setSectionCollector(collector);
         for (Child child : allChildren()) {
             if (child.visual() instanceof SectionTrackedVisual tracked) tracked.setSectionCollector(collector);
-            if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) lit.updateLight(0f);
+            if (child.visual() instanceof LightUpdatedVisual lit) lit.updateLight(0f);
         }
     }
 
@@ -268,7 +283,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
 
     private void relightChildren(float partialTick) {
         for (Child child : allChildren()) {
-            if (child.visual() instanceof dev.engine_room.flywheel.api.visual.LightUpdatedVisual lit) {
+            if (child.visual() instanceof LightUpdatedVisual lit) {
                 lit.updateLight(partialTick);
             }
         }
@@ -303,7 +318,7 @@ public class SubgridVisual extends AbstractBlockEntityVisual<SubgridBlockEntity>
     }
 
     @Override
-    public void collectCrumblingInstances(java.util.function.Consumer<dev.engine_room.flywheel.api.instance.Instance> consumer) {
+    public void collectCrumblingInstances(Consumer<Instance> consumer) {
         for (Child child : allChildren()) {
             child.visual().collectCrumblingInstances(consumer);
         }

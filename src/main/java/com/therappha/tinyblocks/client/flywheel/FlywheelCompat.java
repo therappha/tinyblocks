@@ -5,6 +5,7 @@ import dev.engine_room.flywheel.api.visualization.BlockEntityVisualizer;
 import dev.engine_room.flywheel.api.visualization.VisualizationManager;
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
+import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -28,7 +29,7 @@ public final class FlywheelCompat {
 
     /** Tells Flywheel the subgrid's visual (and through it every hosted child) should refresh. */
     public static void queueUpdate(BlockEntity subgrid) {
-        dev.engine_room.flywheel.lib.visualization.VisualizationHelper.queueUpdate(subgrid);
+        VisualizationHelper.queueUpdate(subgrid);
     }
 
     /**

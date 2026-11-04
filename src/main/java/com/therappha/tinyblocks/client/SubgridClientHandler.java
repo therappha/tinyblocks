@@ -7,6 +7,7 @@ import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPieceItem;
 import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
@@ -18,13 +19,16 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -99,7 +103,7 @@ class SubgridClientHandler {
         Vec3 hitLoc = hit.getLocation();
         float cell = 1f / gs;
 
-        net.minecraft.core.Vec3i aimed = com.therappha.tinyblocks.subgrid.GridRay.cellAt(pos, hitLoc, face, gs);
+        Vec3i aimed = GridRay.cellAt(pos, hitLoc, face, gs);
         int gx = aimed.getX(), gy = aimed.getY(), gz = aimed.getZ();
 
         poseStack.pushPose();
@@ -111,10 +115,10 @@ class SubgridClientHandler {
             double x1 = p.anchor.getX() * cell;
             double y1 = p.anchor.getY() * cell;
             double z1 = p.anchor.getZ() * cell;
-            net.minecraft.world.phys.shapes.VoxelShape shape = SubgridBlockEntity.pieceShape(p);
+            VoxelShape shape = SubgridBlockEntity.pieceShape(p);
             if (shape != null) {
                 // The piece's own outline, as vanilla draws a block's, shrunk into its cell.
-                for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
+                for (AABB box : shape.toAabbs()) {
                     LevelRenderer.renderLineBox(poseStack, lines,
                         x1 + box.minX * cell, y1 + box.minY * cell, z1 + box.minZ * cell,
                         x1 + box.maxX * cell, y1 + box.maxY * cell, z1 + box.maxZ * cell,
@@ -217,7 +221,7 @@ class SubgridClientHandler {
             gs = mc.level.getBlockEntity(clickedPos) instanceof SubgridBlockEntity cbe
                 ? cbe.gridSize : csb.gridSize;
             int max = gs - 1;
-            double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
+            double nudge = GridRay.nudge(gs);
             int hx = (int)(((hitLoc.x - clickedPos.getX()) - face.getStepX() * nudge) * gs);
             int hy = (int)(((hitLoc.y - clickedPos.getY()) - face.getStepY() * nudge) * gs);
             int hz = (int)(((hitLoc.z - clickedPos.getZ()) - face.getStepZ() * nudge) * gs);

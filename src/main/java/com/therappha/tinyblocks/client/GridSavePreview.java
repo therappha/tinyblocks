@@ -11,6 +11,7 @@ import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.network.GridSaveTurnPayload;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
@@ -160,7 +161,7 @@ public final class GridSavePreview {
             BlockPos other = mc.hitResult instanceof BlockHitResult hit && hit.getType() != HitResult.Type.MISS
                     ? hit.getBlockPos() : corner;
             // A corner on a sub-level and one in the world are millions of blocks apart: no box, and no walk across it.
-            if (!com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(mc.level, corner, other)) other = corner;
+            if (!SubLevels.sameSpace(mc.level, corner, other)) other = corner;
             BlockPos min = BlockPos.min(corner, other), max = BlockPos.max(corner, other);
             // As GridSaveItem#pickUpBox refuses, but for what only the server asks.
             int grids = 0;

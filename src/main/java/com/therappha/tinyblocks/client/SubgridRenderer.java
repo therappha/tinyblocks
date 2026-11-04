@@ -1,7 +1,13 @@
 package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.therappha.tinyblocks.client.flywheel.FlywheelCompat;
+import com.therappha.tinyblocks.client.flywheel.FlywheelLoaded;
+import com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing;
+import com.therappha.tinyblocks.subgrid.GridSight;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
@@ -16,6 +22,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import org.jetbrains.annotations.Nullable;
 
 public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> {
 
@@ -63,7 +72,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
         // Past vanilla's distance for a block entity nothing else is drawn here: this renderer only gets that far to
         // notice a changed grid, for the chunk's sake.
-        if (ownLevel && !com.therappha.tinyblocks.subgrid.GridSight.drawnPerFrame(seenDistance(be))) return;
+        if (ownLevel && !GridSight.drawnPerFrame(seenDistance(be))) return;
 
         for (PlacedPiece piece : mesh.dynamic) {
             BlockState state = piece.definition.renderState(piece);
@@ -88,7 +97,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
             // What the piece's block entity tells its model, gathered as a chunk does for a real block.
-            var modelData = net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
+            var modelData = ModelData.EMPTY;
             var entityData = staticDrawn ? null : modelDataOf(piece);
             if (entityData != null) {
                 if (fluidView == null) fluidView = viewOf(be);
@@ -97,12 +106,12 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
             List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), PieceTransforms.acrossOf(be, piece));
             if (PieceTransforms.isGearConnector(be, piece)) {
-                if (piece.runtimeBlockEntity instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity gear
-                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
-                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
+                if (piece.runtimeBlockEntity instanceof KineticBlockEntity gear
+                        && !(FlywheelLoaded.isLoaded()
+                                && FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
                     for (int i = 0; i < slices.size(); i++) {
                         pushSlice(poseStack, slices.get(i));
-                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
+                        GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
                                 packedLight, be.getBlockPos().relative(piece.facing));
                         poseStack.popPose();
                     }
@@ -126,8 +135,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
                 // itself caches onto piece.runtimeBlockEntity).
                 if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
-                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
-                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
+                        && !(FlywheelLoaded.isLoaded()
+                                && FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
                     BlockEntityRenderer<BlockEntity> ber =
                             Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
                     if (ber != null) {
@@ -167,7 +176,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
     /** From the camera to the grid where it's seen: it may be on a sub-level. */
     private static double seenDistance(SubgridBlockEntity be) {
-        return com.therappha.tinyblocks.subgrid.SubLevels.inWorld(be.getLevel(), net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()))
+        return SubLevels.inWorld(be.getLevel(), Vec3.atCenterOf(be.getBlockPos()))
                 .distanceTo(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
     }
 
@@ -181,8 +190,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      * What a piece's block entity hands its model, or null if nothing: in a chunk a model gets this from the block
      * entity at its position, and a model built on it (a block taking the look of another) can have no quads without.
      */
-    @org.jetbrains.annotations.Nullable
-    static net.neoforged.neoforge.client.model.data.ModelData modelDataOf(PlacedPiece piece) {
+    @Nullable
+    static ModelData modelDataOf(PlacedPiece piece) {
         if (!(piece.runtimeBlockEntity instanceof BlockEntity blockEntity)) return null;
         var data = blockEntity.getModelData();
         return data.getProperties().isEmpty() ? null : data;

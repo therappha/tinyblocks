@@ -1,11 +1,17 @@
 package com.therappha.tinyblocks.client;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.client.flywheel.FlywheelCompat;
+import com.therappha.tinyblocks.client.flywheel.FlywheelLoaded;
+import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.setup.Registration;
+import net.minecraft.client.renderer.item.ItemProperties;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
 
@@ -18,18 +24,18 @@ public class ClientSetup {
     }
 
     @SubscribeEvent
-    public static void onClientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
+    public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-            if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
-                com.therappha.tinyblocks.client.flywheel.FlywheelCompat.register();
+            if (FlywheelLoaded.isLoaded()) {
+                FlywheelCompat.register();
             }
             // models/item/grid_save.json shows a full Grid Save with its own icon.
-            net.minecraft.client.renderer.item.ItemProperties.register(Registration.GRID_SAVE.get(),
-                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "full"),
-                    (stack, level, entity, seed) -> com.therappha.tinyblocks.items.GridSaveItem.isFull(stack) ? 1f : 0f);
+            ItemProperties.register(Registration.GRID_SAVE.get(),
+                    ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "full"),
+                    (stack, level, entity, seed) -> GridSaveItem.isFull(stack) ? 1f : 0f);
             // models/item/minimizer.json turns red while it is switched off.
-            net.minecraft.client.renderer.item.ItemProperties.register(Registration.MINIMIZER.get(),
-                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "off"),
+            ItemProperties.register(Registration.MINIMIZER.get(),
+                    ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "off"),
                     (stack, level, entity, seed) -> MinimizerItem.isOn(stack) ? 0f : 1f);
         });
     }

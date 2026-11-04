@@ -6,6 +6,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -85,7 +86,7 @@ final class SubgridFluidView implements BlockAndTintGetter {
      * rather than anything related to the subgrid's actual surroundings.
      */
     @Override
-    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) {
+    public int getBrightness(LightLayer layer, BlockPos pos) {
         return real.getBrightness(layer, be.getBlockPos());
     }
 
