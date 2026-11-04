@@ -1,10 +1,12 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.compat.create.CreateConnectorSetup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -20,13 +22,13 @@ public class TinyBlocksTabs {
                     .displayItems((params, output) -> {
                         // One Minimizer: its size is picked on it.
                         output.accept(Registration.MINIMIZER.get());
-                        output.accept(com.therappha.tinyblocks.compat.create.CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
+                        output.accept(CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get());
                         output.accept(Registration.GRID_SAVE.get());
                         output.accept(GuideBook.create());
                     })
                     .build());
 
-    public static void register(net.neoforged.bus.api.IEventBus eventBus) {
+    public static void register(IEventBus eventBus) {
         CREATIVE_MODE_TABS.register(eventBus);
     }
 }

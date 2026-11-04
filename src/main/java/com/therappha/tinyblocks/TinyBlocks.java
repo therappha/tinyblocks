@@ -1,6 +1,8 @@
 package com.therappha.tinyblocks;
 
 import com.mojang.logging.LogUtils;
+import com.therappha.tinyblocks.compat.create.CreateConnectorSetup;
+import com.therappha.tinyblocks.compat.create.CreateSchematics;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.setup.TinyBlocksTabs;
 import com.therappha.tinyblocks.subgrid.PieceDefinitions;
@@ -19,8 +21,8 @@ public class TinyBlocks {
         PieceDefinitions.init();
         VanillaBlockPiece.init();
         Registration.register(modEventBus);
-        com.therappha.tinyblocks.compat.create.CreateConnectorSetup.register(modEventBus);
-        com.therappha.tinyblocks.compat.create.CreateSchematics.register(modEventBus);
+        CreateConnectorSetup.register(modEventBus);
+        CreateSchematics.register(modEventBus);
         TinyBlocksTabs.register(modEventBus);
         LOGGER.info("TinyBlocks loading...");
     }

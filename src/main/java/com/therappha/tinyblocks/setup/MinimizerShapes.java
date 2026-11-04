@@ -1,12 +1,11 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.items.BuildMode;
+import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.items.MinimizerBuild;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
-import com.therappha.tinyblocks.v2.BlockAccess;
-import com.therappha.tinyblocks.v2.FakeLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -16,7 +15,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.sounds.SoundSource;
@@ -39,9 +38,9 @@ public final class MinimizerShapes {
     private MinimizerShapes() {}
 
     /** Destroy mode: every piece of {@code grid} broken, as when mined one by one, and the grid gone with the last. */
-    public static void destroy(ServerLevel level, Player player, com.therappha.tinyblocks.subgrid.SubgridBlockEntity grid) {
+    public static void destroy(ServerLevel level, Player player, SubgridBlockEntity grid) {
         BlockPos pos = grid.getBlockPos();
-        if (!MinimizerItem.mayBreak(player, level, pos) || !com.therappha.tinyblocks.items.GridSaveItem.mayBreak(level, pos, player)) return;
+        if (!MinimizerItem.mayBreak(player, level, pos) || !GridSaveItem.mayBreak(level, pos, player)) return;
         for (var piece : List.copyOf(grid.getPieces())) PiecePlacement.removeAndDrop(grid, level, pos, piece.anchor, player);
         if (grid.getPieces().isEmpty()) level.removeBlock(pos, false);
     }
@@ -79,12 +78,12 @@ public final class MinimizerShapes {
 
         int size = target.gridSize();
         int placed = 0;
-        if (size == com.therappha.tinyblocks.items.MinimizerItem.NORMAL_SIZE) {
+        if (size == MinimizerItem.NORMAL_SIZE) {
             // Normal blocks, into the world, where nothing is in the way (air, grass, water).
             for (BlockPos pos : cells) {
                 if (!player.isCreative() && stack.isEmpty()) break;
                 if (!level.getBlockState(pos).canBeReplaced() || !level.mayInteract(player, pos)) continue;
-                if (!level.setBlock(pos, state, net.minecraft.world.level.block.Block.UPDATE_ALL)) continue;
+                if (!level.setBlock(pos, state, Block.UPDATE_ALL)) continue;
                 placed++;
                 if (!player.isCreative()) stack.shrink(1);
             }

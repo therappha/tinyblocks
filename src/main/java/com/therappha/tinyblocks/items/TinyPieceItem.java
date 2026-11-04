@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.items;
 
 import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PieceDefinition;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
@@ -49,7 +50,7 @@ public abstract class TinyPieceItem extends Item {
         if (clickedState.getBlock() instanceof SubgridBlock clickedSB) {
             gs = gridSizeAt(level, clickedPos, clickedSB);
             int max = gs - 1;
-            double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
+            double nudge = GridRay.nudge(gs);
             int hx = (int)(((hit.x - clickedPos.getX()) - face.getStepX() * nudge) * gs);
             int hy = (int)(((hit.y - clickedPos.getY()) - face.getStepY() * nudge) * gs);
             int hz = (int)(((hit.z - clickedPos.getZ()) - face.getStepZ() * nudge) * gs);
@@ -118,7 +119,7 @@ public abstract class TinyPieceItem extends Item {
      */
     public static int[] computeGridCell(BlockPos clickedPos, Direction face, Vec3 hit, int gs) {
         int max = gs - 1;
-        double nudge = com.therappha.tinyblocks.subgrid.GridRay.nudge(gs);
+        double nudge = GridRay.nudge(gs);
         BlockPos targetPos = clickedPos.relative(face);
         double hxf = (hit.x - targetPos.getX()) - face.getStepX() * nudge;
         double hyf = (hit.y - targetPos.getY()) - face.getStepY() * nudge;

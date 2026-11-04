@@ -1,12 +1,22 @@
 package com.therappha.tinyblocks.setup;
 
+import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.compat.create.ConnectorPlacement;
+import com.therappha.tinyblocks.compat.create.ShaftConnectorBlock;
+import com.therappha.tinyblocks.compat.create.ShaftConnectorPiece;
+import com.therappha.tinyblocks.items.BuildMode;
+import com.therappha.tinyblocks.items.GridSaveItem;
+import com.therappha.tinyblocks.items.MinimizerBuild;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.items.TinyPieceItem;
+import com.therappha.tinyblocks.network.SubgridMinePiecePayload;
 import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.FakeSpace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -16,13 +26,16 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
@@ -32,9 +45,9 @@ import java.util.List;
 public class SubgridEventHandler {
 
     /** A locked Minimizer in hand (MinimizerItem#mayBreak): no mining starts on what it keeps, on either side. */
-    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGH)
+    @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onLeftClickLocked(PlayerInteractEvent.LeftClickBlock event) {
-        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getEntity(), event.getLevel(), event.getPos())) {
+        if (!MinimizerItem.mayBreak(event.getEntity(), event.getLevel(), event.getPos())) {
             event.setCanceled(true);
         }
     }
@@ -42,8 +55,8 @@ public class SubgridEventHandler {
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         // Only a question (may the player take the whole grid?), for the protections to answer.
-        if (com.therappha.tinyblocks.items.GridSaveItem.isAskingToBreak()) return;
-        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(event.getPlayer(), event.getLevel(), event.getPos())) {
+        if (GridSaveItem.isAskingToBreak()) return;
+        if (!MinimizerItem.mayBreak(event.getPlayer(), event.getLevel(), event.getPos())) {
             event.setCanceled(true);
             return;
         }
@@ -59,7 +72,7 @@ public class SubgridEventHandler {
         // gone — hits the piece behind it, and one click broke two pieces. For a real player this only stops
         // the whole SubgridBlock from going; machines breaking blocks (fake players) have no client and still
         // remove the piece under their aim here.
-        if (!(player instanceof net.neoforged.neoforge.common.util.FakePlayer)) {
+        if (!(player instanceof FakePlayer)) {
             PiecePlacement.resyncLater(level, pos, event.getState().getBlock());
             return;
         }
@@ -91,11 +104,11 @@ public class SubgridEventHandler {
      * involved here at all, so none of onBlockBreak's post-cancel-resync workaround applies —
      * PiecePlacement.removeAndDrop -> SubgridBlockEntity#removePieceAt's own delta packet is enough on its own.
      */
-    public static void handleMinePiece(com.therappha.tinyblocks.network.SubgridMinePiecePayload payload,
+    public static void handleMinePiece(SubgridMinePiecePayload payload,
                                         Player player, ServerLevel level) {
         BlockPos pos = payload.pos();
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity subgrid)) return;
-        if (!com.therappha.tinyblocks.items.MinimizerItem.mayBreak(player, level, pos)) return;
+        if (!MinimizerItem.mayBreak(player, level, pos)) return;
 
         HitResult hit = player.pick(5.0, 0f, false);
         if (!(hit instanceof BlockHitResult bhr) || !bhr.getBlockPos().equals(pos)) return;
@@ -126,12 +139,12 @@ public class SubgridEventHandler {
         Level level = event.getLevel();
         Player player = event.getEntity();
         // A click PieceClickDispatch re-posts inside a piece's fake space is for the piece's own listeners.
-        if (level instanceof com.therappha.tinyblocks.v2.FakeSpace) return;
+        if (level instanceof FakeSpace) return;
 
         // A Minimizer in Destroy mode breaks the clicked grid, whatever is in the main hand, or nothing.
         if (event.getHand() == InteractionHand.MAIN_HAND
                 && MinimizerItem.isOn(player.getOffhandItem())
-                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) == com.therappha.tinyblocks.items.BuildMode.DESTROY
+                && MinimizerBuild.mode(player.getOffhandItem()) == BuildMode.DESTROY
                 && level.getBlockEntity(event.getPos()) instanceof SubgridBlockEntity grid) {
             event.setCanceled(true);
             event.setCancellationResult(InteractionResult.SUCCESS);
@@ -142,7 +155,7 @@ public class SubgridEventHandler {
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty()) return;
         // A Grid Save takes or places the whole grid (its onItemUseFirst), not a piece in it.
-        if (stack.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) return;
+        if (stack.getItem() instanceof GridSaveItem) return;
         // Only a real BlockItem can ever PLACE a new piece; other items (hoe, axe, shovel, ...)
         // can still MODIFY an existing piece via their own useOn — see runItemInteraction below.
         BlockItem blockItem = stack.getItem() instanceof BlockItem bi && !(bi.getBlock() instanceof SubgridBlock)
@@ -160,7 +173,7 @@ public class SubgridEventHandler {
                 against = against.relative(hit.getDirection());
             }
             event.setCanceled(true);
-            event.setCancellationResult(blockItem.useOn(new net.minecraft.world.item.context.UseOnContext(player, InteractionHand.MAIN_HAND,
+            event.setCancellationResult(blockItem.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND,
                     new BlockHitResult(hit.getLocation(), hit.getDirection(), against, false))));
             return;
         }
@@ -168,7 +181,7 @@ public class SubgridEventHandler {
         // A Minimizer in a shape mode builds between two corners instead of placing one piece — of any size, the
         // normal size (1/1) included. Taken whatever was clicked, so a shape click never places a block of its own.
         if (minimizer != null && blockItem != null
-                && com.therappha.tinyblocks.items.MinimizerBuild.mode(player.getOffhandItem()) != com.therappha.tinyblocks.items.BuildMode.PLACE) {
+                && MinimizerBuild.mode(player.getOffhandItem()) != BuildMode.PLACE) {
             event.setCanceled(true);
             event.setCancellationResult(InteractionResult.SUCCESS);
             if (level instanceof ServerLevel serverLevel) {
@@ -229,17 +242,17 @@ public class SubgridEventHandler {
             // A connector's wide end meets what is outside: without a Minimizer, a block clicked onto it is a normal
             // block out there. SubgridPlacementPreview shows it.
             if (minimizer == null && blockItem != null
-                    && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(existing, blockItem.getBlock(), hit)) {
-                com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeOutside(serverLevel, player, event.getHand(), stack, blockItem, hit);
+                    && ConnectorPlacement.goesOutside(existing, blockItem.getBlock(), hit)) {
+                ConnectorPlacement.placeOutside(serverLevel, player, event.getHand(), stack, blockItem, hit);
                 return;
             }
 
-            if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+            if (blockItem != null && blockItem.getBlock() instanceof ShaftConnectorBlock) {
                 // Before the clicked piece's own use: a tiny shaft would otherwise run Create's shaft placement
                 // helper and extend itself with a one-cell connector. Clicking a shaft puts the plate at the end
                 // of the shaft's own axis, so it meets the shaft.
                 PlacedPiece clickedPiece = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
-                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeFrom(existing, serverLevel, clickedPiece,
+                if (ConnectorPlacement.placeFrom(existing, serverLevel, clickedPiece,
                         face.getAxis(), new BlockPos(clickedCell)) && !player.isCreative()) {
                     stack.shrink(1);
                 }
@@ -248,13 +261,13 @@ public class SubgridEventHandler {
 
             PlacedPiece clickedPlate = existing.getPieceAt(clickedCell.getX(), clickedCell.getY(), clickedCell.getZ());
             if (blockItem != null && clickedPlate != null
-                    && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+                    && ShaftConnectorPiece.faceOf(clickedPlate) != null) {
                 // A block clicked onto a connector: into a funnel's socket, or a small cogwheel onto a gear's side.
-                var target = com.therappha.tinyblocks.compat.create.ConnectorPlacement.targetOn(existing, clickedPlate,
+                var target = ConnectorPlacement.targetOn(existing, clickedPlate,
                         blockItem.getBlock(), hit.getLocation());
-                boolean gear = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(existing.getGridSize());
+                boolean gear = ShaftConnectorPiece.isGear(existing.getGridSize());
                 if (target != null || !gear) {
-                    if (target != null && com.therappha.tinyblocks.compat.create.ConnectorPlacement.placeAt(existing, serverLevel,
+                    if (target != null && ConnectorPlacement.placeAt(existing, serverLevel,
                             target, clickedPlate.facing) && !player.isCreative()) {
                         stack.shrink(1);
                     }
@@ -263,11 +276,11 @@ public class SubgridEventHandler {
                 // Anything else clicked onto a gear goes next to the clicked face, as onto any piece.
             }
 
-            if (stack.getItem() instanceof com.simibubi.create.content.equipment.wrench.WrenchItem && !player.isShiftKeyDown()
-                    && clickedPlate != null && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(clickedPlate) != null) {
+            if (stack.getItem() instanceof WrenchItem && !player.isShiftKeyDown()
+                    && clickedPlate != null && ShaftConnectorPiece.faceOf(clickedPlate) != null) {
                 // Not the shaft it stands in as: a wrench would turn that across the face, out of line with it.
-                if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.moveToNextFace(existing, serverLevel, clickedPlate)) {
-                    com.simibubi.create.content.equipment.wrench.IWrenchable.playRotateSound(serverLevel, pos);
+                if (ConnectorPlacement.moveToNextFace(existing, serverLevel, clickedPlate)) {
+                    IWrenchable.playRotateSound(serverLevel, pos);
                 }
                 return;
             }
@@ -337,9 +350,9 @@ public class SubgridEventHandler {
             nx = cell[0]; ny = cell[1]; nz = cell[2];
         }
 
-        if (blockItem != null && blockItem.getBlock() instanceof com.therappha.tinyblocks.compat.create.ShaftConnectorBlock) {
+        if (blockItem != null && blockItem.getBlock() instanceof ShaftConnectorBlock) {
             // Not a one-cell piece: a plate centred on the grid face nearest the target cell, along the clicked axis.
-            if (com.therappha.tinyblocks.compat.create.ConnectorPlacement.place(be, serverLevel, face.getAxis(), new BlockPos(nx, ny, nz))
+            if (ConnectorPlacement.place(be, serverLevel, face.getAxis(), new BlockPos(nx, ny, nz))
                     && !player.isCreative()) {
                 stack.shrink(1);
             }

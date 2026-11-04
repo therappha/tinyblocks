@@ -1,5 +1,6 @@
 package com.therappha.tinyblocks.setup;
 
+import com.therappha.tinyblocks.mixin.BlockItemAccessor;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
@@ -16,16 +17,22 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.DispensibleContainerItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUtils;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.BucketPickup;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.ticks.ScheduledTick;
 
 import java.util.List;
+import java.util.Map;
 
 /** A block item placed into a cell, an item used on a cell, and a piece broken with its drops. */
 final class PiecePlacement {
@@ -77,14 +84,14 @@ final class PiecePlacement {
 
         // The item's placement state, not just the block's: the item picks between two blocks (a torch or a wall
         // torch, a sign or a wall sign) by the clicked face.
-        BlockState state = ((com.therappha.tinyblocks.mixin.BlockItemAccessor) blockItem).tinyblocks$getPlacementState(placeCtx);
+        BlockState state = ((BlockItemAccessor) blockItem).tinyblocks$getPlacementState(placeCtx);
         if (state == null || !state.canSurvive(fakeLevel, at)) return;
 
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
         if (be.placePiece(piece)) {
-            fakeLevel.gameEvent(net.minecraft.world.level.gameevent.GameEvent.BLOCK_PLACE, at,
-                    net.minecraft.world.level.gameevent.GameEvent.Context.of(player, state));
+            fakeLevel.gameEvent(GameEvent.BLOCK_PLACE, at,
+                    GameEvent.Context.of(player, state));
             state.getBlock().setPlacedBy(fakeLevel, at, state, player, stack);
             // A door's setPlacedBy writes ITS OWN second block (the upper half, via its own
             // internal level.setBlock(pos.above(), state.setValue(HALF, UPPER), ...) call) — same
@@ -93,7 +100,7 @@ final class PiecePlacement {
             // all. Reuse the same scan here so any such second (or third, etc.) write becomes a
             // real piece too — this is what actually makes a placed door end up as two pieces
             // (lower+upper) instead of just the one this function explicitly constructed above.
-            for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
+            for (Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
                 BlockPos touchedPos = touched.getKey();
                 if (touchedPos.equals(fakeAnchor) || touched.getValue().isAir()
                         || be.getPieceAt(touchedPos.getX(), touchedPos.getY(), touchedPos.getZ()) != null) {
@@ -153,7 +160,7 @@ final class PiecePlacement {
         // A genuine ServerLevel, not just Level — some items' useOn() needs one internally (e.g.
         // BonemealableBlock.performBonemeal), same reason scheduled/random ticks need one.
         FakeServerLevel fakeLevel = VanillaBlockPiece.buildFakeServerSpace(be, serverLevel);
-        java.util.Map<BlockPos, BlockState> before = VanillaBlockPiece.snapshotStates(be); // the fake space no longer holds every piece
+        Map<BlockPos, BlockState> before = VanillaBlockPiece.snapshotStates(be); // the fake space no longer holds every piece
         BlockPos at = fakeLevel.world(fakeAnchor); // what vanilla code is handed (the grid's virtual world frame)
 
         BlockHitResult fakeHit = new BlockHitResult(Vec3.atCenterOf(at), face, at, realHit.isInside());
@@ -171,19 +178,19 @@ final class PiecePlacement {
         // dispenser code uses instead of a raycast — call them directly with the fakeAnchor/fakeHit
         // already computed above, generic to any item implementing them, not bucket-specific.
         if (result == InteractionResult.PASS) {
-            if (stack.getItem() instanceof net.minecraft.world.item.DispensibleContainerItem dispensible
+            if (stack.getItem() instanceof DispensibleContainerItem dispensible
                     && dispensible.emptyContents(player, fakeLevel, at, fakeHit)) {
                 dispensible.checkExtraContent(player, fakeLevel, stack, at);
-                ItemStack emptied = net.minecraft.world.item.ItemUtils.createFilledResult(
-                        stack, player, net.minecraft.world.item.BucketItem.getEmptySuccessItem(stack, player));
+                ItemStack emptied = ItemUtils.createFilledResult(
+                        stack, player, BucketItem.getEmptySuccessItem(stack, player));
                 player.setItemInHand(hand, emptied);
                 result = InteractionResult.SUCCESS;
             } else {
                 BlockState currentState = fakeLevel.getBlockState(at);
-                if (currentState.getBlock() instanceof net.minecraft.world.level.block.BucketPickup bucketPickup) {
+                if (currentState.getBlock() instanceof BucketPickup bucketPickup) {
                     ItemStack picked = bucketPickup.pickupBlock(player, fakeLevel, at, currentState);
                     if (!picked.isEmpty()) {
-                        ItemStack filled = net.minecraft.world.item.ItemUtils.createFilledResult(stack, player, picked);
+                        ItemStack filled = ItemUtils.createFilledResult(stack, player, picked);
                         player.setItemInHand(hand, filled);
                         result = InteractionResult.SUCCESS;
                     }
@@ -191,7 +198,7 @@ final class PiecePlacement {
             }
         }
 
-        for (java.util.Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
+        for (Map.Entry<BlockPos, BlockState> touched : fakeLevel.cells().touchedCells().entrySet()) {
             BlockPos touchedPos = touched.getKey();
             BlockState touchedState = touched.getValue();
             BlockState wasState = before.get(touchedPos);

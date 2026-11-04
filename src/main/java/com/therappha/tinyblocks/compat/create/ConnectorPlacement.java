@@ -1,15 +1,29 @@
 package com.therappha.tinyblocks.compat.create;
 
+import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
+import com.simibubi.create.content.kinetics.base.IRotate;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
+import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
+import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
-import com.therappha.tinyblocks.v2.BlockAccess;
-import com.therappha.tinyblocks.v2.FakeLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+
+import javax.annotation.Nullable;
 
 /** Placing a ShaftConnectorPiece into a grid. */
 public final class ConnectorPlacement {
@@ -32,18 +46,18 @@ public final class ConnectorPlacement {
      * A click on {@code clicked} (null for an empty cell): along the clicked piece's own shaft axis when it has
      * one, otherwise along {@code clickedAxis}, on the face nearest the clicked cell.
      */
-    public static boolean placeFrom(SubgridBlockEntity be, ServerLevel level, @javax.annotation.Nullable PlacedPiece clicked,
+    public static boolean placeFrom(SubgridBlockEntity be, ServerLevel level, @Nullable PlacedPiece clicked,
                                     Direction.Axis clickedAxis, BlockPos cell) {
         Direction.Axis axis = clickedAxis;
-        if (clicked != null && clicked.runtimeState instanceof net.minecraft.world.level.block.state.BlockState state
-                && state.getBlock() instanceof com.simibubi.create.content.kinetics.base.IRotate rotate) {
+        if (clicked != null && clicked.runtimeState instanceof BlockState state
+                && state.getBlock() instanceof IRotate rotate) {
             axis = rotate.getRotationAxis(state);
         }
         return place(be, level, nearestFace(axis, cell, be.getGridSize()));
     }
 
     /** Where a block clicked onto a connector goes, and as what. */
-    public record Target(BlockPos cell, net.minecraft.world.level.block.state.BlockState state) {}
+    public record Target(BlockPos cell, BlockState state) {}
 
     /**
      * Where {@code block} clicked onto connector {@code plate} at {@code realHit} goes: into a funnel's socket,
@@ -52,31 +66,31 @@ public final class ConnectorPlacement {
      * Null when nowhere: the socket taken, every side taken, or anything but a small cogwheel on a gear. The click
      * (SubgridEventHandler) and the ghost (SubgridPlacementPreview) both ask here, so they agree.
      */
-    @javax.annotation.Nullable
-    public static Target targetOn(SubgridBlockEntity be, PlacedPiece plate, Block block, net.minecraft.world.phys.Vec3 realHit) {
+    @Nullable
+    public static Target targetOn(SubgridBlockEntity be, PlacedPiece plate, Block block, Vec3 realHit) {
         int size = be.getGridSize();
-        net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
+        BlockState state = block.defaultBlockState();
         if (!ShaftConnectorPiece.isGear(size)) {
             BlockPos socket = ShaftConnectorPiece.socket(plate.facing, size);
             if (socket == null || be.getPieceAt(socket.getX(), socket.getY(), socket.getZ()) != null) return null;
-            if (state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
-                state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
-            } else if (state.hasProperty(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING)) {
-                state = state.setValue(com.simibubi.create.content.kinetics.base.DirectionalKineticBlock.FACING, plate.facing);
+            if (state.hasProperty(RotatedPillarKineticBlock.AXIS)) {
+                state = state.setValue(RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
+            } else if (state.hasProperty(DirectionalKineticBlock.FACING)) {
+                state = state.setValue(DirectionalKineticBlock.FACING, plate.facing);
             }
             return new Target(socket, state);
         }
-        if (!com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state)
-                || !state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)) {
+        if (!ICogWheel.isSmallCog(state)
+                || !state.hasProperty(RotatedPillarKineticBlock.AXIS)) {
             return null;
         }
-        state = state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
-        net.minecraft.world.phys.Vec3 local = realHit.subtract(net.minecraft.world.phys.Vec3.atLowerCornerOf(be.getBlockPos())).scale(size);
+        state = state.setValue(RotatedPillarKineticBlock.AXIS, plate.facing.getAxis());
+        Vec3 local = realHit.subtract(Vec3.atLowerCornerOf(be.getBlockPos())).scale(size);
         BlockPos nearest = null;
         double best = Double.MAX_VALUE;
         for (BlockPos side : ShaftConnectorPiece.meshCells(plate.facing, size)) {
             if (be.getPieceAt(side.getX(), side.getY(), side.getZ()) != null) continue;
-            double distance = net.minecraft.world.phys.Vec3.atCenterOf(side).distanceToSqr(local);
+            double distance = Vec3.atCenterOf(side).distanceToSqr(local);
             if (distance < best) {
                 best = distance;
                 nearest = side;
@@ -100,28 +114,28 @@ public final class ConnectorPlacement {
      * Whether {@code block} clicked at {@code hit}, without a Minimizer, goes outside the grid: {@code hit} is on the wide
      * end of a connector, the side on the grid's face. Not another connector, nor a small cogwheel a gear takes.
      */
-    public static boolean goesOutside(SubgridBlockEntity be, Block block, net.minecraft.world.phys.BlockHitResult hit) {
+    public static boolean goesOutside(SubgridBlockEntity be, Block block, BlockHitResult hit) {
         if (block instanceof ShaftConnectorBlock) return false;
-        net.minecraft.core.Vec3i cell = com.therappha.tinyblocks.subgrid.GridRay.cellAt(be.getBlockPos(), hit.getLocation(), hit.getDirection(), be.getGridSize());
+        Vec3i cell = GridRay.cellAt(be.getBlockPos(), hit.getLocation(), hit.getDirection(), be.getGridSize());
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null || ShaftConnectorPiece.faceOf(piece) != hit.getDirection()) return false;
         return !ShaftConnectorPiece.isGear(be.getGridSize()) || targetOn(be, piece, block, hit.getLocation()) == null;
     }
 
     /** {@code state} as it stands outside a connector on {@code face}: a shaft runs along the connector, wherever one looks from. */
-    public static net.minecraft.world.level.block.state.BlockState alignedOutside(net.minecraft.world.level.block.state.BlockState state, Direction face) {
-        return state.hasProperty(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS)
-                ? state.setValue(com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock.AXIS, face.getAxis()) : state;
+    public static BlockState alignedOutside(BlockState state, Direction face) {
+        return state.hasProperty(RotatedPillarKineticBlock.AXIS)
+                ? state.setValue(RotatedPillarKineticBlock.AXIS, face.getAxis()) : state;
     }
 
     /** Places {@code item} past the grid's face at {@code hit}, as onto any block, aligned with the connector. */
-    public static void placeOutside(ServerLevel level, net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand,
-                                    net.minecraft.world.item.ItemStack stack, net.minecraft.world.item.BlockItem item, net.minecraft.world.phys.BlockHitResult hit) {
-        if (!item.place(new net.minecraft.world.item.context.BlockPlaceContext(player, hand, stack, hit)).consumesAction()) return;
+    public static void placeOutside(ServerLevel level, Player player, InteractionHand hand,
+                                    ItemStack stack, BlockItem item, BlockHitResult hit) {
+        if (!item.place(new BlockPlaceContext(player, hand, stack, hit)).consumesAction()) return;
         BlockPos outside = hit.getBlockPos().relative(hit.getDirection());
-        net.minecraft.world.level.block.state.BlockState placed = level.getBlockState(outside);
-        net.minecraft.world.level.block.state.BlockState aligned = alignedOutside(placed, hit.getDirection());
-        if (aligned != placed) com.simibubi.create.content.kinetics.base.KineticBlockEntity.switchToBlockState(level, outside, aligned);
+        BlockState placed = level.getBlockState(outside);
+        BlockState aligned = alignedOutside(placed, hit.getDirection());
+        if (aligned != placed) KineticBlockEntity.switchToBlockState(level, outside, aligned);
     }
 
     /**

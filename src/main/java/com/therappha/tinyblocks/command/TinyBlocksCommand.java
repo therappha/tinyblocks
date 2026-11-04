@@ -1,13 +1,19 @@
 package com.therappha.tinyblocks.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.diff.RealSpaceView;
+import com.therappha.tinyblocks.diff.SpaceDiff;
+import com.therappha.tinyblocks.diff.TinySpaceView;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeCellGetter;
 import com.therappha.tinyblocks.v2.FakeLevel;
+import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
@@ -45,12 +51,12 @@ public class TinyBlocksCommand {
                 .then(Commands.literal("v2test3").executes(TinyBlocksCommand::executeV2Test3))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
                 .then(Commands.literal("diff").requires(source -> source.hasPermission(2))
-                    .then(Commands.argument("real", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
-                    .then(Commands.argument("grid", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
-                    .then(Commands.argument("gridSize", com.mojang.brigadier.arguments.IntegerArgumentType.integer(2, 16))
-                    .then(Commands.argument("width", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
-                    .then(Commands.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
-                    .then(Commands.argument("depth", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 64))
+                    .then(Commands.argument("real", BlockPosArgument.blockPos())
+                    .then(Commands.argument("grid", BlockPosArgument.blockPos())
+                    .then(Commands.argument("gridSize", IntegerArgumentType.integer(2, 16))
+                    .then(Commands.argument("width", IntegerArgumentType.integer(1, 64))
+                    .then(Commands.argument("height", IntegerArgumentType.integer(1, 64))
+                    .then(Commands.argument("depth", IntegerArgumentType.integer(1, 64))
                         .executes(TinyBlocksCommand::executeDiff))))))))
         );
     }
@@ -61,20 +67,20 @@ public class TinyBlocksCommand {
      * Compares a box of real blocks, from corner {@code real}, with a box of cells of the same size starting at cell
      * (0,0,0) of the grid at {@code grid}, and says what differs: see com.therappha.tinyblocks.diff.SpaceDiff.
      */
-    private static int executeDiff(CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int executeDiff(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerLevel level = ctx.getSource().getLevel();
-        var real = new com.therappha.tinyblocks.diff.RealSpaceView(level,
-                net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(ctx, "real"));
-        var tiny = new com.therappha.tinyblocks.diff.TinySpaceView(level,
-                net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(ctx, "grid"),
-                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "gridSize"), BlockPos.ZERO);
-        var cells = com.therappha.tinyblocks.diff.SpaceDiff.box(com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "width"),
-                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height"),
-                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "depth"));
-        var differences = com.therappha.tinyblocks.diff.SpaceDiff.compare(real, tiny, cells);
+        var real = new RealSpaceView(level,
+                BlockPosArgument.getLoadedBlockPos(ctx, "real"));
+        var tiny = new TinySpaceView(level,
+                BlockPosArgument.getLoadedBlockPos(ctx, "grid"),
+                IntegerArgumentType.getInteger(ctx, "gridSize"), BlockPos.ZERO);
+        var cells = SpaceDiff.box(IntegerArgumentType.getInteger(ctx, "width"),
+                IntegerArgumentType.getInteger(ctx, "height"),
+                IntegerArgumentType.getInteger(ctx, "depth"));
+        var differences = SpaceDiff.compare(real, tiny, cells);
         ctx.getSource().sendSuccess(() -> Component.literal("[diff] " + cells.size() + " cells, " + differences.size() + " differences"), false);
         differences.stream().limit(DIFF_LINES).forEach(d -> ctx.getSource().sendSuccess(
-                () -> Component.literal(com.therappha.tinyblocks.diff.SpaceDiff.describe(d, "world", "tiny")), false));
+                () -> Component.literal(SpaceDiff.describe(d, "world", "tiny")), false));
         return differences.size();
     }
 

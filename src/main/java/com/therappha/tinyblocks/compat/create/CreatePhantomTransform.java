@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.compat.create;
 
 import com.simibubi.create.content.kinetics.base.IRotate;
+import com.simibubi.create.content.kinetics.belt.BeltBlock;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -23,7 +24,7 @@ public final class CreatePhantomTransform {
         data.remove("Network");
         // A belt keeps its controller as a position too, and with a length left it never asks again: past the segment
         // given power nothing turned. With no length, its next tick works the whole belt out as a new one (initBelt).
-        if (state.getBlock() instanceof com.simibubi.create.content.kinetics.belt.BeltBlock) {
+        if (state.getBlock() instanceof BeltBlock) {
             data.remove("Controller");
             data.putInt("Length", 0);
         }

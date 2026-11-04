@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.items;
 
 import com.therappha.tinyblocks.subgrid.GridRay;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -100,7 +101,7 @@ public final class MinimizerBuild {
 
     /** Whether {@code target} can end a shape begun at {@code corner}: of its size, and in the same place (SubLevels). */
     public static boolean sameShape(Level level, Corner corner, Target target) {
-        return corner.gridSize() == target.gridSize() && com.therappha.tinyblocks.subgrid.SubLevels.sameSpace(level,
+        return corner.gridSize() == target.gridSize() && SubLevels.sameSpace(level,
                 realOf(corner.cell(), corner.gridSize()), realOf(target.cell(), target.gridSize()));
     }
 

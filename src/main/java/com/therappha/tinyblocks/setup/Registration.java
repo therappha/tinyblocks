@@ -1,11 +1,14 @@
 package com.therappha.tinyblocks.setup;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.GridBoxBlock;
+import com.therappha.tinyblocks.items.GridBoxBlockEntity;
 import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -14,6 +17,9 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
+
+import java.util.Map;
+import java.util.TreeMap;
 
 public class Registration {
 
@@ -47,15 +53,15 @@ public class Registration {
                     Block.Properties.of().strength(2.0f).sound(SoundType.METAL).noOcclusion(), 9));
 
     // What a full Grid Save puts down: a closed box, opened to place the grid (GridBoxBlock)
-    public static final DeferredHolder<Block, com.therappha.tinyblocks.items.GridBoxBlock> GRID_BOX =
-            BLOCKS.register("grid_box", () -> new com.therappha.tinyblocks.items.GridBoxBlock(
+    public static final DeferredHolder<Block, GridBoxBlock> GRID_BOX =
+            BLOCKS.register("grid_box", () -> new GridBoxBlock(
                     Block.Properties.of().strength(0.5f).sound(SoundType.WOOL).noOcclusion()));
 
     /** Smallest and largest grid size: cells of 1/2 to 1/16 of a block. */
     public static final int MIN_GRID_SIZE = 2, MAX_GRID_SIZE = 16;
 
     /** Every other size in that range: the SubgridBlock's size is its block's, so each size is a block of its own. */
-    private static final java.util.Map<Integer, DeferredHolder<Block, SubgridBlock>> OTHER_SUBGRID_BLOCKS = new java.util.TreeMap<>();
+    private static final Map<Integer, DeferredHolder<Block, SubgridBlock>> OTHER_SUBGRID_BLOCKS = new TreeMap<>();
 
     static {
         for (int size = MIN_GRID_SIZE; size <= MAX_GRID_SIZE; size++) {
@@ -90,8 +96,8 @@ public class Registration {
                             (pos, state) -> new SubgridBlockEntity(Registration.SUBGRID_BLOCK_ENTITY.get(), pos, state),
                             allSubgridBlocks()).build(null));
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.therappha.tinyblocks.items.GridBoxBlockEntity>> GRID_BOX_ENTITY =
-            BLOCK_ENTITIES.register("grid_box", () -> BlockEntityType.Builder.of(com.therappha.tinyblocks.items.GridBoxBlockEntity::new, GRID_BOX.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<GridBoxBlockEntity>> GRID_BOX_ENTITY =
+            BLOCK_ENTITIES.register("grid_box", () -> BlockEntityType.Builder.of(GridBoxBlockEntity::new, GRID_BOX.get()).build(null));
 
     // Subgrid block items — only obtainable via /give, not in any creative tab
     public static final DeferredHolder<Item, BlockItem> SUBGRID_BLOCK_2_ITEM =
@@ -127,8 +133,8 @@ public class Registration {
 
     public static void register(IEventBus eventBus) {
         for (String old : OLD_MINIMIZERS) {
-            ITEMS.addAlias(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, old),
-                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "minimizer"));
+            ITEMS.addAlias(ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, old),
+                    ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "minimizer"));
         }
         BLOCKS.register(eventBus);
         ITEMS.register(eventBus);

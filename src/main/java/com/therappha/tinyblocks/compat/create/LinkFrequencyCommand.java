@@ -14,6 +14,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -50,7 +51,7 @@ public final class LinkFrequencyCommand {
         }
         ItemStack held = player.getMainHandItem();
         link.setFrequency(first, held);
-        if (link.blockEntity instanceof net.minecraft.world.level.block.entity.BlockEntity phantom) phantom.setChanged();
+        if (link.blockEntity instanceof BlockEntity phantom) phantom.setChanged();
         source.sendSuccess(() -> Component.literal("[TinyBlocks] " + (first ? "blue" : "red") + " frequency set to "
                 + (held.isEmpty() ? "nothing" : held.getHoverName().getString())), false);
         return 1;

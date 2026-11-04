@@ -22,6 +22,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import org.slf4j.Logger;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
@@ -103,7 +104,7 @@ public final class DevAssemblerCommand {
             source.sendSuccess(() -> Component.literal("[TinyBlocks] assembleOrDisassemble() called"), false);
             return 1;
         } catch (ReflectiveOperationException e) {
-            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException && e.getCause() != null ? e.getCause() : e;
+            Throwable cause = e instanceof InvocationTargetException && e.getCause() != null ? e.getCause() : e;
             LOGGER.error("physics assembler command failed", cause);
             source.sendFailure(Component.literal("[TinyBlocks] assembler call failed: " + cause));
             return 0;

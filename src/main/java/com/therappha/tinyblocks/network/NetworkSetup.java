@@ -1,9 +1,19 @@
 package com.therappha.tinyblocks.network;
 
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.client.SubgridMiningInterceptor;
+import com.therappha.tinyblocks.client.flywheel.FlywheelCompat;
+import com.therappha.tinyblocks.client.flywheel.FlywheelLoaded;
+import com.therappha.tinyblocks.items.GridSaveItem;
+import com.therappha.tinyblocks.items.MinimizeMe;
+import com.therappha.tinyblocks.items.MinimizerBuild;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.setup.SubgridEventHandler;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
+import com.therappha.tinyblocks.v2.PistonAnimation;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
@@ -29,27 +39,27 @@ public class NetworkSetup {
         registrar.playToServer(MinimizerLiftPayload.TYPE, MinimizerLiftPayload.STREAM_CODEC, NetworkSetup::handleMinimizerLift);
         registrar.playToServer(MinimizerSizePayload.TYPE, MinimizerSizePayload.STREAM_CODEC, NetworkSetup::handleMinimizerSize);
         registrar.playToServer(MinimizerTogglePayload.TYPE, MinimizerTogglePayload.STREAM_CODEC,
-                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleOn(ctx.player())));
+                (payload, ctx) -> ctx.enqueueWork(() -> MinimizerItem.toggleOn(ctx.player())));
         registrar.playToServer(GridSaveTurnPayload.TYPE, GridSaveTurnPayload.STREAM_CODEC, NetworkSetup::handleGridSaveTurn);
         registrar.playToServer(MinimizerLockPayload.TYPE, MinimizerLockPayload.STREAM_CODEC,
-                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizerItem.toggleLock(ctx.player())));
+                (payload, ctx) -> ctx.enqueueWork(() -> MinimizerItem.toggleLock(ctx.player())));
         registrar.playToServer(MinimizeMePayload.TYPE, MinimizeMePayload.STREAM_CODEC,
-                (payload, ctx) -> ctx.enqueueWork(() -> com.therappha.tinyblocks.items.MinimizeMe.toggle(ctx.player())));
+                (payload, ctx) -> ctx.enqueueWork(() -> MinimizeMe.toggle(ctx.player())));
     }
 
     private static void handleGridSaveTurn(GridSaveTurnPayload payload, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> com.therappha.tinyblocks.items.GridSaveItem.turnHeld(ctx.player()));
+        ctx.enqueueWork(() -> GridSaveItem.turnHeld(ctx.player()));
     }
 
     private static void handleMinimizerSize(MinimizerSizePayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             var player = ctx.player();
-            var minimizer = player.getMainHandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+            var minimizer = player.getMainHandItem().getItem() instanceof MinimizerItem
                     ? player.getMainHandItem() : player.getOffhandItem();
-            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem item)) return;
-            com.therappha.tinyblocks.items.MinimizerItem.setGridSize(minimizer, payload.size());
-            com.therappha.tinyblocks.items.MinimizerBuild.setCorner(minimizer, null); // a corner of the old size
-            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("item.tinyblocks.minimizer.sized",
+            if (!(minimizer.getItem() instanceof MinimizerItem item)) return;
+            MinimizerItem.setGridSize(minimizer, payload.size());
+            MinimizerBuild.setCorner(minimizer, null); // a corner of the old size
+            player.displayClientMessage(Component.translatable("item.tinyblocks.minimizer.sized",
                     item.gridSize(minimizer)), true);
         });
     }
@@ -58,10 +68,10 @@ public class NetworkSetup {
         ctx.enqueueWork(() -> {
             var player = ctx.player();
             var minimizer = player.getOffhandItem();
-            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)
-                    || com.therappha.tinyblocks.items.MinimizerBuild.corner(minimizer) == null) return;
-            int lift = com.therappha.tinyblocks.items.MinimizerBuild.addLift(minimizer, Integer.signum(payload.delta()));
-            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.lift",
+            if (!(minimizer.getItem() instanceof MinimizerItem)
+                    || MinimizerBuild.corner(minimizer) == null) return;
+            int lift = MinimizerBuild.addLift(minimizer, Integer.signum(payload.delta()));
+            player.displayClientMessage(Component.translatable("tinyblocks.build.lift",
                     (lift > 0 ? "+" : "") + lift), true);
         });
     }
@@ -72,21 +82,21 @@ public class NetworkSetup {
             var player = ctx.player();
             var main = player.getMainHandItem();
             var off = player.getOffhandItem();
-            if (main.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) {
-                com.therappha.tinyblocks.items.GridSaveItem.switchMode(main, player);
+            if (main.getItem() instanceof GridSaveItem) {
+                GridSaveItem.switchMode(main, player);
                 return;
             }
-            if (off.getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem
-                    && !(main.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) {
-                com.therappha.tinyblocks.items.GridSaveItem.switchMode(off, player);
+            if (off.getItem() instanceof GridSaveItem
+                    && !(main.getItem() instanceof MinimizerItem)) {
+                GridSaveItem.switchMode(off, player);
                 return;
             }
-            var minimizer = player.getOffhandItem().getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem
+            var minimizer = player.getOffhandItem().getItem() instanceof MinimizerItem
                     ? player.getOffhandItem() : player.getMainHandItem();
-            if (!(minimizer.getItem() instanceof com.therappha.tinyblocks.items.MinimizerItem)) return;
-            var mode = com.therappha.tinyblocks.items.MinimizerBuild.cycle(minimizer);
-            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tinyblocks.build.mode",
-                    net.minecraft.network.chat.Component.translatable(mode.translationKey())), true);
+            if (!(minimizer.getItem() instanceof MinimizerItem)) return;
+            var mode = MinimizerBuild.cycle(minimizer);
+            player.displayClientMessage(Component.translatable("tinyblocks.build.mode",
+                    Component.translatable(mode.translationKey())), true);
         });
     }
 
@@ -108,7 +118,7 @@ public class NetworkSetup {
             }
             // This payload only ever reaches a client (playToClient) — safe to release the mining
             // interceptor's in-flight guard here (see SubgridMiningInterceptor for why it exists).
-            com.therappha.tinyblocks.client.SubgridMiningInterceptor.onMineConfirmed();
+            SubgridMiningInterceptor.onMineConfirmed();
         });
     }
 
@@ -116,7 +126,7 @@ public class NetworkSetup {
         ctx.enqueueWork(() -> {
             Level level = ctx.player().level();
             if (level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid) {
-                com.therappha.tinyblocks.v2.PistonAnimation.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
+                PistonAnimation.applyClientAnimation(subgrid, payload.cell(), payload.beNbt(), level);
             }
         });
     }
@@ -125,9 +135,9 @@ public class NetworkSetup {
         ctx.enqueueWork(() -> {
             Level level = ctx.player().level();
             if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
-            com.therappha.tinyblocks.v2.VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), level);
-            if (com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()) {
-                com.therappha.tinyblocks.client.flywheel.FlywheelCompat.queueUpdate(subgrid);
+            VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), level);
+            if (FlywheelLoaded.isLoaded()) {
+                FlywheelCompat.queueUpdate(subgrid);
             }
         });
     }
@@ -138,7 +148,7 @@ public class NetworkSetup {
             if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
             PlacedPiece piece = subgrid.getPieceAt(payload.cell().getX(), payload.cell().getY(), payload.cell().getZ());
             if (piece == null) return;
-            var blockEntity = com.therappha.tinyblocks.v2.VanillaBlockPiece.blockEntityFor(piece, subgrid, level);
+            var blockEntity = VanillaBlockPiece.blockEntityFor(piece, subgrid, level);
             if (blockEntity != null) {
                 blockEntity.triggerEvent(payload.eventId(), payload.eventParam());
             }

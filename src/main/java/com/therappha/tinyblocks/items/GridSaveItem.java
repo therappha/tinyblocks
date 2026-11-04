@@ -1,5 +1,6 @@
 package com.therappha.tinyblocks.items;
 
+import com.therappha.tinyblocks.compat.create.BeltCuts;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
@@ -308,7 +309,7 @@ public class GridSaveItem extends Item {
         if (isFull(stack) || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return false;
         if (!mayTake(level, be, player)) return false;
         CompoundTag grid = new CompoundTag();
-        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(List.of(be))) {
+        if (BeltCuts.cutBy(List.of(be))) {
             tell(player, "item.tinyblocks.grid_save.belt_cut");
             return false;
         }
@@ -388,7 +389,7 @@ public class GridSaveItem extends Item {
         for (SubgridBlockEntity be : grids) {
             if (!mayTake(level, be, player)) return false;
         }
-        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(grids)) {
+        if (BeltCuts.cutBy(grids)) {
             tell(player, "item.tinyblocks.grid_save.belt_cut");
             return false;
         }
@@ -518,7 +519,7 @@ public class GridSaveItem extends Item {
         for (int i = 0; i < placed.size(); i++) placed.get(i).loadCustomOnly(entries.get(i).data(), level.registryAccess());
         for (SubgridBlockEntity be : placed) be.turnMovedQuietly(rotation, Mirror.NONE);
         for (SubgridBlockEntity be : placed) be.lookAroundMoved();
-        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(placed);
+        BeltCuts.removeLooseEnds(placed);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
         return true;
     }
