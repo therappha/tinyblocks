@@ -2,6 +2,7 @@ package com.therappha.tinyblocks.client;
 
 import com.therappha.tinyblocks.compat.create.ShaftConnectorPiece;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.Direction;
 import org.joml.Vector3f;
 
@@ -36,7 +37,7 @@ public final class PieceTransforms {
 
     /**
      * {@code sizeAcross}: the grid size of a SubgridBlock of the same size across a connector's face, 0 for anything
-     * else (SubgridRenderer#acrossOf). The funnel starts from what it meets there: a full-size shaft on the block's
+     * else (acrossOf). The funnel starts from what it meets there: a full-size shaft on the block's
      * centre line — a real one, or another size's connector — or, next to the same size, that grid's tiny shaft on
      * the same line, so no taper at all.
      */
@@ -93,5 +94,21 @@ public final class PieceTransforms {
                                  axis == Direction.Axis.Z ? thickness : size)));
         }
         return slices;
+    }
+
+    /**
+     * For a shaft connector, the size of a SubgridBlock of the same size across its face, which it meets cell to cell
+     * (a straight tiny shaft); 0 otherwise — a real block, or another size's connector, met by a full-size shaft.
+     */
+    public static int acrossOf(SubgridBlockEntity be, PlacedPiece piece) {
+        Direction face = ShaftConnectorPiece.faceOf(piece);
+        int across = face == null ? 0 : ShaftConnectorPiece.sizeAcross(be, face);
+        return across == be.getGridSize() ? across : 0;
+    }
+
+    /** Whether {@code piece} is a gear connector, drawn from Create's parts (GearConnectorDrawing) rather than as its block. */
+    public static boolean isGearConnector(SubgridBlockEntity be, PlacedPiece piece) {
+        return ShaftConnectorPiece.faceOf(piece) != null
+                && ShaftConnectorPiece.isGear(be.getGridSize());
     }
 }

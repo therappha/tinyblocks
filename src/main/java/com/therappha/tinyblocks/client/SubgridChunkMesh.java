@@ -24,7 +24,7 @@ public final class SubgridChunkMesh {
 
     private SubgridChunkMesh() {}
 
-    private record Grid(SubgridRenderer.StaticMesh mesh, BlockPos pos) {}
+    private record Grid(StaticMesh mesh, BlockPos pos) {}
 
     /** On the render thread, so the meshes are built here; the renderer added runs on a compile thread and only reads them. */
     @SubscribeEvent
@@ -35,7 +35,7 @@ public final class SubgridChunkMesh {
         List<Grid> grids = new ArrayList<>();
         for (BlockEntity be : event.getLevel().getChunkAt(origin).getBlockEntities().values()) {
             if (be instanceof SubgridBlockEntity grid && SectionPos.of(be.getBlockPos()).equals(section)) {
-                SubgridRenderer.StaticMesh mesh = SubgridRenderer.StaticMesh.of(grid, blockRenderer);
+                StaticMesh mesh = StaticMesh.of(grid, blockRenderer);
                 mesh.inChunk = true;
                 grids.add(new Grid(mesh, be.getBlockPos().immutable()));
             }

@@ -16,11 +16,11 @@ Shrunk-down blocks keep their own hitbox, mining time, crack animation, and drop
 [[mixins]]
 config = "tinyblocks.mixins.json"
 
-# EXPERIMENT: connector shafts across a SubgridBlock face (com.therappha.tinyblocks.compat.create.KineticBridge).
+# Connector shafts across a SubgridBlock face (com.therappha.tinyblocks.compat.create.KineticBridge).
 [[mixins]]
 config = "tinyblocks.create.mixins.json"
 
-# EXPERIMENT: a SubgridBlock weighs a full block in a Sable sub-level (mixin.sable.VoxelNeighborhoodStateMixin).
+# A SubgridBlock weighs a full block in a Sable sub-level (mixin.sable.VoxelNeighborhoodStateMixin).
 [[mixins]]
 config = "tinyblocks.sable.mixins.json"
 
@@ -46,7 +46,7 @@ config = "tinyblocks.sable.mixins.json"
     ordering = "AFTER"
     side = "BOTH"
 
-# EXPERIMENT: optional so the mod still loads without Flywheel; ordered after it when present.
+# Optional so the mod still loads without Flywheel; ordered after it when present.
 [[dependencies.tinyblocks]]
     modId = "flywheel"
     type = "optional"

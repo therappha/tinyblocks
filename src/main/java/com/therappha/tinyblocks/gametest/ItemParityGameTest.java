@@ -7,12 +7,14 @@ import net.minecraft.gametest.framework.TestFunction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ComparatorBlock;
 import net.minecraft.world.level.block.ComposterBlock;
 import net.minecraft.world.level.block.DispenserBlock;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.level.block.state.properties.ComparatorMode;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -150,6 +152,17 @@ public class ItemParityGameTest {
             s.fill(3, 0, 4, 8, 0, 4, STONE);
             s.put(4, 2, 4, hopper(Direction.DOWN)).item(4, 2, 4, 0, Items.PUMPKIN_PIE, 8).put(4, 1, 4, Blocks.COMPOSTER.defaultBlockState());
             s.runFor(100);
+        }));
+
+        scenes.add(ParityScene.of("hopper_fills_a_chest_whose_comparator_has_no_floor", s -> {
+            // The chest goes in first, so its own tick builds its phantom bound to a space only for binding
+            // (VanillaBlockPiece.operatingServerSpace). The hopper filling it tells the comparator through that space,
+            // and the comparator, with nothing under it, pops off: a write that space must hand on to one applied.
+            s.put(5, 2, 6, Blocks.CHEST.defaultBlockState());
+            s.put(5, 2, 5, hopper(Direction.SOUTH)).item(5, 2, 5, 0, Items.APPLE, 3);
+            s.put(5, 2, 7, Blocks.COMPARATOR.defaultBlockState().setValue(ComparatorBlock.FACING, Direction.NORTH)
+                    .setValue(ComparatorBlock.MODE, ComparatorMode.COMPARE));
+            s.runFor(60).provenBy(5, 2, 6, "applex3");
         }));
 
         scenes.add(ParityScene.of("hopper_catches_what_a_dropper_throws_at_it", s -> {

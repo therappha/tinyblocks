@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -119,7 +120,7 @@ public class GridBoxBlockEntity extends BlockEntity {
         ItemStack stack = clear(level);
         if (GridSaveItem.place(level, at, from, stack, player)) {
             AllSoundEvents.PACKAGE_POP.playOnServer(level, corner);
-            net.minecraft.world.phys.Vec3 centre = new AABB(corner).expandTowards(boxSize.getX() - 1, boxSize.getY() - 1, boxSize.getZ() - 1).getCenter();
+            Vec3 centre = new AABB(corner).expandTowards(boxSize.getX() - 1, boxSize.getY() - 1, boxSize.getZ() - 1).getCenter();
             level.sendParticles(new ItemParticleOption(ParticleTypes.ITEM, new ItemStack(Registration.GRID_SAVE.get())),
                     centre.x, centre.y, centre.z, PARTICLES, 0.25 * boxSize.getX(), 0.25 * boxSize.getY(), 0.25 * boxSize.getZ(), 0.1);
             return;

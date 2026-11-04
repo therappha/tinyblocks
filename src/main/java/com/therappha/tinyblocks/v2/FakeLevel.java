@@ -1,39 +1,58 @@
 package com.therappha.tinyblocks.v2;
 
+import com.therappha.tinyblocks.network.PieceBlockEventPayload;
+import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.util.AbortableIterationConsumer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.item.alchemy.PotionBrewing;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkSource;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.entity.LevelEntityGetter;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.lighting.LevelLightEngine;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.TickRateManager;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.ticks.LevelTickAccess;
 import net.minecraft.world.ticks.TickPriority;
+import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.util.UUID;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * v2 prototype checkpoint 2: a real Level subclass that redirects block-position access to a
+ * A real Level subclass that redirects block-position access to a
  * fake in-memory cell space, delegating everything else (registries, day time, sound, entities)
  * to the real wrapped Level. Lets us call neighborChanged()/useWithoutItem() — which require a
  * genuine Level, not just BlockGetter — against fake positions with zero reimplementation.
  */
 public class FakeLevel extends Level implements FakeSpace {
-
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
 
     private final Level real;
     private final FakeCellGetter cells;
@@ -46,8 +65,8 @@ public class FakeLevel extends Level implements FakeSpace {
      * world coordinates.
      */
     private final BlockPos realPos;
-    private final net.minecraft.world.ticks.LevelTickAccess<Block> blockTicks;
-    private final net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.material.Fluid> fluidTicks;
+    private final LevelTickAccess<Block> blockTicks;
+    private final LevelTickAccess<Fluid> fluidTicks;
     private final FakeNeighborUpdater updater;
 
     public FakeLevel(Level real, FakeCellGetter cells, BlockPos realPos) {
@@ -79,7 +98,7 @@ public class FakeLevel extends Level implements FakeSpace {
     }
 
     @Override
-    public void updateNeighborsAtExceptFromFacing(BlockPos pos, Block block, net.minecraft.core.Direction skip) {
+    public void updateNeighborsAtExceptFromFacing(BlockPos pos, Block block, Direction skip) {
         updater.updateNeighborsAtExceptFromFacing(pos, block, skip);
     }
 
@@ -94,7 +113,7 @@ public class FakeLevel extends Level implements FakeSpace {
     }
 
     @Override
-    public void neighborShapeChanged(net.minecraft.core.Direction direction, BlockState state, BlockPos pos, BlockPos neighborPos,
+    public void neighborShapeChanged(Direction direction, BlockState state, BlockPos pos, BlockPos neighborPos,
                                      int flags, int recursionLeft) {
         updater.shapeUpdate(direction, state, pos, neighborPos, flags, recursionLeft);
     }
@@ -174,12 +193,12 @@ public class FakeLevel extends Level implements FakeSpace {
      * every fluid tick request was being silently discarded: water/lava pieces never spread.
      */
     @Override
-    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
+    public void scheduleTick(BlockPos pos, Fluid fluid, int delay, TickPriority priority) {
         if (!cells.scheduleTick(pos, fluid, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
-    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
+    public void scheduleTick(BlockPos pos, Fluid fluid, int delay) {
         scheduleTick(pos, fluid, delay, TickPriority.NORMAL);
     }
 
@@ -192,13 +211,13 @@ public class FakeLevel extends Level implements FakeSpace {
 
     /** Past the grid's faces a signal comes from the world around it (FakeCellGetter#outsideSignal). */
     @Override
-    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+    public int getSignal(BlockPos pos, Direction direction) {
         Integer outside = cells.outsideSignal(pos, direction, false);
         return outside != null ? outside : super.getSignal(pos, direction);
     }
 
     @Override
-    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+    public int getDirectSignal(BlockPos pos, Direction direction) {
         Integer outside = cells.outsideSignal(pos, direction, true);
         return outside != null ? outside : super.getDirectSignal(pos, direction);
     }
@@ -240,8 +259,8 @@ public class FakeLevel extends Level implements FakeSpace {
     public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) {
         // A phantom BlockEntity asking its clients to resync (Create's sendData() lands here with the
         // phantom's REAL position, so the piece can't be told apart — resync every phantom in the grid).
-        if (real instanceof net.minecraft.server.level.ServerLevel
-                && real.getBlockEntity(realPos) instanceof com.therappha.tinyblocks.subgrid.SubgridBlockEntity sub) {
+        if (real instanceof ServerLevel
+                && real.getBlockEntity(realPos) instanceof SubgridBlockEntity sub) {
             sub.markPhantomDataDirty();
         }
         // The virtual frame is global, so the phantom may belong to a NEIGHBOURING grid (rotation propagated
@@ -287,22 +306,12 @@ public class FakeLevel extends Level implements FakeSpace {
 
     /** Runs a block event now and tells the clients: when the level gets to it (GridTickScheduler). */
     public void runBlockEvent(BlockPos pos, Block block, int id, int param) {
-        // Unconditional diagnostic (issue #34's live investigation): confirms whether
-        // triggerEvent's own internal logic (e.g. PistonBaseBlock's moveBlocks) actually changed
-        // anything, since Level#blockEvent's return type is void and discards triggerEvent's own
-        // boolean result — this is the only way to see whether it silently no-op'd.
-        BlockState before = getBlockState(pos);
         super.blockEvent(pos, block, id, param);
-        BlockState after = getBlockState(pos);
-        if (block instanceof net.minecraft.world.level.block.piston.PistonBaseBlock) {
-            LOGGER.debug("[piston-anim] blockEvent pos={} block={} id={} param={} before={} after={} changed={}",
-                    pos, block, id, param, before, after, !before.equals(after));
-        }
-        if (real instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+        if (real instanceof ServerLevel serverLevel) {
             BlockPos cell = cells.resolveLocal(pos);
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
-                    new net.minecraft.world.level.ChunkPos(realPos),
-                    new com.therappha.tinyblocks.network.PieceBlockEventPayload(realPos, cell, id, param));
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new ChunkPos(realPos),
+                    new PieceBlockEventPayload(realPos, cell, id, param));
         }
     }
 
@@ -354,9 +363,9 @@ public class FakeLevel extends Level implements FakeSpace {
     public void setDayTimePerTick(float dayTimePerTick) {}
 
     @Override
-    public void gameEvent(Holder<net.minecraft.world.level.gameevent.GameEvent> event,
-                           net.minecraft.world.phys.Vec3 pos,
-                           net.minecraft.world.level.gameevent.GameEvent.Context context) {
+    public void gameEvent(Holder<GameEvent> event,
+                           Vec3 pos,
+                           GameEvent.Context context) {
         cells.gameEvent(event, pos, context);
     }
 
@@ -364,41 +373,41 @@ public class FakeLevel extends Level implements FakeSpace {
     public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
 
     @Override
-    public net.minecraft.world.level.chunk.ChunkSource getChunkSource() { return real.getChunkSource(); }
+    public ChunkSource getChunkSource() { return real.getChunkSource(); }
 
     @Override
-    public net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.block.Block> getBlockTicks() {
+    public LevelTickAccess<Block> getBlockTicks() {
         return blockTicks;
     }
 
     @Override
-    public net.minecraft.world.ticks.LevelTickAccess<net.minecraft.world.level.material.Fluid> getFluidTicks() {
+    public LevelTickAccess<Fluid> getFluidTicks() {
         return fluidTicks;
     }
 
     @Override
-    public java.util.List<? extends Player> players() { return java.util.List.of(); }
+    public List<? extends Player> players() { return List.of(); }
 
     @Override
-    public net.minecraft.world.flag.FeatureFlagSet enabledFeatures() { return real.enabledFeatures(); }
+    public FeatureFlagSet enabledFeatures() { return real.enabledFeatures(); }
 
     @Override
-    public net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> getUncachedNoiseBiome(int x, int y, int z) {
+    public Holder<Biome> getUncachedNoiseBiome(int x, int y, int z) {
         // Ignore the fake x,y,z — the whole subgrid shares the one real biome of its real position.
         return real.getUncachedNoiseBiome(realPos.getX(), realPos.getY(), realPos.getZ());
     }
 
     @Override
-    public net.minecraft.world.level.biome.BiomeManager getBiomeManager() { return real.getBiomeManager(); }
+    public BiomeManager getBiomeManager() { return real.getBiomeManager(); }
 
     @Override
-    public float getShade(net.minecraft.core.Direction direction, boolean shade) { return real.getShade(direction, shade); }
+    public float getShade(Direction direction, boolean shade) { return real.getShade(direction, shade); }
 
     @Override
-    public net.minecraft.world.level.lighting.LevelLightEngine getLightEngine() { return real.getLightEngine(); }
+    public LevelLightEngine getLightEngine() { return real.getLightEngine(); }
 
     @Override
-    public int getBlockTint(BlockPos pos, net.minecraft.world.level.ColorResolver resolver) {
+    public int getBlockTint(BlockPos pos, ColorResolver resolver) {
         return real.getBlockTint(realPos, resolver);
     }
 
@@ -429,21 +438,21 @@ public class FakeLevel extends Level implements FakeSpace {
         public Entity get(int id) { return null; }
 
         @Override
-        public Entity get(java.util.UUID id) { return null; }
+        public Entity get(UUID id) { return null; }
 
         @Override
-        public Iterable<Entity> getAll() { return java.util.List.of(); }
+        public Iterable<Entity> getAll() { return List.of(); }
 
         @Override
-        public <U extends Entity> void get(net.minecraft.world.level.entity.EntityTypeTest<Entity, U> test,
-                                            net.minecraft.util.AbortableIterationConsumer<U> consumer) {}
+        public <U extends Entity> void get(EntityTypeTest<Entity, U> test,
+                                            AbortableIterationConsumer<U> consumer) {}
 
         @Override
-        public void get(net.minecraft.world.phys.AABB bounds, java.util.function.Consumer<Entity> consumer) {}
+        public void get(AABB bounds, Consumer<Entity> consumer) {}
 
         @Override
-        public <U extends Entity> void get(net.minecraft.world.level.entity.EntityTypeTest<Entity, U> test,
-                                            net.minecraft.world.phys.AABB bounds,
-                                            net.minecraft.util.AbortableIterationConsumer<U> consumer) {}
+        public <U extends Entity> void get(EntityTypeTest<Entity, U> test,
+                                            AABB bounds,
+                                            AbortableIterationConsumer<U> consumer) {}
     };
 }

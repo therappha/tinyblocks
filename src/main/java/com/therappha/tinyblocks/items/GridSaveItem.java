@@ -1,5 +1,6 @@
 package com.therappha.tinyblocks.items;
 
+import com.therappha.tinyblocks.compat.create.BeltCuts;
 import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
@@ -306,15 +307,9 @@ public class GridSaveItem extends Item {
      */
     public static boolean pickUp(ServerLevel level, BlockPos pos, ItemStack stack, @Nullable Player player) {
         if (isFull(stack) || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return false;
-        if (player instanceof ServerPlayer serverPlayer
-                && player.blockActionRestricted(level, pos, serverPlayer.gameMode.getGameModeForPlayer())) return false;
-        if (be.hasActiveCaptures() || be.pendingDropCount() > 0) {
-            tell(player, "item.tinyblocks.grid_save.moving");
-            return false;
-        }
-        if (player != null && !mayBreak(level, pos, player)) return false;
+        if (!mayTake(level, be, player)) return false;
         CompoundTag grid = new CompoundTag();
-        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(List.of(be))) {
+        if (BeltCuts.cutBy(List.of(be))) {
             tell(player, "item.tinyblocks.grid_save.belt_cut");
             return false;
         }
@@ -331,6 +326,21 @@ public class GridSaveItem extends Item {
         // no drops: removeBlock drops nothing, and the pieces are in the item now.
         level.removeBlock(pos, false);
         return true;
+    }
+
+    /**
+     * What refuses to take one grid, in this order: adventure mode, a piston in it still moving something (said to the
+     * player), then the protections.
+     */
+    private static boolean mayTake(ServerLevel level, SubgridBlockEntity be, @Nullable Player player) {
+        BlockPos pos = be.getBlockPos();
+        if (player instanceof ServerPlayer serverPlayer
+                && player.blockActionRestricted(level, pos, serverPlayer.gameMode.getGameModeForPlayer())) return false;
+        if (be.hasActiveCaptures() || be.pendingDropCount() > 0) {
+            tell(player, "item.tinyblocks.grid_save.moving");
+            return false;
+        }
+        return player == null || mayBreak(level, pos, player);
     }
 
     /** Asks the protections (claim mods and such) whether {@code player} may break the grid, as a break would. */
@@ -377,16 +387,9 @@ public class GridSaveItem extends Item {
         Vec3i box = max.subtract(min).offset(1, 1, 1);
         // Every one asked before any is taken: one refusing leaves them all.
         for (SubgridBlockEntity be : grids) {
-            BlockPos pos = be.getBlockPos();
-            if (player instanceof ServerPlayer serverPlayer
-                    && player.blockActionRestricted(level, pos, serverPlayer.gameMode.getGameModeForPlayer())) return false;
-            if (be.hasActiveCaptures() || be.pendingDropCount() > 0) {
-                tell(player, "item.tinyblocks.grid_save.moving");
-                return false;
-            }
-            if (player != null && !mayBreak(level, pos, player)) return false;
+            if (!mayTake(level, be, player)) return false;
         }
-        if (com.therappha.tinyblocks.compat.create.BeltCuts.cutBy(grids)) {
+        if (BeltCuts.cutBy(grids)) {
             tell(player, "item.tinyblocks.grid_save.belt_cut");
             return false;
         }
@@ -516,7 +519,7 @@ public class GridSaveItem extends Item {
         for (int i = 0; i < placed.size(); i++) placed.get(i).loadCustomOnly(entries.get(i).data(), level.registryAccess());
         for (SubgridBlockEntity be : placed) be.turnMovedQuietly(rotation, Mirror.NONE);
         for (SubgridBlockEntity be : placed) be.lookAroundMoved();
-        com.therappha.tinyblocks.compat.create.BeltCuts.removeLooseEnds(placed);
+        BeltCuts.removeLooseEnds(placed);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, all -> all.remove(GRID_KEY));
         return true;
     }

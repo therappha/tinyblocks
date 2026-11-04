@@ -6,6 +6,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -14,9 +15,6 @@ import net.minecraft.world.level.material.FluidState;
 import javax.annotation.Nullable;
 
 /**
- * #TODO remove before release (or fold into a permanent comment) once verified live —
- * water-rendering investigation.
- *
  * A fluid piece's BlockState has RenderShape.INVISIBLE (same as any real water/lava block) —
  * BlockRenderDispatcher#renderSingleBlock (what SubgridRenderer already uses for every other
  * piece) explicitly skips INVISIBLE render shapes, since fluids don't have a normal baked model
@@ -79,7 +77,7 @@ final class SubgridFluidView implements BlockAndTintGetter {
     }
 
     /**
-     * #TODO remove before release — water-rendering investigation. LiquidBlockRenderer's own
+     * LiquidBlockRenderer's own
      * lighting (LevelRenderer#getLightColor) reads brightness through these two BlockAndTintGetter
      * default methods, NOT getLightEngine() directly — overriding them to substitute the
      * subgrid's one real-world position (same pattern FakeLevel already uses for its own
@@ -88,7 +86,7 @@ final class SubgridFluidView implements BlockAndTintGetter {
      * rather than anything related to the subgrid's actual surroundings.
      */
     @Override
-    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) {
+    public int getBrightness(LightLayer layer, BlockPos pos) {
         return real.getBrightness(layer, be.getBlockPos());
     }
 

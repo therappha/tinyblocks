@@ -4,9 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 /**
- * #TODO remove before release (or fold into a permanent comment) once verified live —
- * water-rendering investigation.
- *
+ * Fluids have no baked model: they render through LiquidBlockRenderer, which takes no pose.
  * LiquidBlockRenderer#tesselate (unlike ModelBlockRenderer#renderModel, what renderSingleBlock
  * uses) takes no PoseStack at all — it writes straight into the VertexConsumer via the
  * position-only addVertex(x, y, z)/setNormal(x, y, z) overloads. Those overloads carry NO
@@ -25,8 +23,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
  * do exactly this transform-then-forward (confirmed via decompiling 1.21.1's VertexConsumer:
  * default addVertex(Pose, x,y,z) -> addVertex(pose.pose(), x,y,z) -> matrix.transformPosition(...)
  * -> addVertex(transformed x,y,z) on the real buffer). tesselate's raw coordinates are already
- * piece.anchor + a [0,1] fractional offset (see class history/git blame if this comment survives
- * past #TODO removal), so scale is still applied first, same as before — only the missing pose
+ * piece.anchor + a [0,1] fractional offset, so scale is still applied first, same as before — only the missing pose
  * transform is new here.
  */
 final class ScaledVertexConsumer implements VertexConsumer {

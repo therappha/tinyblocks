@@ -1,5 +1,6 @@
 package com.therappha.tinyblocks.diff;
 
+import com.therappha.tinyblocks.compat.create.CreateFacts;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
@@ -10,6 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,7 @@ public final class SpaceDiff {
             facts.put(WORKING + "comparator_output", Integer.toString(comparator.getOutputSignal()));
         }
         if (be instanceof Container container) facts.put(WORKING + "items", items(container));
-        if (be != null) com.therappha.tinyblocks.compat.create.CreateFacts.add(be, WORKING, facts);
+        if (be != null) CreateFacts.add(be, WORKING, facts);
         return facts;
     }
 
@@ -155,7 +157,7 @@ public final class SpaceDiff {
         public List<Span> spans() {
             List<Span> all = new ArrayList<>();
             spans.values().forEach(all::addAll);
-            all.sort(java.util.Comparator.comparingInt(Span::from));
+            all.sort(Comparator.comparingInt(Span::from));
             return all;
         }
 

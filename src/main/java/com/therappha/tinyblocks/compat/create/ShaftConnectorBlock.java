@@ -1,6 +1,8 @@
 package com.therappha.tinyblocks.compat.create;
 
 import com.simibubi.create.content.kinetics.simpleRelays.ShaftBlock;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * A Create shaft that marks itself as a subgrid connector. Placed into a subgrid it becomes a
@@ -21,7 +23,7 @@ public class ShaftConnectorBlock extends ShaftBlock {
      * still shaft over the turning one. Only the block entity draws this one.
      */
     @Override
-    protected net.minecraft.world.level.block.RenderShape getRenderShape(net.minecraft.world.level.block.state.BlockState state) {
-        return net.minecraft.world.level.block.RenderShape.ENTITYBLOCK_ANIMATED;
+    protected RenderShape getRenderShape(BlockState state) {
+        return RenderShape.ENTITYBLOCK_ANIMATED;
     }
 }

@@ -1,8 +1,15 @@
 package com.therappha.tinyblocks.subgrid;
 
+import com.mojang.logging.LogUtils;
+import com.therappha.tinyblocks.network.SubgridPieceAddedPayload;
+import com.therappha.tinyblocks.network.SubgridPieceRemovedPayload;
+import com.therappha.tinyblocks.setup.Registration;
+import com.therappha.tinyblocks.v2.GridWriteBack;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -10,6 +17,9 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -19,9 +29,13 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.neoforged.neoforge.network.PacketDistributor;
+import org.slf4j.Logger;
 
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,8 +47,8 @@ import java.util.Set;
 
 public class SubgridBlockEntity extends BlockEntity {
 
-    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-    private static final short EMPTY = -1;
+    private static final Logger LOGGER = LogUtils.getLogger();
+    static final short EMPTY = -1;
     private static final int RANDOM_TICK_SPEED = 3;
 
     public final int gridSize;
@@ -43,10 +57,10 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape cachedShape = Shapes.empty();
     /** The fake server space this grid's ticking pieces share (VanillaBlockPiece.TickSpace); runtime only. */
     public Object tickSpace;
-    /** Client only: the renderer's cached mesh of this grid's static pieces (SubgridRenderer.StaticMesh). */
+    /** Client only: the renderer's cached mesh of this grid's static pieces (client StaticMesh). */
     public Object renderCache;
 
-    /** v2 Tier 3: a piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
+    /** A piece's own scheduleTick request (e.g. a redstone lamp's delayed turn-off). */
     public record ScheduledPieceTick(int x, int y, int z, long targetGameTime, int priority, long order,
                                      @Nullable Object type) {
         ScheduledPieceTick(int x, int y, int z, long targetGameTime) {
@@ -71,8 +85,8 @@ public class SubgridBlockEntity extends BlockEntity {
      * is pure insurance against a leaked capture (a piece whose captureEnded() never fires, e.g. an
      * exception mid-finalize) permanently starving this drop — not the primary gate.
      */
-    record PendingDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                        List<net.minecraft.world.item.ItemStack> drops, long safetyDeadlineTick) {}
+    record PendingDrop(BlockState state, Vec3 dropPos,
+                        List<ItemStack> drops, long safetyDeadlineTick) {}
     private final List<PendingDrop> pendingDrops = new ArrayList<>();
     private static final long PENDING_DROP_SAFETY_TICKS = 200;
 
@@ -102,8 +116,8 @@ public class SubgridBlockEntity extends BlockEntity {
         return pendingDrops.size();
     }
 
-    public void deferDrop(BlockState state, net.minecraft.world.phys.Vec3 dropPos,
-                           List<net.minecraft.world.item.ItemStack> drops, long currentGameTime) {
+    public void deferDrop(BlockState state, Vec3 dropPos,
+                           List<ItemStack> drops, long currentGameTime) {
         if (drops.isEmpty()) return;
         pendingDrops.add(new PendingDrop(state, dropPos, drops, currentGameTime + PENDING_DROP_SAFETY_TICKS));
     }
@@ -144,8 +158,8 @@ public class SubgridBlockEntity extends BlockEntity {
 
     private void tickPendingDrops(ServerLevel level) {
         for (PendingDrop pd : drainReadyDrops(level.getGameTime())) {
-            for (net.minecraft.world.item.ItemStack drop : pd.drops()) {
-                level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(
+            for (ItemStack drop : pd.drops()) {
+                level.addFreshEntity(new ItemEntity(
                         level, pd.dropPos().x, pd.dropPos().y, pd.dropPos().z, drop));
             }
         }
@@ -198,7 +212,7 @@ public class SubgridBlockEntity extends BlockEntity {
     private final List<ScheduledPieceTick> dueTicks = new ArrayList<>();
 
     /** Hands {@code due} the ticks whose time has come, which stop being pending in the queue and wait in dueTicks. */
-    void takeDue(long now, java.util.function.Consumer<ScheduledPieceTick> due) {
+    void takeDue(long now, Consumer<ScheduledPieceTick> due) {
         scheduledTicks.removeIf(tick -> {
             if (tick.targetGameTime() > now) return false;
             dueTicks.add(tick);
@@ -221,7 +235,7 @@ public class SubgridBlockEntity extends BlockEntity {
 
     void runBlockEvent(ServerLevel level, GridTickScheduler.BlockEvent event) {
         try {
-            com.therappha.tinyblocks.v2.VanillaBlockPiece.INSTANCE.blockEvent(level, this, event);
+            VanillaBlockPiece.INSTANCE.blockEvent(level, this, event);
         } catch (Exception e) {
             LOGGER.error("v2 block event at {} in grid {} failed", event.pos(), worldPosition, e);
         }
@@ -271,9 +285,9 @@ public class SubgridBlockEntity extends BlockEntity {
         addToGrid(piece);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
-                    new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.SubgridPieceAddedPayload(worldPosition, piece.save()));
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new ChunkPos(worldPosition),
+                    new SubgridPieceAddedPayload(worldPosition, piece.save()));
             if (syncObserver != null) syncObserver.accept(piece.anchor);
         }
         pieceVersion++;
@@ -308,7 +322,7 @@ public class SubgridBlockEntity extends BlockEntity {
      * boolean or just the piece) — a caller that also captured a real BlockEntity for this same
      * write (e.g. a piston's moving-block animation state) needs both: something to attach the
      * capture to, AND the correct owner to run capture bookkeeping against when the write lands in
-     * a DIFFERENT grid than the one that made this call (see VanillaBlockPiece.applyChanges'
+     * a DIFFERENT grid than the one that made this call (see GridWriteBack.applyChanges'
      * syncBlockEntity — issue #46's cross-grid sticky-piston-duplication fix depends on this being
      * the real owner, not always the calling grid).
      */
@@ -319,23 +333,19 @@ public class SubgridBlockEntity extends BlockEntity {
                                                      Object runtimeState, ServerLevel realLevel) {
         CellRef ref = resolveOrCreate(local.getX(), local.getY(), local.getZ(), realLevel);
         return switch (ref) {
-            case CellRef.Local l -> {
-                PlacedPiece p = placeOrUpdatePiece(definition, new BlockPos(l.x(), l.y(), l.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(this, p) : null;
-            }
-            case CellRef.InAdjacentGrid a -> {
-                PlacedPiece p = a.grid().placeOrUpdatePiece(
-                        definition, new BlockPos(a.x(), a.y(), a.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(a.grid(), p) : null;
-            }
-            case CellRef.Created c -> {
-                PlacedPiece p = c.grid().placeOrUpdatePiece(
-                        definition, new BlockPos(c.x(), c.y(), c.z()), facing, runtimeState);
-                yield p != null ? new PlacementResult(c.grid(), p) : null;
-            }
+            case CellRef.Local l -> placeIn(this, l.x(), l.y(), l.z(), definition, facing, runtimeState);
+            case CellRef.InAdjacentGrid a -> placeIn(a.grid(), a.x(), a.y(), a.z(), definition, facing, runtimeState);
+            case CellRef.Created c -> placeIn(c.grid(), c.x(), c.y(), c.z(), definition, facing, runtimeState);
             case CellRef.RealWorld ignored -> null;
             case CellRef.OutOfScope ignored -> null;
         };
+    }
+
+    @Nullable
+    private static PlacementResult placeIn(SubgridBlockEntity grid, int x, int y, int z, PieceDefinition definition,
+                                           Direction facing, Object runtimeState) {
+        PlacedPiece p = grid.placeOrUpdatePiece(definition, new BlockPos(x, y, z), facing, runtimeState);
+        return p != null ? new PlacementResult(grid, p) : null;
     }
 
     /**
@@ -359,7 +369,7 @@ public class SubgridBlockEntity extends BlockEntity {
             existing.runtimeState = runtimeState;
             // Its block entity follows, as for a change made in this grid's own fake space.
             if (was instanceof BlockState wasState && runtimeState instanceof BlockState nowState) {
-                com.therappha.tinyblocks.v2.VanillaBlockPiece.followStateChange(this, existing, wasState, nowState);
+                GridWriteBack.followStateChange(this, existing, wasState, nowState);
             }
             notifyNeighbors(existing);
             notifyUpdate();
@@ -371,7 +381,7 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     private static SubgridBlock subgridBlockFor(int gridSize) {
-        return com.therappha.tinyblocks.setup.Registration.subgridBlock(gridSize);
+        return Registration.subgridBlock(gridSize);
     }
 
     /**
@@ -405,9 +415,9 @@ public class SubgridBlockEntity extends BlockEntity {
         rebuildAfterRemove(idx);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
-                    new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel,
+                    new ChunkPos(worldPosition),
+                    new SubgridPieceRemovedPayload(worldPosition, new BlockPos(x, y, z)));
             if (syncObserver != null) syncObserver.accept(new BlockPos(x, y, z));
             removed.definition.onRemoved(removed, serverLevel, this);
             if (applyingSettled == 0) removed.definition.afterRemoved(removed, serverLevel, this);
@@ -559,14 +569,11 @@ public class SubgridBlockEntity extends BlockEntity {
             return;
         }
         pieces.remove(idx);
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                    cellOwner[indexOf(x, y, z)] = EMPTY;
+        p.forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = EMPTY);
     }
 
     /** Where a world point inside this grid's block goes when the grid is mirrored, then turned (as transformCell). */
-    private net.minecraft.world.phys.Vec3 transformPoint(net.minecraft.world.phys.Vec3 point, Rotation rotation, Mirror mirror) {
+    private Vec3 transformPoint(Vec3 point, Rotation rotation, Mirror mirror) {
         double x = point.x - worldPosition.getX(), z = point.z - worldPosition.getZ();
         if (mirror == Mirror.FRONT_BACK) x = 1 - x;
         if (mirror == Mirror.LEFT_RIGHT) z = 1 - z;
@@ -582,7 +589,7 @@ public class SubgridBlockEntity extends BlockEntity {
             case CLOCKWISE_180 -> 1 - z;
             case COUNTERCLOCKWISE_90 -> 1 - x;
         };
-        return new net.minecraft.world.phys.Vec3(worldPosition.getX() + tx, point.y, worldPosition.getZ() + tz);
+        return new Vec3(worldPosition.getX() + tx, point.y, worldPosition.getZ() + tz);
     }
 
     /**
@@ -615,55 +622,20 @@ public class SubgridBlockEntity extends BlockEntity {
         };
     }
 
+    /** Phantom block entity data pushed to clients (PhantomSync). */
+    private final PhantomSync phantomSync = new PhantomSync(this);
+
     /**
      * Set when a fake level's sendBlockUpdated fires (a phantom BlockEntity asked to sync, e.g. Create's
      * SmartBlockEntity#sendData); flushed once per tick in serverTick as PhantomDataPayloads.
      */
-    private boolean phantomDataDirty = false;
-
     public void markPhantomDataDirty() {
-        phantomDataDirty = true;
+        phantomSync.markDirty();
     }
 
     /** How many times phantom data was pushed to clients; lets GameTests observe the sync without a client. */
-    private int phantomDataFlushes = 0;
-
     public int phantomDataFlushes() {
-        return phantomDataFlushes;
-    }
-
-    /** How often (ticks) phantom data is compared against what clients last received. */
-    private static final int PHANTOM_CHANGE_SCAN_INTERVAL = 20;
-
-    /**
-     * Pushes phantom block entity data to clients. Always when something marked it dirty (everything is
-     * resent), and otherwise every few ticks for just the phantoms whose saved data changed since the last
-     * push: block entities change on their own after the event that touched them (a kinetic block dropping
-     * to speed 0 a while after its motor was removed) and nothing reliably calls back for that (Create's
-     * sendData goes through ServerChunkCache#blockChanged, which the fake levels cannot intercept).
-     * Containers are left out of the periodic scan: serializing a full inventory every pass is wasteful and
-     * their menus already sync themselves.
-     */
-    private void flushPhantomData(ServerLevel level) {
-        boolean all = phantomDataDirty;
-        if (!all && level.getGameTime() % PHANTOM_CHANGE_SCAN_INTERVAL != 0) return;
-        phantomDataDirty = false;
-        boolean sentAny = false;
-        for (PlacedPiece piece : pieces) {
-            if (!(piece.runtimeBlockEntity instanceof BlockEntity phantom)) continue;
-            // A piston's moving-block BE has its own dedicated animation payload (see PistonAnimationPayload).
-            if (phantom instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity) continue;
-            if (!all && phantom instanceof net.minecraft.world.Container) continue;
-            var tag = phantom.saveCustomOnly(level.registryAccess());
-            int hash = tag.hashCode();
-            if (!all && hash == piece.lastSyncedPhantomHash) continue;
-            piece.lastSyncedPhantomHash = hash;
-            sentAny = true;
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayersTrackingChunk(level,
-                    new net.minecraft.world.level.ChunkPos(worldPosition),
-                    new com.therappha.tinyblocks.network.PhantomDataPayload(worldPosition, new BlockPos(piece.anchor), tag));
-        }
-        if (sentAny) phantomDataFlushes++;
+        return phantomSync.flushes();
     }
 
     private boolean chunkUnloaded = false;
@@ -716,8 +688,8 @@ public class SubgridBlockEntity extends BlockEntity {
 
         sampleRandomTicks(level);
         tickPendingDrops(level);
-        flushPhantomData(level);
-        updateRedstoneOutputs(level);
+        phantomSync.flush(level);
+        signals.updateRedstoneOutputs(level);
         removeIfLeftEmpty(level);
     }
 
@@ -819,229 +791,27 @@ public class SubgridBlockEntity extends BlockEntity {
      * loop that computed dir before checking bounds) — (x,y,z) is assumed out-of-bounds already.
      */
     public CellRef resolve(Direction dir, int x, int y, int z) {
-        if (!(level instanceof ServerLevel)) return logResolve(dir, x, y, z, new CellRef.OutOfScope());
-        BlockPos targetPos = worldPosition.relative(dir);
-        CellRef ref;
-        if (level.getBlockEntity(targetPos) instanceof SubgridBlockEntity other && other.gridSize == gridSize) {
-            int max = gridSize - 1;
-            ref = new CellRef.InAdjacentGrid(other, wrap(x, max), wrap(y, max), wrap(z, max));
-        } else {
-            ref = new CellRef.RealWorld(targetPos);
-        }
-        return logResolve(dir, x, y, z, ref);
+        return GridResolver.resolve(this, dir, x, y, z);
     }
 
-    /** Bounds a pathological chain — comfortably covers a corner overflowing all 3 axes at once. */
-    private static final int MAX_CHAIN_HOPS = 4;
-
-    /**
-     * Read-only resolution deriving the direction from single-axis overflow, CHAINING through
-     * multiple same-gridSize neighbor grids when more than one axis overflows at once (issue
-     * #43). A corner query — one step past a side edge AND one step past the floor — needs two
-     * hops (into the side neighbor, then down from THAT grid's own frame) to find the real
-     * answer; the old single-hop-only version reported every such compound query as bare air
-     * regardless of what was actually there, which is what drew fluid spread toward every
-     * air-adjacent edge (confirmed live via the [xgrid-fluid] trace: local=(8,-1,4) on an 8-cell
-     * grid hit OutOfScope 194 times in one short GameTest run). In-bounds -> Local without
-     * touching level at all. Each hop fully resolves whatever magnitude of overflow that axis has
-     * (via wrap's floorMod, not a fixed ±1 collapse — a piston chain-pushing a second block past
-     * the first needs exactly this, see wrap's own doc) before moving to the next axis; capped at
-     * MAX_CHAIN_HOPS grids crossed, not at overflow magnitude. This is read-only — it never calls
-     * createAt, so a diagonal query now genuinely attempts to resolve through existing grids
-     * instead of short-circuiting to OutOfScope, but still can't conjure one into existence just
-     * because something asked. resolveOrCreate (see its own doc) chains the same way but creates
-     * along the way — the write-side counterpart, where creating a subgrid is already its point.
-     */
+    /** Read-only resolution of a local cell, chaining through same-size neighbour grids (GridResolver). */
     public CellRef resolve(int x, int y, int z) {
-        if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
-        if (!(level instanceof ServerLevel serverLevel)) return logResolve(null, x, y, z, new CellRef.OutOfScope());
-        CellRef direct = directlyInGrid(serverLevel, x, y, z);
-        if (direct != null) return logResolve(null, x, y, z, direct);
-
-        SubgridBlockEntity grid = this;
-        int lx = x, ly = y, lz = z;
-        Direction firstHop = null;
-
-        for (int hop = 0; hop < MAX_CHAIN_HOPS && grid.outOfBounds(lx, ly, lz); hop++) {
-            Direction dir = grid.singleStepOverflowAxis(lx, ly, lz);
-            if (dir == null) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
-            if (firstHop == null) firstHop = dir;
-
-            BlockPos targetPos = grid.worldPosition.relative(dir);
-            if (!(serverLevel.getBlockEntity(targetPos) instanceof SubgridBlockEntity next) || next.gridSize != gridSize) {
-                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize);
-                return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
-            }
-
-            // Peel exactly ONE grid-width per hop, not the fully-reduced final coordinate — a
-            // magnitude spanning 2+ grids (e.g. 16 on an 8-cell grid) needs an equal number of
-            // hops, one real subgrid-existence check per grid crossed, not a single floorMod
-            // jump straight to the final answer while only ever advancing past one neighbor.
-            lx = dir.getAxis() == Direction.Axis.X ? peelOneGridWidth(lx, gridSize) : lx;
-            ly = dir.getAxis() == Direction.Axis.Y ? peelOneGridWidth(ly, gridSize) : ly;
-            lz = dir.getAxis() == Direction.Axis.Z ? peelOneGridWidth(lz, gridSize) : lz;
-            grid = next;
-        }
-
-        if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
-        CellRef result = grid == this ? new CellRef.Local(lx, ly, lz) : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
-        return logResolve(firstHop, x, y, z, result);
+        return GridResolver.resolve(this, x, y, z);
     }
 
-    /**
-     * The cell where a grid of this size holds it, whatever stands between here and there. Walking there axis by axis
-     * gives up at a gap: a cell diagonal to this grid, past a corner with no grid on the way, came out as the real block
-     * there, which is that very grid's SubgridBlock answering with its whole face. Null when no such grid is there.
-     */
-    @Nullable
-    private CellRef directlyInGrid(ServerLevel level, int x, int y, int z) {
-        BlockPos target = worldPosition.offset(Math.floorDiv(x, gridSize), Math.floorDiv(y, gridSize), Math.floorDiv(z, gridSize));
-        if (!(level.getBlockEntity(target) instanceof SubgridBlockEntity grid) || grid.gridSize != gridSize) return null;
-        return new CellRef.InAdjacentGrid(grid, Math.floorMod(x, gridSize), Math.floorMod(y, gridSize), Math.floorMod(z, gridSize));
-    }
-
-    /** One hop's worth of wrap — subtracts/adds exactly one gridSize, may still be out of bounds. */
-    private static int peelOneGridWidth(int v, int gridSize) {
-        return v < 0 ? v + gridSize : v - gridSize;
-    }
-
-    /**
-     * First axis (x/y/z, checked in that order) that's out of bounds, regardless of how far —
-     * magnitude only matters for how far foldRemainingIntoRealWorld/wrap step, not for whether an
-     * axis counts as overflowing at all. Package-visible for direct unit testing.
-     */
+    /** First axis (x/y/z, checked in that order) that's out of bounds. Package-visible for direct unit testing. */
     @Nullable
     Direction singleStepOverflowAxis(int x, int y, int z) {
-        if (x < 0) return Direction.WEST;
-        if (x >= gridSize) return Direction.EAST;
-        if (y < 0) return Direction.DOWN;
-        if (y >= gridSize) return Direction.UP;
-        if (z < 0) return Direction.NORTH;
-        if (z >= gridSize) return Direction.SOUTH;
-        return null;
+        return GridResolver.singleStepOverflowAxis(this, x, y, z);
     }
 
-    /**
-     * Once a hop finds real (non-subgrid) world space instead of a matching neighbor, any OTHER
-     * axis still out of bounds folds directly into further relative() steps from base — real-world
-     * granularity has no "local coordinate" concept beyond this point, so remaining overflow just
-     * means that many more real blocks over in that direction. floorDiv, not a fixed ±1: a magnitude
-     * of exactly one grid-width was the only case ever confirmed live, but a piston chain-pushing a
-     * SECOND block past the first (issue #34's live follow-up) reads a position a full grid-width
-     * further still — collapsing that to the same single step as the first would silently alias two
-     * distinct real positions onto one, exactly the bug this generalizes away.
-     */
     static BlockPos foldRemainingIntoRealWorld(BlockPos base, Direction resolvedAxis, int x, int y, int z, int gridSize) {
-        BlockPos pos = base;
-        if (resolvedAxis.getAxis() != Direction.Axis.X) {
-            pos = pos.relative(Direction.EAST, Math.floorDiv(x, gridSize));
-        }
-        if (resolvedAxis.getAxis() != Direction.Axis.Y) {
-            pos = pos.relative(Direction.UP, Math.floorDiv(y, gridSize));
-        }
-        if (resolvedAxis.getAxis() != Direction.Axis.Z) {
-            pos = pos.relative(Direction.SOUTH, Math.floorDiv(z, gridSize));
-        }
-        return pos;
+        return GridResolver.foldRemainingIntoRealWorld(base, resolvedAxis, x, y, z, gridSize);
     }
 
-    /**
-     * Like resolve(), but chains through creating a same-gridSize SubgridBlockEntity at any hop
-     * whose real-world target is air, instead of only ever reading — the write-side counterpart
-     * used whenever something spreading/moving/growing needs a writable cell across the boundary.
-     * A write landing a full 2+ real-world hops away (a 3rd subgrid, not just the immediate
-     * neighbor — issue #46's live follow-up: a piston chain-push spanning that far couldn't
-     * resolve at all) creates every intermediate grid along the way that doesn't exist yet, the
-     * same way a single hop already created one. Reports Created if ANY hop in the chain needed
-     * creating, InAdjacentGrid only if every hop crossed was already there.
-     */
+    /** Like resolve(), but creates a same-size grid at any hop whose real-world target is air (GridResolver). */
     public CellRef resolveOrCreate(int x, int y, int z, ServerLevel realLevel) {
-        if (!outOfBounds(x, y, z)) return new CellRef.Local(x, y, z);
-        CellRef direct = directlyInGrid(realLevel, x, y, z);
-        if (direct != null) return logResolve(null, x, y, z, direct);
-
-        SubgridBlockEntity grid = this;
-        int lx = x, ly = y, lz = z;
-        Direction firstHop = null;
-        boolean anyCreated = false;
-
-        for (int hop = 0; hop < MAX_CHAIN_HOPS && grid.outOfBounds(lx, ly, lz); hop++) {
-            Direction dir = grid.singleStepOverflowAxis(lx, ly, lz);
-            if (dir == null) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
-            if (firstHop == null) firstHop = dir;
-
-            BlockPos targetPos = grid.worldPosition.relative(dir);
-            boolean wasAir = realLevel.getBlockState(targetPos).isAir();
-            SubgridBlockEntity next = createAt(realLevel, targetPos, gridSize);
-            if (next == null || next.gridSize != gridSize) {
-                BlockPos real = foldRemainingIntoRealWorld(targetPos, dir, lx, ly, lz, gridSize);
-                return logResolve(firstHop, x, y, z, new CellRef.RealWorld(real));
-            }
-            if (wasAir) anyCreated = true;
-
-            lx = dir.getAxis() == Direction.Axis.X ? peelOneGridWidth(lx, gridSize) : lx;
-            ly = dir.getAxis() == Direction.Axis.Y ? peelOneGridWidth(ly, gridSize) : ly;
-            lz = dir.getAxis() == Direction.Axis.Z ? peelOneGridWidth(lz, gridSize) : lz;
-            grid = next;
-        }
-
-        if (grid.outOfBounds(lx, ly, lz)) return logResolve(firstHop, x, y, z, new CellRef.OutOfScope());
-        CellRef result = anyCreated
-                ? new CellRef.Created(grid, lx, ly, lz)
-                : new CellRef.InAdjacentGrid(grid, lx, ly, lz);
-        return logResolve(firstHop, x, y, z, result);
-    }
-
-    /**
-     * DEBUG, not INFO — unlike [piston-anim]/[mining-diag] (gated on rare, specific events), this
-     * fires on every out-of-bounds neighbor/signal read near a boundary, which vanilla probes
-     * constantly (e.g. every weak-power scan touching an edge cell) regardless of whether a real
-     * boundary crossing is happening. At INFO this produced 1.4M lines in one play session (86% of
-     * the whole log) and caused real lag from the logging volume alone — see issue #42. Guarding on
-     * isDebugEnabled() also skips describeCellRef's string-building work when disabled, not just
-     * the write. Still permanent, still findable — NeoForge's own debug.log captures DEBUG output
-     * separately from latest.log — just no longer paid for on every tick by default.
-     */
-    /**
-     * Diagnostic-only (issue #43): set true around FluidState.tick calls (VanillaBlockPiece
-     * .scheduledTick) so logResolve can trace which boundary reads happen mid fluid-spread at
-     * INFO — the regular [xgrid] DEBUG line turned out not to actually be captured anywhere by
-     * this project's default logging config (checked: debug.log has zero [xgrid] entries even
-     * with LOGGER.isDebugEnabled() guarding it), so a targeted, narrowly-scoped INFO trace is the
-     * only way to get real visibility without reintroducing the volume problem #42's downgrade
-     * fixed. Safe at INFO specifically because fluid ticks are throttled/infrequent, unlike the
-     * constant hasSignal/canSurvive traffic every resolve() call sees generally. Single-threaded
-     * server tick — no concurrency concerns with this being static.
-     */
-    private static boolean tracingFluid = false;
-
-    public static void setTracingFluid(boolean value) {
-        tracingFluid = value;
-    }
-
-    private CellRef logResolve(@Nullable Direction dir, int x, int y, int z, CellRef ref) {
-        // The description is only built when it is logged: formatting it on every resolve weighed in a profile.
-        if (tracingFluid && LOGGER.isDebugEnabled()) {
-            LOGGER.debug("[xgrid-fluid] resolve dir={} from={} local=({},{},{}) -> {} (issue #43)",
-                    dir, worldPosition, x, y, z, describeCellRef(ref));
-        }
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("[xgrid] resolve dir={} from={} local=({},{},{}) -> {}",
-                    dir, worldPosition, x, y, z, describeCellRef(ref));
-        }
-        return ref;
-    }
-
-    private static String describeCellRef(CellRef ref) {
-        return switch (ref) {
-            case CellRef.Local l -> "Local(%d,%d,%d)".formatted(l.x(), l.y(), l.z());
-            case CellRef.InAdjacentGrid a -> "InAdjacentGrid(pos=%s,cell=%d,%d,%d)"
-                    .formatted(a.grid().getBlockPos(), a.x(), a.y(), a.z());
-            case CellRef.Created c -> "Created(pos=%s,cell=%d,%d,%d)"
-                    .formatted(c.grid().getBlockPos(), c.x(), c.y(), c.z());
-            case CellRef.RealWorld r -> "RealWorld(%s)".formatted(r.pos());
-            case CellRef.OutOfScope ignored -> "OutOfScope";
-        };
+        return GridResolver.resolveOrCreate(this, x, y, z, realLevel);
     }
 
     /**
@@ -1071,14 +841,13 @@ public class SubgridBlockEntity extends BlockEntity {
      */
     public Set<Neighbor> neighborsOf(PlacedPiece piece) {
         Set<Neighbor> result = new LinkedHashSet<>();
-        for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX(); x++)
-            for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY(); y++)
-                for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ(); z++)
-                    for (Direction dir : Direction.values()) {
-                        if (piece.occupies(x + dir.getStepX(), y + dir.getStepY(), z + dir.getStepZ())) continue;
-                        Neighbor neighbor = neighborAt(x, y, z, dir);
-                        if (neighbor != null) result.add(neighbor);
-                    }
+        piece.forEachCell((x, y, z) -> {
+            for (Direction dir : Direction.values()) {
+                if (piece.occupies(x + dir.getStepX(), y + dir.getStepY(), z + dir.getStepZ())) continue;
+                Neighbor neighbor = neighborAt(x, y, z, dir);
+                if (neighbor != null) result.add(neighbor);
+            }
+        });
         return result;
     }
 
@@ -1150,46 +919,21 @@ public class SubgridBlockEntity extends BlockEntity {
      * Told of what this grid sends its clients, for a comparison of what they draw (TinySpaceView): the cell of a piece
      * added or removed, or null when all of them went. Holds nothing unless something is comparing.
      */
-    @Nullable public java.util.function.Consumer<BlockPos> syncObserver;
+    @Nullable public Consumer<BlockPos> syncObserver;
 
     public void notifyUpdate() {
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
             if (syncObserver != null) syncObserver.accept(null);
-            markNeighbouringPhantomsDirty();
-        }
-    }
-
-    /**
-     * A change in this grid can alter the phantom block entities of the grids next to it without anything
-     * telling THEM (Create's rotation propagating across the edge sets the neighbour's speed, but only this
-     * grid is re-synced); queue a phantom data push for each adjacent same-size grid. Skipped when this grid
-     * holds no phantom block entity of its own, so plain block grids (water, redstone) cause no extra traffic.
-     */
-    private void markNeighbouringPhantomsDirty() {
-        boolean anyPhantom = false;
-        for (PlacedPiece piece : pieces) {
-            if (piece.runtimeBlockEntity != null) { anyPhantom = true; break; }
-        }
-        if (!anyPhantom) return;
-        for (Direction dir : Direction.values()) {
-            if (level.getBlockEntity(worldPosition.relative(dir)) instanceof SubgridBlockEntity other && other.gridSize == gridSize) {
-                other.markPhantomDataDirty();
-            }
+            phantomSync.markNeighboursDirty();
         }
     }
 
     // --- Grid helpers ---
 
     private boolean canFit(PlacedPiece p) {
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++) {
-                    if (outOfBounds(x, y, z)) return false;
-                    if (cellOwner[indexOf(x, y, z)] != EMPTY) return false;
-                }
-        return true;
+        return !p.anyCell((x, y, z) -> outOfBounds(x, y, z) || cellOwner[indexOf(x, y, z)] != EMPTY);
     }
 
     private void addToGrid(PlacedPiece p) {
@@ -1202,10 +946,7 @@ public class SubgridBlockEntity extends BlockEntity {
         pieceVersion++;
         short idx = (short) pieces.size();
         pieces.add(p);
-        for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-            for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                    cellOwner[indexOf(x, y, z)] = idx;
+        p.forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = idx);
     }
 
     private void rebuildAfterRemove(short removedIdx) {
@@ -1213,50 +954,20 @@ public class SubgridBlockEntity extends BlockEntity {
         pieces.remove(removedIdx);
         Arrays.fill(cellOwner, EMPTY);
         for (int i = 0; i < pieces.size(); i++) {
-            PlacedPiece p = pieces.get(i);
-            for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-                for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                    for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                        cellOwner[indexOf(x, y, z)] = (short) i;
+            final short owner = (short) i;
+            pieces.get(i).forEachCell((x, y, z) -> cellOwner[indexOf(x, y, z)] = owner);
         }
         rebuildShape();
     }
 
-    /**
-     * Builds the merged shape directly from cellOwner's occupancy in a single pass, instead of
-     * unioning one VoxelShape per piece via Shapes.or — that scaled with piece count (and grew
-     * more expensive per union as the accumulated shape got more complex), so dense subgrids
-     * paid an increasingly large cost on every single place/break. This is bounded by
-     * gridSize^3 regardless of piece count (see issue #27).
-     */
     /** Test hook: how many times the merged shape has been rebuilt. */
     int shapeRebuildCount = 0;
 
+    /** Rebuilds the collision shape from the occupancy, in one pass (GridShapes.occupancy). */
     private void rebuildShape() {
         shapeRebuildCount++;
-        var discrete = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
-        boolean any = false;
-        for (int y = 0; y < gridSize; y++)
-            for (int z = 0; z < gridSize; z++)
-                for (int x = 0; x < gridSize; x++)
-                    if (cellOwner[indexOf(x, y, z)] != EMPTY) {
-                        discrete.fill(x, y, z);
-                        any = true;
-                    }
-        cachedShape = any ? ShapeAccess.wrap(discrete) : Shapes.empty();
+        cachedShape = GridShapes.occupancy(this);
     }
-
-    // --- Redstone through the faces ---
-
-    /**
-     * Each face gives the block on that side the strongest signal among the pieces against it, weak and strong
-     * alike (SubgridBlock#getSignal), and, for a SubgridBlock of another size on that side, cell by cell
-     * (overlapSignal). Per face, indexed by the cell's two coordinates across it (faceIndex).
-     */
-    private int[][] weakCells = new int[6][0], strongCells = new int[6][0];
-    private final int[] weakFace = new int[6], strongFace = new int[6];
-    private int signalKey;
-    private boolean signalsBuilt = false;
 
     /**
      * Bumped whenever a piece may have been added, removed or changed state (issue #64): what the faces give and the
@@ -1276,66 +987,20 @@ public class SubgridBlockEntity extends BlockEntity {
         pieceVersion++;
     }
 
-    private int pieceKey() {
-        return pieceVersion;
-    }
-
     @Override
     public void setChanged() {
         pieceVersion++;
         super.setChanged();
     }
 
-    /** Index of the cell (x,y,z) on a face along {@code axis}: its two other coordinates, in x, y, z order. */
-    private int faceIndex(Direction.Axis axis, int x, int y, int z) {
-        return switch (axis) {
-            case X -> y * gridSize + z;
-            case Y -> x * gridSize + z;
-            case Z -> x * gridSize + y;
-        };
-    }
+    // --- Redstone through the faces ---
 
-    private static boolean onFace(Direction face, int x, int y, int z, int size) {
-        int coordinate = face.getAxis().choose(x, y, z);
-        return coordinate == (face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? size - 1 : 0);
-    }
-
-    private void refreshSignals() {
-        int key = pieceKey();
-        if (signalsBuilt && key == signalKey) return;
-        signalsBuilt = true;
-        signalKey = key;
-        weakCells = new int[6][gridSize * gridSize];
-        strongCells = new int[6][gridSize * gridSize];
-        Arrays.fill(weakFace, 0);
-        Arrays.fill(strongFace, 0);
-        if (!(level instanceof ServerLevel server)) return;
-        net.minecraft.world.level.Level space = null;
-        for (PlacedPiece p : pieces) {
-            if (!(p.runtimeState instanceof BlockState state) || !state.isSignalSource()) continue;
-            for (int x = p.anchor.getX(); x < p.anchor.getX() + p.footprint.getX(); x++)
-                for (int y = p.anchor.getY(); y < p.anchor.getY() + p.footprint.getY(); y++)
-                    for (int z = p.anchor.getZ(); z < p.anchor.getZ() + p.footprint.getZ(); z++)
-                        for (Direction face : Direction.values()) {
-                            if (!onFace(face, x, y, z, gridSize)) continue;
-                            if (space == null) space = com.therappha.tinyblocks.v2.VanillaBlockPiece.buildFakeSpace(this, server);
-                            // Asked as the block across that face would: the direction points from it into the grid.
-                            BlockPos at = virtualPosOf(new BlockPos(x, y, z));
-                            Direction towards = face.getOpposite();
-                            int weak = state.getSignal(space, at, towards), strong = state.getDirectSignal(space, at, towards);
-                            int f = face.ordinal(), i = faceIndex(face.getAxis(), x, y, z);
-                            weakCells[f][i] = Math.max(weakCells[f][i], weak);
-                            strongCells[f][i] = Math.max(strongCells[f][i], strong);
-                            weakFace[f] = Math.max(weakFace[f], weak);
-                            strongFace[f] = Math.max(strongFace[f], strong);
-                        }
-        }
-    }
+    /** What the faces give in redstone (GridSignals). */
+    private final GridSignals signals = new GridSignals(this);
 
     /** The signal this grid gives the block across {@code face}: the strongest of the pieces against it. */
     public int faceSignal(Direction face, boolean strong) {
-        refreshSignals();
-        return (strong ? strongFace : weakFace)[face.ordinal()];
+        return signals.faceSignal(face, strong);
     }
 
     /**
@@ -1343,60 +1008,25 @@ public class SubgridBlockEntity extends BlockEntity {
      * the strongest of the pieces whose squares on the shared face overlap that cell's.
      */
     public int overlapSignal(Direction face, int otherSize, int u, int v, boolean strong) {
-        refreshSignals();
-        int[] cells = (strong ? strongCells : weakCells)[face.ordinal()];
-        int best = 0;
-        for (int i = u * gridSize / otherSize; i < gridSize && i * otherSize < (u + 1) * gridSize; i++) {
-            if ((i + 1) * otherSize <= u * gridSize) continue;
-            for (int j = v * gridSize / otherSize; j < gridSize && j * otherSize < (v + 1) * gridSize; j++) {
-                if ((j + 1) * otherSize <= v * gridSize) continue;
-                best = Math.max(best, cells[i * gridSize + j]);
-            }
-        }
-        return best;
+        return signals.overlapSignal(face, otherSize, u, v, strong);
     }
 
-    /** The two coordinates across {@code axis} of the cell (x,y,z), as faceIndex orders them. */
+    /** The two coordinates across {@code axis} of the cell (x,y,z), as GridSignals indexes a face. */
     public static int[] acrossFace(Direction.Axis axis, int x, int y, int z) {
-        return switch (axis) {
-            case X -> new int[] {y, z};
-            case Y -> new int[] {x, z};
-            case Z -> new int[] {x, y};
-        };
-    }
-
-    /** Once a tick: when what the faces give changed, the blocks around are told, as a lever tells them. */
-    private void updateRedstoneOutputs(ServerLevel level) {
-        if (signalsBuilt && pieceKey() == signalKey) return;
-        int[][] weakBefore = weakCells, strongBefore = strongCells;
-        int[] strongFaceBefore = strongFace.clone();
-        refreshSignals();
-        if (Arrays.deepEquals(weakBefore, weakCells) && Arrays.deepEquals(strongBefore, strongCells)) return;
-        Block block = getBlockState().getBlock();
-        level.updateNeighborsAt(worldPosition, block);
-        for (Direction face : Direction.values()) {
-            if (strongFaceBefore[face.ordinal()] != strongFace[face.ordinal()]) {
-                // What that block now powers in turn; not back to this grid, whose pieces have nothing new to hear.
-                level.updateNeighborsAtExceptFromFacing(worldPosition.relative(face), block, face.getOpposite());
-            }
-        }
+        return GridSignals.acrossFace(axis, x, y, z);
     }
 
     /** The block across {@code face} changed: the pieces against that face look again (a signal there, for one). */
     public void notifyFace(Direction face) {
         if (!(level instanceof ServerLevel serverLevel)) return;
         for (PlacedPiece piece : new ArrayList<>(pieces)) {
-            boolean against = false;
-            for (int x = piece.anchor.getX(); x < piece.anchor.getX() + piece.footprint.getX() && !against; x++)
-                for (int y = piece.anchor.getY(); y < piece.anchor.getY() + piece.footprint.getY() && !against; y++)
-                    for (int z = piece.anchor.getZ(); z < piece.anchor.getZ() + piece.footprint.getZ() && !against; z++)
-                        against = onFace(face, x, y, z, gridSize);
+            boolean against = piece.anyCell((x, y, z) -> GridSignals.onFace(face, x, y, z, gridSize));
             if (!against || !pieces.contains(piece)) continue;
             try {
                 piece.definition.onNeighborChanged(piece, serverLevel, worldPosition, this, piece);
                 // A piston head goes with its piston, when the grid the piston was in is gone. Not with a grid across:
                 // that one tells its pieces through notifyNeighbors, cell by cell.
-                if (pieces.contains(piece) && piece.definition instanceof com.therappha.tinyblocks.v2.VanillaBlockPiece vanilla
+                if (pieces.contains(piece) && piece.definition instanceof VanillaBlockPiece vanilla
                         && !(serverLevel.getBlockState(worldPosition.relative(face)).getBlock() instanceof SubgridBlock)) {
                     vanilla.reshapeAgainst(piece, serverLevel, this, face);
                 }
@@ -1419,7 +1049,7 @@ public class SubgridBlockEntity extends BlockEntity {
     public VoxelShape getOutlineShape() {
         int key = pieceVersion;
         if (!outlineBuilt || key != outlineKey) {
-            outlineShape = buildOutlineShape();
+            outlineShape = GridShapes.outline(this);
             outlineKey = key;
             outlineBuilt = true;
         }
@@ -1427,68 +1057,9 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /** The shape of {@code piece} in its own block space (0..1), or null where it fills its cells whole. */
-    @javax.annotation.Nullable
+    @Nullable
     public static VoxelShape pieceShape(PlacedPiece piece) {
-        if (!(piece.runtimeState instanceof net.minecraft.world.level.block.state.BlockState state)) return null;
-        if (piece.footprint.getX() != 1 || piece.footprint.getY() != 1 || piece.footprint.getZ() != 1) return null;
-        VoxelShape shape;
-        try {
-            shape = state.getShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
-        } catch (RuntimeException e) {
-            return null; // a shape that needs a real world around it
-        }
-        // An empty shape (light, structure void) would leave the piece impossible to aim at, so to break.
-        if (shape.isEmpty() || net.minecraft.world.level.block.Block.isShapeFullBlock(shape)) return null;
-        return shape;
-    }
-
-    private VoxelShape buildOutlineShape() {
-        var whole = new net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
-        boolean anyWhole = false;
-        List<VoxelShape> parts = new ArrayList<>();
-        double cell = 1.0 / gridSize;
-        for (PlacedPiece p : pieces) {
-            VoxelShape shape = pieceShape(p);
-            if (shape == null) {
-                for (int x = 0; x < p.footprint.getX(); x++)
-                    for (int y = 0; y < p.footprint.getY(); y++)
-                        for (int z = 0; z < p.footprint.getZ(); z++) {
-                            int cx = p.anchor.getX() + x, cy = p.anchor.getY() + y, cz = p.anchor.getZ() + z;
-                            if (!outOfBounds(cx, cy, cz)) {
-                                whole.fill(cx, cy, cz);
-                                anyWhole = true;
-                            }
-                        }
-                continue;
-            }
-            for (net.minecraft.world.phys.AABB box : shape.toAabbs()) {
-                parts.add(Shapes.create(
-                        (p.anchor.getX() + box.minX) * cell, (p.anchor.getY() + box.minY) * cell, (p.anchor.getZ() + box.minZ) * cell,
-                        (p.anchor.getX() + box.maxX) * cell, (p.anchor.getY() + box.maxY) * cell, (p.anchor.getZ() + box.maxZ) * cell));
-            }
-        }
-        VoxelShape partial = joinAll(parts);
-        VoxelShape out = anyWhole ? ShapeAccess.wrap(whole) : Shapes.empty();
-        return partial.isEmpty() ? out : Shapes.joinUnoptimized(out, partial, net.minecraft.world.phys.shapes.BooleanOp.OR).optimize();
-    }
-
-    /**
-     * The union of {@code parts}, joined pairwise up a balanced tree (issue #64): joining them one by one into a
-     * growing shape cost O(parts x final shape) — 220 ms for a 16-grid layer of 256 cogwheels, on every change.
-     */
-    private static VoxelShape joinAll(List<VoxelShape> parts) {
-        if (parts.isEmpty()) return Shapes.empty();
-        List<VoxelShape> level = parts;
-        while (level.size() > 1) {
-            List<VoxelShape> next = new ArrayList<>((level.size() + 1) / 2);
-            for (int i = 0; i < level.size(); i += 2) {
-                next.add(i + 1 < level.size()
-                        ? Shapes.joinUnoptimized(level.get(i), level.get(i + 1), net.minecraft.world.phys.shapes.BooleanOp.OR)
-                        : level.get(i));
-            }
-            level = next;
-        }
-        return level.get(0);
+        return GridShapes.pieceShape(piece);
     }
 
     public int indexOf(int x, int y, int z) {
@@ -1503,9 +1074,9 @@ public class SubgridBlockEntity extends BlockEntity {
      * the player — instead of collapsing every piece in the subgrid down to one shared point
      * (the whole SubgridBlock's own BlockPos, which is what be.getBlockPos() alone gives you).
      */
-    public net.minecraft.world.phys.Vec3 realPositionOf(BlockPos local) {
+    public Vec3 realPositionOf(BlockPos local) {
         double cell = 1.0 / gridSize;
-        return new net.minecraft.world.phys.Vec3(
+        return new Vec3(
                 worldPosition.getX() + (local.getX() + 0.5) * cell,
                 worldPosition.getY() + (local.getY() + 0.5) * cell,
                 worldPosition.getZ() + (local.getZ() + 0.5) * cell
@@ -1539,11 +1110,11 @@ public class SubgridBlockEntity extends BlockEntity {
     }
 
     /** World-frame position a phantom block entity for the piece at {@code cell} lives at. */
-    public BlockPos virtualPosOf(net.minecraft.core.Vec3i cell) {
+    public BlockPos virtualPosOf(Vec3i cell) {
         return virtualOrigin().offset(cell);
     }
 
-    private boolean outOfBounds(int x, int y, int z) {
+    boolean outOfBounds(int x, int y, int z) {
         return x < 0 || x >= gridSize || y < 0 || y >= gridSize || z < 0 || z >= gridSize;
     }
 

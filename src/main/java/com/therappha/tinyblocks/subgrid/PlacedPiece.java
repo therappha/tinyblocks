@@ -23,7 +23,7 @@ public class PlacedPiece {
      * directly (the PieceDefinition round-trips whatever data it holds through extraData).
      */
     public Object runtimeBlockEntity;
-    /** Hash of the phantom block entity data last pushed to clients; runtime-only, see SubgridBlockEntity#flushPhantomData. */
+    /** Hash of the phantom block entity data last pushed to clients; runtime-only, see PhantomSync#flush. */
     public int lastSyncedPhantomHash;
 
     public PlacedPiece(PieceDefinition definition, BlockPos anchor, Direction facing) {
@@ -38,6 +38,33 @@ public class PlacedPiece {
         return x >= anchor.getX() && x < anchor.getX() + footprint.getX()
             && y >= anchor.getY() && y < anchor.getY() + footprint.getY()
             && z >= anchor.getZ() && z < anchor.getZ() + footprint.getZ();
+    }
+
+    @FunctionalInterface
+    public interface CellVisitor {
+        void visit(int x, int y, int z);
+    }
+
+    @FunctionalInterface
+    public interface CellTest {
+        boolean test(int x, int y, int z);
+    }
+
+    /** Every cell of the footprint, x outer, then y, then z: neighbours hear of a change in this order. */
+    public void forEachCell(CellVisitor visitor) {
+        for (int x = anchor.getX(); x < anchor.getX() + footprint.getX(); x++)
+            for (int y = anchor.getY(); y < anchor.getY() + footprint.getY(); y++)
+                for (int z = anchor.getZ(); z < anchor.getZ() + footprint.getZ(); z++)
+                    visitor.visit(x, y, z);
+    }
+
+    /** Whether a cell of the footprint passes, stopping at the first one that does (same order as forEachCell). */
+    public boolean anyCell(CellTest test) {
+        for (int x = anchor.getX(); x < anchor.getX() + footprint.getX(); x++)
+            for (int y = anchor.getY(); y < anchor.getY() + footprint.getY(); y++)
+                for (int z = anchor.getZ(); z < anchor.getZ() + footprint.getZ(); z++)
+                    if (test.test(x, y, z)) return true;
+        return false;
     }
 
     public CompoundTag save() {

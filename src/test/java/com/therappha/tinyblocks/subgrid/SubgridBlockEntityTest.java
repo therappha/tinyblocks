@@ -296,4 +296,43 @@ class SubgridBlockEntityTest {
                 "loading N pieces must rebuild the O(gridSize^3) shape once, not once per piece");
         assertFalse(loaded.getCachedShape().isEmpty());
     }
+
+    // --- the order neighbours hear in (#115) ---------------------------------------------------
+
+    /** A 2 by 2 by 2 piece: the same on every axis, so its facing doesn't matter. */
+    private static final PieceDefinition CUBE_2 = new PieceDefinition(
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("tinyblocks", "test_cube_2"),
+            new net.minecraft.core.Vec3i(2, 2, 2)) {
+        @Override
+        public net.minecraft.world.level.block.state.BlockState renderState(Direction facing) {
+            return Blocks.STONE.defaultBlockState();
+        }
+    };
+
+    @Test
+    void neighboursOfAMultiCellPieceComeInFootprintThenDirectionOrder() {
+        // Every cell touching the cube's faces holds a piece, and each touches exactly one cube cell, so the sequence
+        // shows the footprint loop (x outer, then y, then z) and Direction.values() for each cell.
+        SubgridBlockEntity be = newEntity();
+        assertTrue(be.placePiece(new PlacedPiece(CUBE_2, new BlockPos(2, 2, 2), Direction.NORTH)));
+        PlacedPiece cube = be.getPieceAt(2, 2, 2);
+        for (int x = 1; x <= 4; x++)
+            for (int y = 1; y <= 4; y++)
+                for (int z = 1; z <= 4; z++) {
+                    int outside = (x < 2 || x > 3 ? 1 : 0) + (y < 2 || y > 3 ? 1 : 0) + (z < 2 || z > 3 ? 1 : 0);
+                    if (outside == 1) assertTrue(be.placePiece(piece(new BlockPos(x, y, z))));
+                }
+
+        List<BlockPos> heard = be.neighborsOf(cube).stream().map(n -> n.piece().anchor).toList();
+
+        assertEquals(List.of(
+                new BlockPos(2, 1, 2), new BlockPos(2, 2, 1), new BlockPos(1, 2, 2),
+                new BlockPos(2, 1, 3), new BlockPos(2, 2, 4), new BlockPos(1, 2, 3),
+                new BlockPos(2, 4, 2), new BlockPos(2, 3, 1), new BlockPos(1, 3, 2),
+                new BlockPos(2, 4, 3), new BlockPos(2, 3, 4), new BlockPos(1, 3, 3),
+                new BlockPos(3, 1, 2), new BlockPos(3, 2, 1), new BlockPos(4, 2, 2),
+                new BlockPos(3, 1, 3), new BlockPos(3, 2, 4), new BlockPos(4, 2, 3),
+                new BlockPos(3, 4, 2), new BlockPos(3, 3, 1), new BlockPos(4, 3, 2),
+                new BlockPos(3, 4, 3), new BlockPos(3, 3, 4), new BlockPos(4, 3, 3)), heard);
+    }
 }

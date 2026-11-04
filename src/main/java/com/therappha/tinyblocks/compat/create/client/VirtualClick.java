@@ -2,8 +2,11 @@ package com.therappha.tinyblocks.compat.create.client;
 
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsInputHandler;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.GridSaveItem;
 import com.therappha.tinyblocks.v2.FakeSpace;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -26,7 +29,7 @@ public final class VirtualClick {
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (!event.getLevel().isClientSide() || event.getLevel() instanceof FakeSpace) return;
         // A Grid Save is for the whole grid, not a piece's value box.
-        if (event.getItemStack().getItem() instanceof com.therappha.tinyblocks.items.GridSaveItem) return;
+        if (event.getItemStack().getItem() instanceof GridSaveItem) return;
         VirtualView.begin();
         try {
             if (!VirtualView.active() || !(Minecraft.getInstance().hitResult instanceof BlockHitResult hit)) return;
@@ -42,9 +45,9 @@ public final class VirtualClick {
             // controller clicked on a tiny link starts binding to it.
             var held = event.getItemStack();
             if (held.isEmpty()) return;
-            net.minecraft.world.InteractionResult first = held.onItemUseFirst(
-                    new net.minecraft.world.item.context.UseOnContext(event.getEntity(), event.getHand(), hit));
-            if (first != net.minecraft.world.InteractionResult.PASS) {
+            InteractionResult first = held.onItemUseFirst(
+                    new UseOnContext(event.getEntity(), event.getHand(), hit));
+            if (first != InteractionResult.PASS) {
                 event.setCanceled(true);
                 event.setCancellationResult(first);
             }

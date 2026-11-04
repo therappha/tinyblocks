@@ -1,24 +1,62 @@
 package com.therappha.tinyblocks.v2;
 
+import com.therappha.tinyblocks.mixin.EntityAccessor;
+import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
+import dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ServerScoreboard;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.progress.ChunkProgressListener;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.RandomSequences;
+import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.flag.FeatureFlagSet;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.alchemy.PotionBrewing;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.CustomSpawner;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Fallable;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.LevelStem;
+import net.minecraft.world.level.entity.LevelEntityGetter;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.ServerLevelData;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.ticks.LevelTicks;
 import net.minecraft.world.ticks.TickPriority;
+import net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener;
+import sun.reflect.ReflectionFactory;
 
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.UUID;
 import javax.annotation.Nullable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -27,7 +65,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
- * v2 prototype, Tier 3: a real ServerLevel subclass, needed because Block.tick/randomTick are
+ * A real ServerLevel subclass, needed because Block.tick/randomTick are
  * statically typed to require a genuine ServerLevel instance — no amount of Level-level
  * delegation (FakeLevel) satisfies that type requirement.
  *
@@ -45,7 +83,7 @@ import java.util.concurrent.Executor;
  * against the specific block ticks we actually exercise (redstone lamp delay, crop growth), not
  * by exhaustively reimplementing ServerLevel.
  */
-public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder {
+public class FakeServerLevel extends ServerLevel implements FakeSpace, SubLevelContainerHolder {
 
     private FakeLevel delegate;
     /** The real ServerLevel this fake space was built from — for ServerLevel-only state the transplant can't copy. */
@@ -55,7 +93,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // runs for a reflection-allocated instance. Set explicitly in create() instead.
     private List<ScheduledEntry> scheduled;
     private FakeTicks<Block> blockTicks;
-    private FakeTicks<net.minecraft.world.level.material.Fluid> fluidTicks;
+    private FakeTicks<Fluid> fluidTicks;
 
     @Override
     public List<ScheduledEntry> scheduledTicks() { return scheduled; }
@@ -92,14 +130,14 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
         static {
             try {
-                sun.reflect.ReflectionFactory rf = sun.reflect.ReflectionFactory.getReflectionFactory();
+                ReflectionFactory rf = ReflectionFactory.getReflectionFactory();
                 @SuppressWarnings("unchecked")
                 Constructor<FakeServerLevel> ctor = (Constructor<FakeServerLevel>) rf.newConstructorForSerialization(
                         FakeServerLevel.class, Object.class.getDeclaredConstructor());
                 ctor.setAccessible(true);
                 CTOR = ctor;
-                LEVEL_FIELDS = java.util.Arrays.stream(Level.class.getDeclaredFields())
-                        .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+                LEVEL_FIELDS = Arrays.stream(Level.class.getDeclaredFields())
+                        .filter(field -> !Modifier.isStatic(field.getModifiers()))
                         .peek(field -> field.setAccessible(true))
                         .toArray(Field[]::new);
                 NEIGHBOR_UPDATER = accessible(Level.class.getDeclaredField("neighborUpdater"));
@@ -152,7 +190,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
             // calls internally (e.g. Block.pushEntitiesUp, hit when FarmBlock dries out and
             // reverts to dirt via a random tick) — an empty map is correct here: no dragon parts
             // live in the fake cell space.
-            Reflection.DRAGON_PARTS.set(instance, new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>());
+            Reflection.DRAGON_PARTS.set(instance, new Int2ObjectOpenHashMap<>());
 
             return instance;
         } catch (ReflectiveOperationException e) {
@@ -163,7 +201,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public FakeCellGetter cells() { return delegate.cells(); }
 
     @Override
-    public net.minecraft.world.level.Level realLevel() { return delegate.realLevel(); }
+    public Level realLevel() { return delegate.realLevel(); }
 
     /**
      * Sable keeps its sub-level container in a field its mixin adds to ServerLevel, which the Level-field
@@ -171,8 +209,8 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
      * for it (SubLevelAssemblyHelper, Containing.get...) gets the real level's container instead.
      */
     @Override
-    public dev.ryanhcode.sable.api.sublevel.SubLevelContainer sable$getPlotContainer() {
-        return ((dev.ryanhcode.sable.mixinterface.plot.SubLevelContainerHolder) realServer).sable$getPlotContainer();
+    public SubLevelContainer sable$getPlotContainer() {
+        return ((SubLevelContainerHolder) realServer).sable$getPlotContainer();
     }
 
     // Light queries go to the FakeLevel (which answers with the real SubgridBlock's light). Left to the
@@ -182,7 +220,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public int getRawBrightness(BlockPos pos, int amount) { return delegate.getRawBrightness(pos, amount); }
 
     @Override
-    public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) { return delegate.getBrightness(layer, pos); }
+    public int getBrightness(LightLayer layer, BlockPos pos) { return delegate.getBrightness(layer, pos); }
 
     @Override
     public boolean canSeeSky(BlockPos pos) { return delegate.canSeeSky(pos); }
@@ -219,13 +257,13 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public BlockState getBlockState(BlockPos pos) { return delegate.getBlockState(pos); }
 
     @Override
-    public int getSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+    public int getSignal(BlockPos pos, Direction direction) {
         Integer outside = cells().outsideSignal(pos, direction, false);
         return outside != null ? outside : super.getSignal(pos, direction);
     }
 
     @Override
-    public int getDirectSignal(BlockPos pos, net.minecraft.core.Direction direction) {
+    public int getDirectSignal(BlockPos pos, Direction direction) {
         Integer outside = cells().outsideSignal(pos, direction, true);
         return outside != null ? outside : super.getDirectSignal(pos, direction);
     }
@@ -274,20 +312,20 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     //    Block.dropResources, e.g. Create's RotationPropagator destroying a conflicting gear).
     // The exception mid-propagation left the kinetic network half-updated ("gear locks up").
     @Override
-    public net.minecraft.util.RandomSource getRandomSequence(net.minecraft.resources.ResourceLocation id) {
+    public RandomSource getRandomSequence(ResourceLocation id) {
         return realServer.getRandomSequence(id);
     }
 
     // Particles at fake-local coordinates would land nowhere meaningful in the real world; drop them.
     @Override
-    public <T extends net.minecraft.core.particles.ParticleOptions> int sendParticles(T type, double x, double y, double z,
+    public <T extends ParticleOptions> int sendParticles(T type, double x, double y, double z,
             int count, double dx, double dy, double dz, double speed) {
         return 0;
     }
 
     @Override
-    public <T extends net.minecraft.core.particles.ParticleOptions> boolean sendParticles(
-            net.minecraft.server.level.ServerPlayer player, T type, boolean longDistance, double x, double y, double z,
+    public <T extends ParticleOptions> boolean sendParticles(
+            ServerPlayer player, T type, boolean longDistance, double x, double y, double z,
             int count, double dx, double dy, double dz, double speed) {
         return false;
     }
@@ -305,7 +343,7 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public String gatherChunkSourceStats() { return "FakeServerLevel"; }
 
     @Override
-    public net.minecraft.world.level.entity.LevelEntityGetter<Entity> getEntities() {
+    public LevelEntityGetter<Entity> getEntities() {
         // ServerLevel's own getEntities() reads this.entityManager, which is ServerLevel-declared
         // (not covered by the Level-field transplant in create()) and null here — no fake entity
         // manager exists or is needed, since no entities live in the fake cell space.
@@ -324,40 +362,40 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
      */
     @Override
     public boolean addFreshEntity(Entity entity) {
-        if (entity instanceof net.minecraft.world.entity.item.FallingBlockEntity falling) return fallOneCell(falling);
+        if (entity instanceof FallingBlockEntity falling) return fallOneCell(falling);
         entity.setPos(cells().toReal(entity.position()));
-        ((com.therappha.tinyblocks.mixin.EntityAccessor) entity).tinyblocks$setLevel(realServer);
+        ((EntityAccessor) entity).tinyblocks$setLevel(realServer);
         return realServer.addFreshEntity(entity);
     }
 
-    private boolean fallOneCell(net.minecraft.world.entity.item.FallingBlockEntity falling) {
+    private boolean fallOneCell(FallingBlockEntity falling) {
         BlockPos into = BlockPos.containing(falling.getX(), falling.getY() - 1, falling.getZ());
         // Through a fluid at once: the entity goes by and leaves it, where a block stopping in it would take its place.
-        for (int depth = 0; depth < 64 && !getBlockState(into).isAir() && net.minecraft.world.level.block.FallingBlock.isFree(getBlockState(into.below())); depth++) {
+        for (int depth = 0; depth < 64 && !getBlockState(into).isAir() && FallingBlock.isFree(getBlockState(into.below())); depth++) {
             into = into.below();
         }
         BlockPos under = into.below();
         BlockState state = falling.getBlockState(), replaced = getBlockState(into), beneath = getBlockState(under);
-        boolean lands = !net.minecraft.world.level.block.FallingBlock.isFree(beneath);
+        boolean lands = !FallingBlock.isFree(beneath);
         // The entity comes down into the cell of anything lower than a whole block (a torch, a slab), has nowhere to
         // settle, and breaks into its item.
         if (lands && beneath.getCollisionShape(this, under).max(Direction.Axis.Y) < 1) {
-            net.minecraft.world.phys.Vec3 at = net.minecraft.world.phys.Vec3.atCenterOf(under);
-            return addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(this, at.x, at.y, at.z, new net.minecraft.world.item.ItemStack(state.getBlock())));
+            Vec3 at = Vec3.atCenterOf(under);
+            return addFreshEntity(new ItemEntity(this, at.x, at.y, at.z, new ItemStack(state.getBlock())));
         }
         if (replaced.isAir()) cells().set(into, state);
         else setBlock(into, state, Block.UPDATE_ALL); // over a fluid, which has its own say and whose cell is a piece already
-        if (lands && state.getBlock() instanceof net.minecraft.world.level.block.Fallable fallable) {
+        if (lands && state.getBlock() instanceof Fallable fallable) {
             fallable.onLand(this, into, state, replaced, falling);
         }
         return true;
     }
 
     /** The caches block entities keep of a neighbour's capability, told each use to look again (forgetCapabilities). */
-    private List<net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener> capabilityListeners;
+    private List<ICapabilityInvalidationListener> capabilityListeners;
 
     @Override
-    public void registerCapabilityListener(BlockPos pos, net.neoforged.neoforge.capabilities.ICapabilityInvalidationListener listener) {
+    public void registerCapabilityListener(BlockPos pos, ICapabilityInvalidationListener listener) {
         capabilityListeners.add(listener);
     }
 
@@ -379,20 +417,20 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
 
     @Nullable
     @Override
-    public Entity getEntity(java.util.UUID uuid) { return null; }
+    public Entity getEntity(UUID uuid) { return null; }
 
     @Override
-    public net.minecraft.world.TickRateManager tickRateManager() { return delegate.tickRateManager(); }
+    public TickRateManager tickRateManager() { return delegate.tickRateManager(); }
 
     @Nullable
     @Override
-    public net.minecraft.world.level.saveddata.maps.MapItemSavedData getMapData(net.minecraft.world.level.saveddata.maps.MapId id) { return null; }
+    public MapItemSavedData getMapData(MapId id) { return null; }
 
     @Override
-    public void setMapData(net.minecraft.world.level.saveddata.maps.MapId id, net.minecraft.world.level.saveddata.maps.MapItemSavedData data) {}
+    public void setMapData(MapId id, MapItemSavedData data) {}
 
     @Override
-    public net.minecraft.world.level.saveddata.maps.MapId getFreeMapId() { return delegate.getFreeMapId(); }
+    public MapId getFreeMapId() { return delegate.getFreeMapId(); }
 
     @Override
     public void destroyBlockProgress(int breakerId, BlockPos pos, int progress) {}
@@ -400,16 +438,16 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // Delegates to FakeLevel's own fix (real position substitution) instead of no-op'ing — see
     // that class for why this needs to actually play something now.
     @Override
-    public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, double x, double y, double z,
-                                 net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
-                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {
+    public void playSeededSound(@Nullable Player player, double x, double y, double z,
+                                 Holder<SoundEvent> sound,
+                                 SoundSource source, float volume, float pitch, long seed) {
         delegate.playSeededSound(player, x, y, z, sound, source, volume, pitch, seed);
     }
 
     @Override
-    public void playSeededSound(@Nullable net.minecraft.world.entity.player.Player player, Entity entity,
-                                 net.minecraft.core.Holder<net.minecraft.sounds.SoundEvent> sound,
-                                 net.minecraft.sounds.SoundSource source, float volume, float pitch, long seed) {
+    public void playSeededSound(@Nullable Player player, Entity entity,
+                                 Holder<SoundEvent> sound,
+                                 SoundSource source, float volume, float pitch, long seed) {
         delegate.playSeededSound(player, entity, sound, source, volume, pitch, seed);
     }
 
@@ -428,13 +466,13 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public void invalidateCapabilities(BlockPos pos) {}
 
     @Override
-    public void invalidateCapabilities(net.minecraft.world.level.ChunkPos pos) {}
+    public void invalidateCapabilities(ChunkPos pos) {}
 
     @Override
     public void globalLevelEvent(int type, BlockPos pos, int data) {}
 
     @Override
-    public void levelEvent(@Nullable net.minecraft.world.entity.player.Player player, int type, BlockPos pos, int data) {}
+    public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
 
     // Originally a no-op — ServerLevel.blockEvent reads this.blockEvents (a ServerLevel-only queue
     // for batched block events — chest lid open/close signals, note block notes, etc.), which is
@@ -447,25 +485,25 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // which never happened here even before the NPE, since blockEvent's real broadcast step is
     // itself the real-world side effect a fake position space otherwise has no way to perform.
     @Override
-    public void blockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {
+    public void blockEvent(BlockPos pos, Block block, int eventId, int eventParam) {
         delegate.blockEvent(pos, block, eventId, eventParam);
     }
 
     /** See FakeLevel#runBlockEvent. */
-    public void runBlockEvent(BlockPos pos, net.minecraft.world.level.block.Block block, int eventId, int eventParam) {
+    public void runBlockEvent(BlockPos pos, Block block, int eventId, int eventParam) {
         delegate.runBlockEvent(pos, block, eventId, eventParam);
     }
 
     @Override
-    public net.minecraft.server.ServerScoreboard getScoreboard() {
-        return (net.minecraft.server.ServerScoreboard) delegate.getScoreboard();
+    public ServerScoreboard getScoreboard() {
+        return (ServerScoreboard) delegate.getScoreboard();
     }
 
     @Override
-    public net.minecraft.world.item.crafting.RecipeManager getRecipeManager() { return delegate.getRecipeManager(); }
+    public RecipeManager getRecipeManager() { return delegate.getRecipeManager(); }
 
     @Override
-    public net.minecraft.world.item.alchemy.PotionBrewing potionBrewing() { return delegate.potionBrewing(); }
+    public PotionBrewing potionBrewing() { return delegate.potionBrewing(); }
 
     @Override
     public void setDayTimeFraction(float fraction) {}
@@ -480,38 +518,38 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     public void setDayTimePerTick(float dayTimePerTick) {}
 
     @Override
-    public void gameEvent(net.minecraft.core.Holder<net.minecraft.world.level.gameevent.GameEvent> event,
-                           net.minecraft.world.phys.Vec3 pos,
-                           net.minecraft.world.level.gameevent.GameEvent.Context context) {
+    public void gameEvent(Holder<GameEvent> event,
+                           Vec3 pos,
+                           GameEvent.Context context) {
         cells().gameEvent(event, pos, context);
     }
 
     @Override
-    public net.minecraft.server.level.ServerChunkCache getChunkSource() {
-        return (net.minecraft.server.level.ServerChunkCache) delegate.getChunkSource();
+    public ServerChunkCache getChunkSource() {
+        return (ServerChunkCache) delegate.getChunkSource();
     }
 
     @Override
-    public net.minecraft.world.ticks.LevelTicks<Block> getBlockTicks() {
+    public LevelTicks<Block> getBlockTicks() {
         return blockTicks;
     }
 
     @Override
-    public net.minecraft.world.ticks.LevelTicks<net.minecraft.world.level.material.Fluid> getFluidTicks() {
+    public LevelTicks<Fluid> getFluidTicks() {
         return fluidTicks;
     }
 
     @Override
-    public List<net.minecraft.server.level.ServerPlayer> players() { return List.of(); }
+    public List<ServerPlayer> players() { return List.of(); }
 
     @Override
     public float getShade(Direction direction, boolean shade) { return delegate.getShade(direction, shade); }
 
     @Override
-    public net.minecraft.world.flag.FeatureFlagSet enabledFeatures() { return delegate.enabledFeatures(); }
+    public FeatureFlagSet enabledFeatures() { return delegate.enabledFeatures(); }
 
     @Override
-    public net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> getUncachedNoiseBiome(int x, int y, int z) {
+    public Holder<Biome> getUncachedNoiseBiome(int x, int y, int z) {
         return delegate.getUncachedNoiseBiome(x, y, z);
     }
 
@@ -532,12 +570,12 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, dev.ryanh
     // getFluidTicks() below is a real BlackholeTickAccess. Same fix as FakeLevel's fluid-tick
     // overloads, needed here too since FakeServerLevel is a sibling, not a subclass, of FakeLevel.
     @Override
-    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay, TickPriority priority) {
+    public void scheduleTick(BlockPos pos, Fluid fluid, int delay, TickPriority priority) {
         if (!cells().scheduleTick(pos, fluid, delay, priority.getValue())) scheduled.add(new ScheduledEntry(pos, delay));
     }
 
     @Override
-    public void scheduleTick(BlockPos pos, net.minecraft.world.level.material.Fluid fluid, int delay) {
+    public void scheduleTick(BlockPos pos, Fluid fluid, int delay) {
         scheduleTick(pos, fluid, delay, TickPriority.NORMAL);
     }
 }

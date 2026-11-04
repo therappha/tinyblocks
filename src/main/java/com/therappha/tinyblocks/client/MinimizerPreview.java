@@ -6,6 +6,7 @@ import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.items.BuildMode;
 import com.therappha.tinyblocks.items.MinimizerBuild;
 import com.therappha.tinyblocks.items.MinimizerItem;
+import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -13,6 +14,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -77,12 +79,12 @@ public final class MinimizerPreview {
     private static void outlineDoomed(RenderLevelStageEvent event, Minecraft mc) {
         if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) return;
         BlockPos pos = hit.getBlockPos();
-        if (!(mc.level.getBlockState(pos).getBlock() instanceof com.therappha.tinyblocks.subgrid.SubgridBlock)) return;
+        if (!(mc.level.getBlockState(pos).getBlock() instanceof SubgridBlock)) return;
         if (!MinimizerItem.mayBreak(mc.player, mc.level, pos)) return;
         Vec3 camera = SubLevelView.enter(event, pos);
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         LevelRenderer.renderLineBox(event.getPoseStack(), buffers.getBuffer(RenderType.lines()),
-                new net.minecraft.world.phys.AABB(pos).move(camera.scale(-1)).inflate(1 / 512d), 1f, 0.15f, 0.15f, 1f);
+                new AABB(pos).move(camera.scale(-1)).inflate(1 / 512d), 1f, 0.15f, 0.15f, 1f);
         buffers.endBatch(RenderType.lines());
         SubLevelView.exit(event);
     }

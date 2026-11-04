@@ -2,6 +2,7 @@ package com.therappha.tinyblocks.compat.create;
 
 import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.setup.Registration;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
@@ -9,8 +10,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
@@ -34,11 +43,11 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
     private static final int SHAFT_WIDTH_SIXTEENTHS = 6;
 
     /** One per grid size a SubgridBlock can have. */
-    private static final Map<Integer, ShaftConnectorPiece> BY_GRID_SIZE = new java.util.HashMap<>();
+    private static final Map<Integer, ShaftConnectorPiece> BY_GRID_SIZE = new HashMap<>();
 
     static {
-        for (int size = com.therappha.tinyblocks.setup.Registration.MIN_GRID_SIZE;
-             size <= com.therappha.tinyblocks.setup.Registration.MAX_GRID_SIZE; size++) {
+        for (int size = Registration.MIN_GRID_SIZE;
+             size <= Registration.MAX_GRID_SIZE; size++) {
             BY_GRID_SIZE.put(size, new ShaftConnectorPiece(size));
         }
     }
@@ -84,7 +93,7 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
     public static List<BlockPos> meshCells(Direction face, int gridSize) {
         int layer = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? gridSize - 1 : 0;
         int low = gridSize / 2 - 1, high = gridSize / 2; // the gear's two rows, across each way
-        List<BlockPos> sides = new java.util.ArrayList<>();
+        List<BlockPos> sides = new ArrayList<>();
         for (int a : new int[] {low - 1, high + 1}) {
             for (int b : new int[] {low, high}) {
                 addIfInside(sides, face, layer, a, b, gridSize);
@@ -132,13 +141,13 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
 
     /** The connector itself. */
     @Override
-    public List<net.minecraft.world.item.ItemStack> drops(PlacedPiece piece) {
-        return List.of(new net.minecraft.world.item.ItemStack(CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get()));
+    public List<ItemStack> drops(PlacedPiece piece) {
+        return List.of(new ItemStack(CreateConnectorSetup.SHAFT_CONNECTOR_ITEM.get()));
     }
 
     @Override
-    public List<net.minecraft.world.item.ItemStack> drops(PlacedPiece piece, net.minecraft.server.level.ServerLevel level,
-                                                          BlockPos subgridPos, SubgridBlockEntity be, net.minecraft.world.item.ItemStack tool) {
+    public List<ItemStack> drops(PlacedPiece piece, ServerLevel level,
+                                                          BlockPos subgridPos, SubgridBlockEntity be, ItemStack tool) {
         return drops(piece);
     }
 
@@ -147,14 +156,14 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
      * clicked onto it goes into the funnel's socket, or a small cogwheel onto the gear's side (ConnectorPlacement).
      */
     @Override
-    public net.minecraft.world.InteractionResult onUse(PlacedPiece piece, net.minecraft.world.level.Level level, BlockPos subgridPos,
-                                                       SubgridBlockEntity be, net.minecraft.world.entity.player.Player player,
-                                                       net.minecraft.world.phys.BlockHitResult hit) {
-        return net.minecraft.world.InteractionResult.PASS;
+    public InteractionResult onUse(PlacedPiece piece, Level level, BlockPos subgridPos,
+                                                       SubgridBlockEntity be, Player player,
+                                                       BlockHitResult hit) {
+        return InteractionResult.PASS;
     }
 
     @Override
-    public void onRemoved(PlacedPiece piece, net.minecraft.server.level.ServerLevel level, SubgridBlockEntity be) {
+    public void onRemoved(PlacedPiece piece, ServerLevel level, SubgridBlockEntity be) {
         // By now the piece is out of its grid, so the bridge can no longer find the plate's shape by itself.
         KineticBridge.whileRemoving(be, piece, () -> super.onRemoved(piece, level, be));
     }
@@ -207,7 +216,7 @@ public final class ShaftConnectorPiece extends VanillaBlockPiece {
 
     /** The grid size of the SubgridBlock across {@code face} of {@code grid}, or 0 when it is anything else. */
     public static int sizeAcross(SubgridBlockEntity grid, Direction face) {
-        net.minecraft.world.level.Level level = grid.getLevel();
+        Level level = grid.getLevel();
         return level != null && level.getBlockEntity(grid.getBlockPos().relative(face)) instanceof SubgridBlockEntity other
                 ? other.getGridSize() : 0;
     }

@@ -5,6 +5,7 @@ import net.minecraft.core.Direction;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * What a Minimizer builds between two corner cells. Cells are "fine" positions: a SubgridBlock's real position times
@@ -29,7 +30,7 @@ public enum BuildMode {
     }
 
     public String translationKey() {
-        return "tinyblocks.build_mode." + name().toLowerCase(java.util.Locale.ROOT);
+        return "tinyblocks.build_mode." + name().toLowerCase(Locale.ROOT);
     }
 
     /**

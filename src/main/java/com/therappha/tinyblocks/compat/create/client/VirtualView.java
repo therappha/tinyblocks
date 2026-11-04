@@ -8,12 +8,14 @@ import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import com.therappha.tinyblocks.v2.VirtualHit;
+import com.therappha.tinyblocks.v2.VirtualLookup;
 import net.createmod.catnip.outliner.Outliner;
 import net.createmod.catnip.render.DefaultSuperRenderTypeBuffer;
 import net.createmod.catnip.render.SuperRenderTypeBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -93,8 +95,8 @@ public final class VirtualView {
     public static boolean lookAt(BlockPos virtual) {
         Minecraft mc = Minecraft.getInstance();
         if (lookup != null || mc.level == null || mc.player == null) return false;
-        com.therappha.tinyblocks.v2.VirtualLookup.Found found =
-                com.therappha.tinyblocks.v2.VirtualLookup.find(mc.level, virtual, mc.player.position());
+        VirtualLookup.Found found =
+                VirtualLookup.find(mc.level, virtual, mc.player.position());
         if (found == null) return false;
         SubgridBlockEntity grid = found.grid();
         lookup = new View(mc.level, VanillaBlockPiece.buildClientFakeSpace(grid, mc.level), grid.getBlockPos(),
@@ -130,7 +132,7 @@ public final class VirtualView {
 
     public static BlockState blockStateAt(BlockPos pos) {
         View view = lookup;
-        return view == null ? net.minecraft.world.level.block.Blocks.AIR.defaultBlockState() : view.space().getBlockState(pos);
+        return view == null ? Blocks.AIR.defaultBlockState() : view.space().getBlockState(pos);
     }
 
     @SubscribeEvent

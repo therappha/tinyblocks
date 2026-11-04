@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.v2;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import java.util.List;
 
@@ -8,8 +9,8 @@ import java.util.List;
  * Common surface shared by FakeLevel and FakeServerLevel: the fake cell space itself, plus any
  * scheduleTick requests captured instead of touching a real (blackholed) tick list. Lets
  * VanillaBlockPiece's shared apply/merge logic work identically for both — interact/
- * neighborChanged use the simpler, proven FakeLevel; only scheduledTick/randomTick (which need a
- * type-genuine ServerLevel) use the more fragile FakeServerLevel.
+ * neighborChanged use the simpler FakeLevel; scheduledTick/randomTick (which need a
+ * type-genuine ServerLevel) use FakeServerLevel.
  */
 public interface FakeSpace {
 
@@ -19,10 +20,10 @@ public interface FakeSpace {
     FakeCellGetter cells();
 
     /** The real level the SubgridBlock this space was built for lives in. */
-    net.minecraft.world.level.Level realLevel();
+    Level realLevel();
 
     List<ScheduledEntry> scheduledTicks();
 
     /** Position to hand to vanilla code for local cell {@code local}. */
-    default net.minecraft.core.BlockPos world(net.minecraft.core.BlockPos local) { return cells().toWorld(local); }
+    default BlockPos world(BlockPos local) { return cells().toWorld(local); }
 }

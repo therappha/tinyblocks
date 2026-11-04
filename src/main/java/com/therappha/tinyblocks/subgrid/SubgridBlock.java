@@ -1,19 +1,19 @@
 package com.therappha.tinyblocks.subgrid;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import java.util.List;
 import com.therappha.tinyblocks.setup.Registration;
+import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -30,23 +30,21 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import javax.annotation.Nullable;
-import java.util.List;
 
-public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape {
+public class SubgridBlock extends BaseEntityBlock implements BlockSubLevelCollisionShape {
 
     /** Valid grid sizes: powers of 2 from 2 to 16. Each cell maps exactly to whole 1/16 pixels. */
     public static final List<Integer> VALID_SIZES = List.of(2, 4, 8, 16);
 
     private static final Codec<Integer> GRID_SIZE_CODEC = Codec.INT.validate(v ->
             VALID_SIZES.contains(v)
-                    ? com.mojang.serialization.DataResult.success(v)
-                    : com.mojang.serialization.DataResult.error(() -> "grid_size must be one of " + VALID_SIZES + ", got " + v));
+                    ? DataResult.success(v)
+                    : DataResult.error(() -> "grid_size must be one of " + VALID_SIZES + ", got " + v));
 
     public static final MapCodec<SubgridBlock> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
             Properties.CODEC.fieldOf("properties").forGetter(SubgridBlock::properties),
@@ -131,18 +129,18 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
 
     /** {@code direction} points from the block asking into this one, so the face it asks through is its opposite. */
     @Override
-    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), false) : 0;
     }
 
     @Override
-    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, net.minecraft.core.Direction direction) {
+    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return level.getBlockEntity(pos) instanceof SubgridBlockEntity be ? be.faceSignal(direction.getOpposite(), true) : 0;
     }
 
     /** A block next to this one changed: the pieces against that face look again. */
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, net.minecraft.world.level.block.Block block,
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block,
                                    BlockPos fromPos, boolean movedByPiston) {
         super.neighborChanged(state, level, pos, block, fromPos, movedByPiston);
         if (level.isClientSide || !(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return;
@@ -150,7 +148,7 @@ public class SubgridBlock extends BaseEntityBlock implements dev.ryanhcode.sable
         if (diff.distManhattan(BlockPos.ZERO) != 1) return;
         // A grid of this size runs on cell by cell, and its updates reach these pieces directly: this would be a second one.
         if (level.getBlockEntity(fromPos) instanceof SubgridBlockEntity other && other.gridSize == be.gridSize) return;
-        be.notifyFace(net.minecraft.core.Direction.getNearest(diff.getX(), diff.getY(), diff.getZ()));
+        be.notifyFace(Direction.getNearest(diff.getX(), diff.getY(), diff.getZ()));
     }
 
     @Override

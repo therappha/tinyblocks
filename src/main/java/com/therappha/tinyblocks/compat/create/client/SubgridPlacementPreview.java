@@ -3,7 +3,11 @@ package com.therappha.tinyblocks.compat.create.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.client.GhostVertexConsumer;
+import com.therappha.tinyblocks.client.SubLevelView;
+import com.therappha.tinyblocks.compat.create.ConnectorPlacement;
 import com.therappha.tinyblocks.compat.create.ShaftConnectorBlock;
+import com.therappha.tinyblocks.compat.create.ShaftConnectorPiece;
+import com.therappha.tinyblocks.items.MinimizerItem;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeLevel;
@@ -22,8 +26,10 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -73,7 +79,7 @@ public final class SubgridPlacementPreview {
         if (mc.level == null || mc.player == null || mc.player.isShiftKeyDown()) return null;
         if (!(mc.hitResult instanceof BlockHitResult ray) || ray.getType() == HitResult.Type.MISS) return null;
         if (!(mc.level.getBlockEntity(ray.getBlockPos()) instanceof SubgridBlockEntity grid)) return null;
-        if (com.therappha.tinyblocks.items.MinimizerItem.isOff(mc.player.getOffhandItem())) return null; // whole blocks
+        if (MinimizerItem.isOff(mc.player.getOffhandItem())) return null; // whole blocks
 
         // Only the main hand: that's the hand VanillaBlockPiece#onUse hands to the piece.
         ItemStack held = mc.player.getMainHandItem();
@@ -82,15 +88,15 @@ public final class SubgridPlacementPreview {
         if (!(held.getItem() instanceof BlockItem blockItem) || blockItem.getBlock() instanceof ShaftConnectorBlock) return null;
 
         // Without a Minimizer, a connector's wide end takes a normal block outside the grid (SubgridEventHandler).
-        if (!com.therappha.tinyblocks.items.MinimizerItem.isOn(mc.player.getOffhandItem())
-                && com.therappha.tinyblocks.compat.create.ConnectorPlacement.goesOutside(grid, blockItem.getBlock(), ray)) {
+        if (!MinimizerItem.isOn(mc.player.getOffhandItem())
+                && ConnectorPlacement.goesOutside(grid, blockItem.getBlock(), ray)) {
             BlockPos outside = ray.getBlockPos().relative(ray.getDirection());
             if (!mc.level.getBlockState(outside).canBeReplaced()) return null;
-            BlockState outsideState = blockItem.getBlock().getStateForPlacement(new net.minecraft.world.item.context.BlockPlaceContext(
-                    mc.player, net.minecraft.world.InteractionHand.MAIN_HAND, held, ray));
+            BlockState outsideState = blockItem.getBlock().getStateForPlacement(new BlockPlaceContext(
+                    mc.player, InteractionHand.MAIN_HAND, held, ray));
             if (outsideState == null) return null;
             ghost = new Ghost(Vec3.atLowerCornerOf(outside), 1,
-                    com.therappha.tinyblocks.compat.create.ConnectorPlacement.alignedOutside(outsideState, ray.getDirection()));
+                    ConnectorPlacement.alignedOutside(outsideState, ray.getDirection()));
             return outside;
         }
 
@@ -100,10 +106,10 @@ public final class SubgridPlacementPreview {
                 || !(piece.runtimeState instanceof BlockState state)) return null;
 
         double cellSize = 1.0 / grid.getGridSize();
-        if (com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null) {
+        if (ShaftConnectorPiece.faceOf(piece) != null) {
             // A connector places by its own rule (into a funnel's socket, a small cogwheel onto a gear's side), not
             // by the shaft it stands in as: show where that puts the block.
-            var target = com.therappha.tinyblocks.compat.create.ConnectorPlacement.targetOn(grid, piece, blockItem.getBlock(), ray.getLocation());
+            var target = ConnectorPlacement.targetOn(grid, piece, blockItem.getBlock(), ray.getLocation());
             if (target == null) return null;
             Vec3 corner = hit.realCornerOf(grid.virtualPosOf(target.cell()));
             ghost = new Ghost(corner, cellSize, target.state());
@@ -131,7 +137,7 @@ public final class SubgridPlacementPreview {
         if (current == null) return;
 
         Minecraft mc = Minecraft.getInstance();
-        Vec3 camera = com.therappha.tinyblocks.client.SubLevelView.enter(event, net.minecraft.core.BlockPos.containing(current.corner()));
+        Vec3 camera = SubLevelView.enter(event, BlockPos.containing(current.corner()));
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         // Create's transparent ghost: breathing, fading in with the placement indicator, a little smaller than the cell.
@@ -155,7 +161,7 @@ public final class SubgridPlacementPreview {
         }
         poseStack.popPose();
         buffers.endBatch(RenderType.translucent());
-        com.therappha.tinyblocks.client.SubLevelView.exit(event);
+        SubLevelView.exit(event);
     }
 
 }

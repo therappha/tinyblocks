@@ -2,6 +2,7 @@ package com.therappha.tinyblocks.compat.create;
 
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
 import com.therappha.tinyblocks.mixin.create.RotationPropagatorAccessor;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
@@ -15,6 +16,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.List;
@@ -197,7 +199,7 @@ public final class KineticBridge {
                 || removed.getTheoreticalSpeed() == 0) {
             return List.of();
         }
-        List<KineticBlockEntity> plates = new java.util.ArrayList<>();
+        List<KineticBlockEntity> plates = new ArrayList<>();
         for (Direction towardsGrid : Direction.values()) {
             if (server.getBlockEntity(pos.relative(towardsGrid)) instanceof SubgridBlockEntity grid) {
                 KineticBlockEntity plate = connectorOn(grid, towardsGrid.getOpposite(), server);
@@ -228,8 +230,8 @@ public final class KineticBridge {
             KineticBlockEntity partner = partnerOf(connector);
             far = partner == null ? null : partner.getBlockPos();
         }
-        locations = new java.util.ArrayList<>(locations);
-        List<BlockPos> ends = new java.util.ArrayList<>();
+        locations = new ArrayList<>(locations);
+        List<BlockPos> ends = new ArrayList<>();
         ends.add(far);
         if (socket != null) {
             ends.add(grid.virtualPosOf(socket));
@@ -295,7 +297,7 @@ public final class KineticBridge {
      */
     private static float meshRatio(Connector gear, BlockPos cell, KineticBlockEntity cog, boolean fromGear) {
         BlockState state = cog.getBlockState();
-        if (!com.simibubi.create.content.kinetics.simpleRelays.ICogWheel.isSmallCog(state)
+        if (!ICogWheel.isSmallCog(state)
                 || !(state.getBlock() instanceof IRotate rotate)
                 || rotate.getRotationAxis(state) != gear.face().getAxis()
                 || !ShaftConnectorPiece.meshCells(gear.face(), gear.grid().getGridSize()).contains(cell)) {

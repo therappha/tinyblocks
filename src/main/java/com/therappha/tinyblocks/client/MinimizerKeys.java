@@ -2,14 +2,21 @@ package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.therappha.tinyblocks.TinyBlocks;
+import com.therappha.tinyblocks.items.MinimizerBuild;
 import com.therappha.tinyblocks.items.MinimizerItem;
+import com.therappha.tinyblocks.network.MinimizeMePayload;
+import com.therappha.tinyblocks.network.MinimizerLiftPayload;
+import com.therappha.tinyblocks.network.MinimizerLockPayload;
 import com.therappha.tinyblocks.network.MinimizerModePayload;
+import com.therappha.tinyblocks.network.MinimizerTogglePayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
@@ -74,34 +81,34 @@ public final class MinimizerKeys {
         @SubscribeEvent
         public static void onToggle(ClientTickEvent.Post event) {
             while (TOGGLE.consumeClick()) {
-                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerTogglePayload.INSTANCE);
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(MinimizerTogglePayload.INSTANCE);
             }
         }
 
         @SubscribeEvent
         public static void onLock(ClientTickEvent.Post event) {
             while (LOCK.consumeClick()) {
-                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizerLockPayload.INSTANCE);
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(MinimizerLockPayload.INSTANCE);
             }
         }
 
         @SubscribeEvent
         public static void onMinimizeMe(ClientTickEvent.Post event) {
             while (MINIMIZE_ME.consumeClick()) {
-                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(com.therappha.tinyblocks.network.MinimizeMePayload.INSTANCE);
+                if (Minecraft.getInstance().player != null) PacketDistributor.sendToServer(MinimizeMePayload.INSTANCE);
             }
         }
 
         @SubscribeEvent
-        public static void onScroll(net.neoforged.neoforge.client.event.InputEvent.MouseScrollingEvent event) {
+        public static void onScroll(InputEvent.MouseScrollingEvent event) {
             Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null || mc.screen != null || !net.minecraft.client.gui.screens.Screen.hasControlDown()) return;
+            if (mc.player == null || mc.screen != null || !Screen.hasControlDown()) return;
             var minimizer = mc.player.getOffhandItem();
             if (!(minimizer.getItem() instanceof MinimizerItem)
-                    || com.therappha.tinyblocks.items.MinimizerBuild.corner(minimizer) == null
+                    || MinimizerBuild.corner(minimizer) == null
                     || event.getScrollDeltaY() == 0) return;
             event.setCanceled(true);
-            PacketDistributor.sendToServer(new com.therappha.tinyblocks.network.MinimizerLiftPayload(event.getScrollDeltaY() > 0 ? 1 : -1));
+            PacketDistributor.sendToServer(new MinimizerLiftPayload(event.getScrollDeltaY() > 0 ? 1 : -1));
         }
     }
 }

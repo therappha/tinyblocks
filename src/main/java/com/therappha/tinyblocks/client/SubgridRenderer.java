@@ -1,7 +1,13 @@
 package com.therappha.tinyblocks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.therappha.tinyblocks.client.flywheel.FlywheelCompat;
+import com.therappha.tinyblocks.client.flywheel.FlywheelLoaded;
+import com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing;
+import com.therappha.tinyblocks.subgrid.GridSight;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import net.minecraft.client.Minecraft;
@@ -16,6 +22,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import org.jetbrains.annotations.Nullable;
 
 public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> {
 
@@ -37,7 +46,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         }
 
         SubgridFluidView fluidView = null;
-        // #TODO remove before release — water-rendering investigation. Captured once, BEFORE any
+        // Captured once, before any
         // per-piece pushPose/translate below — this is the BE's own unmodified render origin
         // (camera-relative, exactly what renderSingleBlock's pipeline also builds on top of via
         // its own translate+scale). See ScaledVertexConsumer's doc comment for why renderLiquid
@@ -53,13 +62,9 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         if (!ownLevel || !mesh.inChunk) mesh.draw(poseStack, bufferSource, packedLight, packedOverlay);
         if (crackedPiece != null && mesh.baked.contains(crackedPiece)) {
             BlockState state = crackedPiece.definition.renderState(crackedPiece);
-            RenderType crumbleType = RenderType.crumbling(ResourceLocation.withDefaultNamespace(
-                    "textures/block/destroy_stage_" + crackStage + ".png"));
-            MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
+            MultiBufferSource crumbleSource = crumbling(bufferSource, crackStage);
             for (PieceTransforms.Slice slice : PieceTransforms.slices(crackedPiece, be.getGridSize())) {
-                poseStack.pushPose();
-                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
-                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                pushSlice(poseStack, slice);
                 blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay);
                 poseStack.popPose();
             }
@@ -67,14 +72,14 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
         // Past vanilla's distance for a block entity nothing else is drawn here: this renderer only gets that far to
         // notice a changed grid, for the chunk's sake.
-        if (ownLevel && !com.therappha.tinyblocks.subgrid.GridSight.drawnPerFrame(seenDistance(be))) return;
+        if (ownLevel && !GridSight.drawnPerFrame(seenDistance(be))) return;
 
         for (PlacedPiece piece : mesh.dynamic) {
             BlockState state = piece.definition.renderState(piece);
             if (state == null) continue;
             boolean staticDrawn = mesh.baked.contains(piece);
 
-            // #TODO remove before release — water-rendering investigation. A fluid's BlockState
+            // A fluid's BlockState
             // has RenderShape.INVISIBLE (same as any real water/lava), so renderSingleBlock below
             // is a deliberate no-op for it — fluids render through a completely separate path
             // (see SubgridFluidView's doc comment) that needs real neighbor-height sampling, not
@@ -92,24 +97,21 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
             // What the piece's block entity tells its model, gathered as a chunk does for a real block.
-            var modelData = net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
+            var modelData = ModelData.EMPTY;
             var entityData = staticDrawn ? null : modelDataOf(piece);
             if (entityData != null) {
                 if (fluidView == null) fluidView = viewOf(be);
                 modelData = blockRenderer.getBlockModel(state).getModelData(fluidView, piece.anchor, state, entityData);
             }
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
-            List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), acrossOf(be, piece));
-            if (isGear(be, piece)) {
-                if (piece.runtimeBlockEntity instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity gear
-                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
-                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
+            List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), PieceTransforms.acrossOf(be, piece));
+            if (PieceTransforms.isGearConnector(be, piece)) {
+                if (piece.runtimeBlockEntity instanceof KineticBlockEntity gear
+                        && !(FlywheelLoaded.isLoaded()
+                                && FlywheelCompat.drawnByVisual(be.getLevel(), gear))) {
                     for (int i = 0; i < slices.size(); i++) {
-                        PieceTransforms.Slice slice = slices.get(i);
-                        poseStack.pushPose();
-                        poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
-                        poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
-                        com.therappha.tinyblocks.compat.create.client.GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
+                        pushSlice(poseStack, slices.get(i));
+                        GearConnectorDrawing.draw(gear, i, poseStack, bufferSource,
                                 packedLight, be.getBlockPos().relative(piece.facing));
                         poseStack.popPose();
                     }
@@ -117,9 +119,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 continue;
             }
             for (PieceTransforms.Slice slice : slices) {
-                poseStack.pushPose();
-                poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
-                poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+                pushSlice(poseStack, slice);
 
                 if (!staticDrawn) blockRenderer.renderSingleBlock(state, poseStack, bufferSource, packedLight, packedOverlay, modelData, null);
 
@@ -135,8 +135,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
                 // BlockEntity happens to be in the chunk. Cheap after the first call (blockEntityFor
                 // itself caches onto piece.runtimeBlockEntity).
                 if (piece.runtimeBlockEntity instanceof BlockEntity blockEntity
-                        && !(com.therappha.tinyblocks.client.flywheel.FlywheelLoaded.isLoaded()
-                                && com.therappha.tinyblocks.client.flywheel.FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
+                        && !(FlywheelLoaded.isLoaded()
+                                && FlywheelCompat.drawnByVisual(be.getLevel(), blockEntity))) {
                     BlockEntityRenderer<BlockEntity> ber =
                             Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(blockEntity);
                     if (ber != null) {
@@ -151,11 +151,8 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
 
                 // A piece with a baked model got its crack with the static mesh above.
                 if (piece == crackedPiece && !staticDrawn) {
-                    ResourceLocation crackTex = ResourceLocation.withDefaultNamespace(
-                        "textures/block/destroy_stage_" + crackStage + ".png");
-                    RenderType crumbleType = RenderType.crumbling(crackTex);
-                    MultiBufferSource crumbleSource = t -> bufferSource.getBuffer(crumbleType);
-                    blockRenderer.renderSingleBlock(state, poseStack, crumbleSource, packedLight, packedOverlay, modelData, null);
+                    blockRenderer.renderSingleBlock(state, poseStack, crumbling(bufferSource, crackStage), packedLight, packedOverlay,
+                            modelData, null);
                 }
 
                 poseStack.popPose();
@@ -163,9 +160,23 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
         }
     }
 
+    /** Pushes the pose and moves it into {@code slice}; the caller pops. */
+    private static void pushSlice(PoseStack poseStack, PieceTransforms.Slice slice) {
+        poseStack.pushPose();
+        poseStack.translate(slice.translation().x, slice.translation().y, slice.translation().z);
+        poseStack.scale(slice.scale().x, slice.scale().y, slice.scale().z);
+    }
+
+    /** Every buffer of {@code bufferSource} as the crack texture of {@code stage}. */
+    private static MultiBufferSource crumbling(MultiBufferSource bufferSource, int stage) {
+        RenderType crumbleType = RenderType.crumbling(ResourceLocation.withDefaultNamespace(
+                "textures/block/destroy_stage_" + stage + ".png"));
+        return t -> bufferSource.getBuffer(crumbleType);
+    }
+
     /** From the camera to the grid where it's seen: it may be on a sub-level. */
     private static double seenDistance(SubgridBlockEntity be) {
-        return com.therappha.tinyblocks.subgrid.SubLevels.inWorld(be.getLevel(), net.minecraft.world.phys.Vec3.atCenterOf(be.getBlockPos()))
+        return SubLevels.inWorld(be.getLevel(), Vec3.atCenterOf(be.getBlockPos()))
                 .distanceTo(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
     }
 
@@ -179,160 +190,11 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      * What a piece's block entity hands its model, or null if nothing: in a chunk a model gets this from the block
      * entity at its position, and a model built on it (a block taking the look of another) can have no quads without.
      */
-    @org.jetbrains.annotations.Nullable
-    private static net.neoforged.neoforge.client.model.data.ModelData modelDataOf(PlacedPiece piece) {
+    @Nullable
+    static ModelData modelDataOf(PlacedPiece piece) {
         if (!(piece.runtimeBlockEntity instanceof BlockEntity blockEntity)) return null;
         var data = blockEntity.getModelData();
         return data.getProperties().isEmpty() ? null : data;
-    }
-
-    /**
-     * A grid's static pieces as baked quads (issue #64): built once per change of its pieces
-     * (SubgridBlockEntity#pieceVersion) instead of looking every piece's model up and walking its quads every frame,
-     * and without the faces a neighbouring piece in the grid hides (PieceFaceCulling) — in a dense grid most of them.
-     * Exactly what renderSingleBlock drew for a MODEL piece: its model's quads per render type, tinted with the
-     * block's colour, in the piece's cell. A piece with a block entity, a fluid, another render shape or more than one
-     * slice still takes the per-frame path ({@link #dynamic}); one with a block entity keeps its model here, unless
-     * that model reads the block entity's model data, which changes without the pieces changing.
-     */
-    static final class StaticMesh {
-        private record PieceQuads(org.joml.Vector3f translation, org.joml.Vector3f scale, float r, float g, float b,
-                                  List<net.minecraft.client.renderer.block.model.BakedQuad> quads) {}
-
-        final int version;
-        /** One model, to notice a resource reload (models replaced) without a version change. */
-        private final BlockState sentinelState;
-        private final net.minecraft.client.resources.model.BakedModel sentinelModel;
-        final java.util.Set<PlacedPiece> baked = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-        final List<PlacedPiece> dynamic = new java.util.ArrayList<>();
-        private final java.util.Map<RenderType, List<PieceQuads>> batches = new java.util.LinkedHashMap<>();
-        /** The same pieces by chunk render type, which is all a section's buffers take. */
-        private final java.util.Map<RenderType, List<PieceQuads>> chunkBatches = new java.util.LinkedHashMap<>();
-        /** Whether a section compile has taken this mesh, and whether one was asked for. */
-        boolean inChunk;
-        private boolean chunkRequested;
-        int quadCount;
-
-        private StaticMesh(SubgridBlockEntity be, net.minecraft.client.renderer.block.BlockRenderDispatcher blockRenderer) {
-            this.version = be.pieceVersion();
-            BlockState sentinel = null;
-            net.minecraft.client.resources.model.BakedModel sentinelModelFound = null;
-            var colors = Minecraft.getInstance().getBlockColors();
-            net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create();
-            for (PlacedPiece piece : be.getPieces()) {
-                BlockState state = piece.definition.renderState(piece);
-                if (state == null) continue;
-                boolean single = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) == null;
-                boolean model = state.getRenderShape() == net.minecraft.world.level.block.RenderShape.MODEL;
-                boolean hasEntity = state.getBlock() instanceof net.minecraft.world.level.block.EntityBlock;
-                // Built here, not left to the first frame: whether its model can be cached depends on it.
-                if (hasEntity && piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece && be.getLevel() != null) {
-                    VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
-                }
-                if (!single || !state.getFluidState().isEmpty() || !model || hasEntity || piece.runtimeBlockEntity != null) {
-                    dynamic.add(piece);
-                }
-                if (!single || !model || !state.getFluidState().isEmpty() || modelDataOf(piece) != null) continue;
-
-                var bakedModel = blockRenderer.getBlockModel(state);
-                if (sentinel == null) {
-                    sentinel = state;
-                    sentinelModelFound = bakedModel;
-                }
-                int color = colors.getColor(state, null, null, 0);
-                float r = net.minecraft.util.Mth.clamp((color >> 16 & 0xFF) / 255f, 0, 1);
-                float g = net.minecraft.util.Mth.clamp((color >> 8 & 0xFF) / 255f, 0, 1);
-                float b = net.minecraft.util.Mth.clamp((color & 0xFF) / 255f, 0, 1);
-                PieceTransforms.Slice slice = PieceTransforms.slices(piece, be.getGridSize()).get(0);
-                var modelData = net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
-                for (RenderType rt : bakedModel.getRenderTypes(state, net.minecraft.util.RandomSource.create(42), modelData)) {
-                    List<net.minecraft.client.renderer.block.model.BakedQuad> quads = new java.util.ArrayList<>();
-                    for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
-                        if (com.therappha.tinyblocks.subgrid.PieceFaceCulling.hidden(be, piece, state, side)) continue;
-                        random.setSeed(42L);
-                        quads.addAll(bakedModel.getQuads(state, side, random, modelData, rt));
-                    }
-                    random.setSeed(42L);
-                    quads.addAll(bakedModel.getQuads(state, null, random, modelData, rt));
-                    if (quads.isEmpty()) continue;
-                    quadCount += quads.size();
-                    PieceQuads pieceQuads = new PieceQuads(slice.translation(), slice.scale(), r, g, b, quads);
-                    batches.computeIfAbsent(net.neoforged.neoforge.client.RenderTypeHelper.getEntityRenderType(rt, false),
-                                    k -> new java.util.ArrayList<>())
-                            .add(pieceQuads);
-                    chunkBatches.computeIfAbsent(rt, k -> new java.util.ArrayList<>()).add(pieceQuads);
-                }
-                baked.add(piece);
-            }
-            this.sentinelState = sentinel;
-            this.sentinelModel = sentinelModelFound;
-        }
-
-        static StaticMesh of(SubgridBlockEntity be, net.minecraft.client.renderer.block.BlockRenderDispatcher blockRenderer) {
-            if (be.renderCache instanceof StaticMesh mesh && mesh.version == be.pieceVersion()
-                    && (mesh.sentinelState == null || blockRenderer.getBlockModel(mesh.sentinelState) == mesh.sentinelModel)) {
-                return mesh;
-            }
-            StaticMesh mesh = new StaticMesh(be, blockRenderer);
-            be.renderCache = mesh;
-            return mesh;
-        }
-
-        /** Asks once for this grid's section to be compiled again, when this mesh isn't the one in it. */
-        private void requestChunk(SubgridBlockEntity be) {
-            if (inChunk || chunkRequested) return;
-            chunkRequested = true;
-            BlockPos pos = be.getBlockPos();
-            Minecraft.getInstance().levelRenderer.setSectionDirty(net.minecraft.core.SectionPos.blockToSectionCoord(pos.getX()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(pos.getY()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(pos.getZ()));
-        }
-
-        /**
-         * Writes this mesh in a section being compiled, off the render thread. {@code x, y, z}: the grid in the section.
-         * A chunk's shader has no directional light, so each quad gets its side's shade here, as a block model does.
-         */
-        void writeToChunk(net.neoforged.neoforge.client.event.AddSectionGeometryEvent.SectionRenderingContext context,
-                          int x, int y, int z, int light) {
-            PoseStack poseStack = context.getPoseStack();
-            var region = context.getRegion();
-            for (var batch : chunkBatches.entrySet()) {
-                var consumer = context.getOrCreateChunkBuffer(batch.getKey());
-                for (PieceQuads piece : batch.getValue()) {
-                    poseStack.pushPose();
-                    poseStack.translate(x + piece.translation().x, y + piece.translation().y, z + piece.translation().z);
-                    poseStack.scale(piece.scale().x, piece.scale().y, piece.scale().z);
-                    PoseStack.Pose pose = poseStack.last();
-                    for (var quad : piece.quads()) {
-                        float shade = region.getShade(quad.getDirection(), quad.isShade());
-                        boolean tinted = quad.isTinted();
-                        consumer.putBulkData(pose, quad, (tinted ? piece.r() : 1) * shade, (tinted ? piece.g() : 1) * shade,
-                                (tinted ? piece.b() : 1) * shade, 1.0F, light, net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY);
-                    }
-                    poseStack.popPose();
-                }
-            }
-        }
-
-        void draw(PoseStack poseStack, MultiBufferSource bufferSource, int light, int overlay) {
-            for (var batch : batches.entrySet()) {
-                var consumer = bufferSource.getBuffer(batch.getKey());
-                for (PieceQuads piece : batch.getValue()) {
-                    poseStack.pushPose();
-                    poseStack.translate(piece.translation().x, piece.translation().y, piece.translation().z);
-                    poseStack.scale(piece.scale().x, piece.scale().y, piece.scale().z);
-                    PoseStack.Pose pose = poseStack.last();
-                    for (var quad : piece.quads()) {
-                        if (quad.isTinted()) {
-                            consumer.putBulkData(pose, quad, piece.r(), piece.g(), piece.b(), 1.0F, light, overlay);
-                        } else {
-                            consumer.putBulkData(pose, quad, 1.0F, 1.0F, 1.0F, 1.0F, light, overlay);
-                        }
-                    }
-                    poseStack.popPose();
-                }
-            }
-        }
     }
 
     /**
@@ -341,22 +203,6 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
      * told it is near; the SubgridBlock itself was already culled by distance like any block entity.
      */
     public static boolean drawingPhantom;
-
-    /**
-     * For a shaft connector, the size of a SubgridBlock of the same size across its face, which it meets cell to cell
-     * (a straight tiny shaft); 0 otherwise — a real block, or another size's connector, met by a full-size shaft.
-     */
-    public static int acrossOf(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
-        net.minecraft.core.Direction face = com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece);
-        int across = face == null ? 0 : com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.sizeAcross(be, face);
-        return across == be.getGridSize() ? across : 0;
-    }
-
-    /** Whether {@code piece} is a gear connector, drawn from Create's parts (GearConnectorDrawing) rather than as its block. */
-    static boolean isGear(SubgridBlockEntity be, com.therappha.tinyblocks.subgrid.PlacedPiece piece) {
-        return com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.faceOf(piece) != null
-                && com.therappha.tinyblocks.compat.create.ShaftConnectorPiece.isGear(be.getGridSize());
-    }
 
     /** Past vanilla's 64 blocks too, or a changed grid out there would never ask for its section to be rebuilt. */
     @Override
