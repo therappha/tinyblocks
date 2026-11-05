@@ -5,6 +5,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.Container;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
@@ -199,6 +202,12 @@ final class ParityRun {
                 container.setItem(s.slot(), s.stack().copy());
                 container.setChanged();
             }
+        }
+        for (ParityScene.Tank t : scene.tanks) {
+            BlockEntity be = space.blockEntity(t.cell());
+            if (be == null || be.getLevel() == null) continue;
+            IFluidHandler handler = be.getLevel().getCapability(Capabilities.FluidHandler.BLOCK, be.getBlockPos(), be.getBlockState(), be, null);
+            if (handler != null) handler.fill(t.stack().copy(), IFluidHandler.FluidAction.EXECUTE);
         }
     }
 
