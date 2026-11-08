@@ -27,6 +27,9 @@ import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -49,7 +52,14 @@ interface ParitySpace extends SpaceView {
 
     /** What a player's open menu does: changes the container, which then says it changed. */
     default void insert(BlockPos cell, ItemStack stack) {
-        if (!(blockEntity(cell) instanceof Container container)) return;
+        BlockEntity be = blockEntity(cell);
+        if (!(be instanceof Container container)) {
+            // Not a Container (a Create item vault): through its item handler, as a funnel would put it in.
+            if (be == null || be.getLevel() == null) return;
+            var handler = be.getLevel().getCapability(Capabilities.ItemHandler.BLOCK, be.getBlockPos(), be.getBlockState(), be, null);
+            if (handler != null) ItemHandlerHelper.insertItem(handler, stack.copy(), false);
+            return;
+        }
         for (int slot = 0; slot < container.getContainerSize(); slot++) {
             ItemStack there = container.getItem(slot);
             if (there.isEmpty()) {

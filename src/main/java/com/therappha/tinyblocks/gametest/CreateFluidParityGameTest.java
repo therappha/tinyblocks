@@ -1,6 +1,7 @@
 package com.therappha.tinyblocks.gametest;
 
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.content.logistics.vault.ItemVaultBlock;
 import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
 import com.simibubi.create.content.kinetics.steamEngine.SteamEngineBlock;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
@@ -62,6 +63,17 @@ public class CreateFluidParityGameTest {
         s.settleTicks = 20;
     }
 
+    /**
+     * A vault three long along x from {@code x},3,{@code z}, a hopper over its first block holding 16 diamonds, and one
+     * under its last block passing what it takes to a chest at {@code x}+2,1,{@code z}.
+     */
+    private static void vaultThroughHoppers(ParityScene s, int x, int z) {
+        BlockState vault = AllBlocks.ITEM_VAULT.getDefaultState().setValue(ItemVaultBlock.HORIZONTAL_AXIS, Axis.X);
+        s.raw(x, 3, z, vault).raw(x + 1, 3, z, vault).raw(x + 2, 3, z, vault);
+        s.raw(x, 4, z, hopper(Direction.DOWN)).item(x, 4, z, 0, Items.DIAMOND, 16);
+        s.raw(x + 2, 2, z, hopper(Direction.DOWN)).raw(x + 2, 1, z, Blocks.CHEST.defaultBlockState());
+    }
+
     static List<ParityScene> scenes() {
         List<ParityScene> scenes = new ArrayList<>();
 
@@ -76,6 +88,70 @@ public class CreateFluidParityGameTest {
             s.fill(2, 0, 3, 7, 0, 5, STONE);
             s.put(4, 1, 4, TANK).put(4, 2, 4, TANK).put(4, 3, 4, TANK).fluid(4, 1, 4, Fluids.WATER, 20000);
             s.runFor(20).provenBy(4, 3, 4, "water=20000");
+        }));
+
+        // Across the grids' seam at y=8 in the 1/8 layouts: two grids, one tank.
+        scenes.add(ParityScene.of("create_tanks_stacked_across_grids_make_one", s -> {
+            s.fill(2, 0, 3, 7, 0, 5, STONE);
+            s.put(4, 6, 4, TANK).put(4, 7, 4, TANK).put(4, 8, 4, TANK).put(4, 9, 4, TANK).fluid(4, 6, 4, Fluids.WATER, 20000);
+            s.runFor(20).provenBy(4, 9, 4, "water=20000");
+        }));
+
+        // The same, a tank at a time, as a player builds it: each one joins what is already there.
+        scenes.add(ParityScene.of("create_tanks_placed_one_by_one_across_grids", s -> {
+            s.fill(2, 0, 3, 7, 0, 5, STONE);
+            s.put(4, 7, 4, TANK).fluid(4, 7, 4, Fluids.WATER, 6000);
+            s.placeAt(5, 4, 8, 4, TANK).placeAt(10, 4, 9, 4, TANK);
+            s.runFor(30).provenBy(4, 9, 4, "water=6000");
+        }));
+
+        // Two wide: a 2x2 tank two high, its halves in two grids.
+        scenes.add(ParityScene.of("create_wide_tank_across_grids", s -> {
+            s.fill(2, 0, 3, 7, 0, 6, STONE);
+            s.fill(4, 7, 4, 5, 8, 5, TANK);
+            s.fluid(4, 7, 4, Fluids.WATER, 40000);
+            s.runFor(20).provenBy(5, 8, 5, "water=40000");
+        }));
+
+        scenes.add(ParityScene.of("create_wide_tank_placed_one_by_one_across_grids", s -> {
+            s.fill(2, 0, 3, 7, 0, 6, STONE);
+            s.fill(4, 7, 4, 5, 7, 5, TANK);
+            s.fluid(4, 7, 4, Fluids.WATER, 20000);
+            s.placeAt(5, 4, 8, 4, TANK).placeAt(6, 5, 8, 4, TANK).placeAt(7, 4, 8, 5, TANK).placeAt(8, 5, 8, 5, TANK);
+            s.runFor(30).provenBy(5, 8, 5, "water=20000");
+        }));
+
+        // Item vaults lying along x, at two places so that one crosses a seam in each 1/8 layout; one built at once,
+        // one a block at a time. What goes in at one end is held by the other.
+        scenes.add(ParityScene.of("create_vaults_across_grids", s -> {
+            s.fill(1, 0, 3, 11, 0, 7, STONE);
+            BlockState vault = AllBlocks.ITEM_VAULT.getDefaultState().setValue(ItemVaultBlock.HORIZONTAL_AXIS, Axis.X);
+            s.raw(3, 1, 4, vault).raw(4, 1, 4, vault).raw(5, 1, 4, vault);
+            s.raw(7, 1, 4, vault).raw(8, 1, 4, vault).raw(9, 1, 4, vault);
+            s.raw(6, 1, 6, vault).placeAt(5, 7, 1, 6, vault).placeAt(10, 8, 1, 6, vault);
+            s.insert(20, 3, 1, 4, Items.DIAMOND, 10).insert(20, 7, 1, 4, Items.DIAMOND, 20).insert(20, 6, 1, 6, Items.DIAMOND, 30);
+            s.runFor(40).provenBy(5, 1, 4, "diamond=10").provenBy(9, 1, 4, "diamond=20").provenBy(8, 1, 6, "diamond=30");
+        }));
+
+        // A hopper puts diamonds in at one end of a vault, another takes them out at the other end into a chest: they
+        // only get there through one vault. Two of them, one across a seam in each 1/8 layout.
+        scenes.add(ParityScene.of("create_vault_hopper_in_hopper_out_across_grids", s -> {
+            s.fill(1, 0, 3, 10, 0, 8, STONE);
+            vaultThroughHoppers(s, 6, 4);
+            vaultThroughHoppers(s, 3, 7);
+            s.runFor(200).provenBy(8, 1, 4, "diamondx16").provenBy(5, 1, 7, "diamondx16");
+        }));
+
+        // Two wide, built at once (a fill), across the seam at y=8 and, in the shifted layout, the one at x=5. The hopper
+        // under it, in the grid below, takes its first diamond a tick after the real one: what reached the chest is
+        // compared once the hoppers are done.
+        scenes.add(ParityScene.of("create_wide_vault_hopper_in_hopper_out_across_grids", s -> {
+            s.fill(1, 0, 3, 8, 0, 7, STONE);
+            BlockState vault = AllBlocks.ITEM_VAULT.getDefaultState().setValue(ItemVaultBlock.HORIZONTAL_AXIS, Axis.X);
+            s.fill(3, 7, 4, 5, 8, 5, vault);
+            s.raw(3, 9, 4, hopper(Direction.DOWN)).item(3, 9, 4, 0, Items.DIAMOND, 16);
+            s.raw(5, 6, 5, hopper(Direction.DOWN)).raw(5, 5, 5, Blocks.CHEST.defaultBlockState());
+            s.runFor(200).compareOnlyAtTheEnd().provenBy(5, 5, 5, "diamondx16");
         }));
 
         scenes.add(ParityScene.of("create_pump_moves_water_tank_to_tank", s -> {
