@@ -63,9 +63,13 @@ final class PhantomSync {
             if (!all && hash == piece.lastSyncedPhantomHash) continue;
             piece.lastSyncedPhantomHash = hash;
             sentAny = true;
+            // What a chunk would send a client for this block entity, when it sends anything: a block entity can
+            // read a client's update differently from its save (Create's tank only moves the fluid it draws on one).
+            var update = phantom.getUpdateTag(level.registryAccess());
+            boolean clientUpdate = !update.isEmpty();
             PacketDistributor.sendToPlayersTrackingChunk(level,
                     new ChunkPos(grid.getBlockPos()),
-                    new PhantomDataPayload(grid.getBlockPos(), new BlockPos(piece.anchor), tag));
+                    new PhantomDataPayload(grid.getBlockPos(), new BlockPos(piece.anchor), clientUpdate ? update : tag, clientUpdate));
         }
         if (sentAny) phantomDataFlushes++;
     }

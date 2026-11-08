@@ -16,8 +16,11 @@ import net.minecraft.resources.ResourceLocation;
  * levels' sendBlockUpdated is a no-op, so BlockEntity#sendData-style syncs (Create's
  * SmartBlockEntity#sendData) used to vanish. The client loads this straight into its own cached
  * phantom for the piece at {@code cell}.
+ *
+ * {@code clientUpdate}: the tag is the block entity's own update tag (what a chunk sends a client for it) and the
+ * client loads it as a chunk would, through handleUpdateTag; otherwise it is the saved data, loaded as such.
  */
-public record PhantomDataPayload(BlockPos pos, BlockPos cell, CompoundTag nbt) implements CustomPacketPayload {
+public record PhantomDataPayload(BlockPos pos, BlockPos cell, CompoundTag nbt, boolean clientUpdate) implements CustomPacketPayload {
 
     public static final Type<PhantomDataPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(TinyBlocks.MOD_ID, "phantom_data"));
@@ -26,6 +29,7 @@ public record PhantomDataPayload(BlockPos pos, BlockPos cell, CompoundTag nbt) i
             BlockPos.STREAM_CODEC, PhantomDataPayload::pos,
             BlockPos.STREAM_CODEC, PhantomDataPayload::cell,
             ByteBufCodecs.COMPOUND_TAG, PhantomDataPayload::nbt,
+            ByteBufCodecs.BOOL, PhantomDataPayload::clientUpdate,
             PhantomDataPayload::new
     );
 

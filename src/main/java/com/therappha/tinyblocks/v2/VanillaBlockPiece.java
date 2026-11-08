@@ -250,14 +250,16 @@ public class VanillaBlockPiece extends PieceDefinition {
 
     /**
      * Client-side entry point for PhantomDataPayload: loads the server's current phantom data into this
-     * client's cached phantom for the piece at cell (building it first if needed).
+     * client's cached phantom for the piece at cell (building it first if needed). A block entity's update tag
+     * (clientUpdate) is loaded the way a chunk loads it on a client; saved data as saved data.
      */
-    public static void applyPhantomData(SubgridBlockEntity be, BlockPos cell, CompoundTag nbt, Level level) {
+    public static void applyPhantomData(SubgridBlockEntity be, BlockPos cell, CompoundTag nbt, boolean clientUpdate, Level level) {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null || !(piece.definition instanceof VanillaBlockPiece)) return;
         BlockEntity phantom = piece.runtimeBlockEntity instanceof BlockEntity cached ? cached : blockEntityFor(piece, be, level);
         if (phantom == null) return;
-        phantom.loadCustomOnly(nbt, level.registryAccess());
+        if (clientUpdate) phantom.handleUpdateTag(nbt, level.registryAccess());
+        else phantom.loadCustomOnly(nbt, level.registryAccess());
     }
 
     /**
