@@ -57,6 +57,8 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape cachedShape = Shapes.empty();
     /** The fake server space this grid's ticking pieces share (VanillaBlockPiece.TickSpace); runtime only. */
     public Object tickSpace;
+    /** Client only: the fake space this grid's pieces' block entities tick in (VanillaBlockPiece#clientTick). */
+    public Object clientTickSpace;
     /** Client only: the renderer's cached mesh of this grid's static pieces (client StaticMesh). */
     public Object renderCache;
 

@@ -234,9 +234,34 @@ public class VanillaBlockPiece extends PieceDefinition {
         if (piece.runtimeBlockEntity instanceof BlockEntity generic) {
             BlockState state = stateOf(piece);
             if (state != null && state.getBlock() instanceof EntityBlock entityBlock) {
-                tickClientTyped(entityBlock, level, state, generic.getBlockPos(), generic);
+                // In a fake space of the grid, as the server ticks it: a block entity asking for its own block at its
+                // (virtual) position gets it there, not whatever the real level holds there (Create's chute refreshes
+                // its state on its first tick and was handed void air). Its level is given back after, for the
+                // renderers that read it.
+                FakeLevel space = clientTickSpace(be, level);
+                Level was = generic.getLevel();
+                generic.setLevel(space);
+                try {
+                    tickClientTyped(entityBlock, space, state, generic.getBlockPos(), generic);
+                } finally {
+                    generic.setLevel(was);
+                }
             }
         }
+    }
+
+    /**
+     * The client fake space {@code be}'s pieces tick in, one per grid and emptied before each use: what a client tick
+     * writes to it is never applied, as the client's copy of a grid only changes by what the server sends.
+     */
+    private static FakeLevel clientTickSpace(SubgridBlockEntity be, Level level) {
+        if (be.clientTickSpace instanceof FakeLevel cached && cached.realLevel() == level) {
+            cached.cells().clear();
+            return cached;
+        }
+        FakeLevel space = buildClientFakeSpace(be, level);
+        be.clientTickSpace = space;
+        return space;
     }
 
     /** Client-side twin of tickTyped below — same bridging trick, different (client) Level. */
