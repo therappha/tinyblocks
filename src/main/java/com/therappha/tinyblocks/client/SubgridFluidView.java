@@ -51,8 +51,13 @@ final class SubgridFluidView implements BlockAndTintGetter {
     @Nullable
     @Override
     public BlockEntity getBlockEntity(BlockPos pos) {
-        if (!be.inBounds(pos.getX(), pos.getY(), pos.getZ())) return null;
-        var piece = be.getPieceAt(pos.getX(), pos.getY(), pos.getZ());
+        // Past the edge, the next grid's piece, as getBlockState answers: a model asking whether its neighbour is part of
+        // the same structure (a Create vault's connected textures) would otherwise be told no at every seam.
+        var piece = switch (be.resolve(pos.getX(), pos.getY(), pos.getZ())) {
+            case SubgridBlockEntity.CellRef.Local l -> be.getPieceAt(l.x(), l.y(), l.z());
+            case SubgridBlockEntity.CellRef.InAdjacentGrid a -> a.grid().getPieceAt(a.x(), a.y(), a.z());
+            default -> null;
+        };
         return piece != null && piece.runtimeBlockEntity instanceof BlockEntity blockEntity ? blockEntity : null;
     }
 
