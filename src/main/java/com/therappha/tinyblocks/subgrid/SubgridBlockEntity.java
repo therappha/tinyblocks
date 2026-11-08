@@ -1039,6 +1039,9 @@ public class SubgridBlockEntity extends BlockEntity {
     private VoxelShape outlineShape = Shapes.empty();
     private int outlineKey;
     private boolean outlineBuilt = false;
+    private VoxelShape outlineWithSources = Shapes.empty();
+    private int outlineWithSourcesKey;
+    private boolean outlineWithSourcesBuilt = false;
 
     /**
      * What a crosshair or a click hits: each piece's own shape, shrunk into its cell — a redstone link is its thin
@@ -1047,9 +1050,22 @@ public class SubgridBlockEntity extends BlockEntity {
      * their identities say whether one did.
      */
     public VoxelShape getOutlineShape() {
+        return getOutlineShape(false);
+    }
+
+    /** With {@code fluidSources}, the fluid sources too: what an empty bucket aims at. */
+    public VoxelShape getOutlineShape(boolean fluidSources) {
         int key = pieceVersion;
+        if (fluidSources) {
+            if (!outlineWithSourcesBuilt || key != outlineWithSourcesKey) {
+                outlineWithSources = GridShapes.outline(this, true);
+                outlineWithSourcesKey = key;
+                outlineWithSourcesBuilt = true;
+            }
+            return outlineWithSources;
+        }
         if (!outlineBuilt || key != outlineKey) {
-            outlineShape = GridShapes.outline(this);
+            outlineShape = GridShapes.outline(this, false);
             outlineKey = key;
             outlineBuilt = true;
         }
