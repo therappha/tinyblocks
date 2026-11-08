@@ -5,6 +5,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
+import net.neoforged.neoforge.fluids.FluidStack;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,6 +27,7 @@ final class ParityScene {
 
     record Placement(BlockPos cell, BlockState state, boolean shaped) {}
     record Slot(BlockPos cell, int slot, ItemStack stack) {}
+    record Tank(BlockPos cell, FluidStack stack) {}
     record Timed(int tick, String what, Step step) {}
     record Proof(BlockPos cell, String fact) {}
     /**
@@ -42,6 +45,7 @@ final class ParityScene {
     final String name;
     final List<Placement> blocks = new ArrayList<>();
     final List<Slot> slots = new ArrayList<>();
+    final List<Tank> tanks = new ArrayList<>();
     final List<Timed> steps = new ArrayList<>();
     final List<Proof> proofs = new ArrayList<>();
     /** What steps place, for what is built later to be looked at too (ParityChanceGameTest). */
@@ -96,6 +100,12 @@ final class ParityScene {
 
     ParityScene item(int x, int y, int z, int slot, Item item, int count) {
         slots.add(new Slot(new BlockPos(x, y, z), slot, new ItemStack(item, count)));
+        return this;
+    }
+
+    /** Poured in through the block's fluid handler once everything is built, as a pipe would. */
+    ParityScene fluid(int x, int y, int z, Fluid fluid, int amount) {
+        tanks.add(new Tank(new BlockPos(x, y, z), new FluidStack(fluid, amount)));
         return this;
     }
 

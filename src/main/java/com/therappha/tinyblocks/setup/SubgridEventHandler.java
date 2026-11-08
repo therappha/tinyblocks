@@ -359,7 +359,9 @@ public class SubgridEventHandler {
             return;
         }
 
-        if (be.getPieceAt(nx, ny, nz) != null) return;
+        PlacedPiece occupant = be.getPieceAt(nx, ny, nz);
+        // A block goes into a cell whose piece is replaceable (water, tall grass), as into such a block in a chunk.
+        if (occupant != null && (blockItem == null || !PiecePlacement.replaceable(occupant, blockItem))) return;
 
         if (blockItem == null) {
             // Not a BlockItem (bucket, hoe, ...) — no getStateForPlacement/canSurvive path to run,

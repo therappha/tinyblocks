@@ -10,6 +10,7 @@ import com.therappha.tinyblocks.subgrid.PlacedPiece;
 import com.therappha.tinyblocks.subgrid.SubLevels;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.VanillaBlockPiece;
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.Minecraft;
 import java.util.List;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
@@ -96,13 +97,7 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
             if (piece.runtimeBlockEntity == null && piece.definition instanceof VanillaBlockPiece && be.getLevel() != null) {
                 VanillaBlockPiece.blockEntityFor(piece, be, be.getLevel());
             }
-            // What the piece's block entity tells its model, gathered as a chunk does for a real block.
-            var modelData = ModelData.EMPTY;
-            var entityData = staticDrawn ? null : modelDataOf(piece);
-            if (entityData != null) {
-                if (fluidView == null) fluidView = viewOf(be);
-                modelData = blockRenderer.getBlockModel(state).getModelData(fluidView, piece.anchor, state, entityData);
-            }
+            var modelData = staticDrawn ? ModelData.EMPTY : gatheredModelData(be, piece, state, blockRenderer);
             // One slice for an ordinary piece; a shaft connector draws its funnel slice by slice (PieceTransforms).
             List<PieceTransforms.Slice> slices = PieceTransforms.slices(piece, be.getGridSize(), PieceTransforms.acrossOf(be, piece));
             if (PieceTransforms.isGearConnector(be, piece)) {
@@ -184,6 +179,17 @@ public class SubgridRenderer implements BlockEntityRenderer<SubgridBlockEntity> 
     private static SubgridFluidView viewOf(SubgridBlockEntity be) {
         // The grid's own level: a schematic's preview or a contraption draws it from a level of their own.
         return new SubgridFluidView(be, be.getLevel() != null ? be.getLevel() : Minecraft.getInstance().level);
+    }
+
+    /**
+     * What a piece's model draws from, gathered as a chunk gathers it for a real block: what its block entity hands it,
+     * and what the model looks up around it (Create's pipes draw their joints from their neighbours, and hand nothing
+     * from the block entity). Only for a piece with a block entity, as a chunk only asks for one.
+     */
+    static ModelData gatheredModelData(SubgridBlockEntity be, PlacedPiece piece, BlockState state, BlockRenderDispatcher blockRenderer) {
+        if (!(piece.runtimeBlockEntity instanceof BlockEntity)) return ModelData.EMPTY;
+        ModelData entityData = modelDataOf(piece);
+        return blockRenderer.getBlockModel(state).getModelData(viewOf(be), piece.anchor, state, entityData != null ? entityData : ModelData.EMPTY);
     }
 
     /**

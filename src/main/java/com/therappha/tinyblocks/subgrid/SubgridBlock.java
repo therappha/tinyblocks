@@ -33,6 +33,11 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 
 import javax.annotation.Nullable;
 
@@ -94,7 +99,19 @@ public class SubgridBlock extends BaseEntityBlock implements BlockSubLevelCollis
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         if (!(level.getBlockEntity(pos) instanceof SubgridBlockEntity be)) return Shapes.empty();
-        return be.getOutlineShape();
+        return be.getOutlineShape(aimsAtFluidSources(context));
+    }
+
+    /**
+     * Whether the one aiming picks up fluids: vanilla's empty bucket aims with ClipContext.Fluid.SOURCE_ONLY, so its
+     * crosshair stops at a source that every other aim goes through.
+     */
+    private static boolean aimsAtFluidSources(CollisionContext context) {
+        if (!(context instanceof EntityCollisionContext ec) || !(ec.getEntity() instanceof LivingEntity living)) return false;
+        for (InteractionHand hand : InteractionHand.values()) {
+            if (living.getItemInHand(hand).getItem() instanceof BucketItem bucket && bucket.content == Fluids.EMPTY) return true;
+        }
+        return false;
     }
 
     /**

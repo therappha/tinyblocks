@@ -234,9 +234,34 @@ public class VanillaBlockPiece extends PieceDefinition {
         if (piece.runtimeBlockEntity instanceof BlockEntity generic) {
             BlockState state = stateOf(piece);
             if (state != null && state.getBlock() instanceof EntityBlock entityBlock) {
-                tickClientTyped(entityBlock, level, state, generic.getBlockPos(), generic);
+                // In a fake space of the grid, as the server ticks it: a block entity asking for its own block at its
+                // (virtual) position gets it there, not whatever the real level holds there (Create's chute refreshes
+                // its state on its first tick and was handed void air). Its level is given back after, for the
+                // renderers that read it.
+                FakeLevel space = clientTickSpace(be, level);
+                Level was = generic.getLevel();
+                generic.setLevel(space);
+                try {
+                    tickClientTyped(entityBlock, space, state, generic.getBlockPos(), generic);
+                } finally {
+                    generic.setLevel(was);
+                }
             }
         }
+    }
+
+    /**
+     * The client fake space {@code be}'s pieces tick in, one per grid and emptied before each use: what a client tick
+     * writes to it is never applied, as the client's copy of a grid only changes by what the server sends.
+     */
+    private static FakeLevel clientTickSpace(SubgridBlockEntity be, Level level) {
+        if (be.clientTickSpace instanceof FakeLevel cached && cached.realLevel() == level) {
+            cached.cells().clear();
+            return cached;
+        }
+        FakeLevel space = buildClientFakeSpace(be, level);
+        be.clientTickSpace = space;
+        return space;
     }
 
     /** Client-side twin of tickTyped below — same bridging trick, different (client) Level. */
@@ -250,14 +275,16 @@ public class VanillaBlockPiece extends PieceDefinition {
 
     /**
      * Client-side entry point for PhantomDataPayload: loads the server's current phantom data into this
-     * client's cached phantom for the piece at cell (building it first if needed).
+     * client's cached phantom for the piece at cell (building it first if needed). A block entity's update tag
+     * (clientUpdate) is loaded the way a chunk loads it on a client; saved data as saved data.
      */
-    public static void applyPhantomData(SubgridBlockEntity be, BlockPos cell, CompoundTag nbt, Level level) {
+    public static void applyPhantomData(SubgridBlockEntity be, BlockPos cell, CompoundTag nbt, boolean clientUpdate, Level level) {
         PlacedPiece piece = be.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
         if (piece == null || !(piece.definition instanceof VanillaBlockPiece)) return;
         BlockEntity phantom = piece.runtimeBlockEntity instanceof BlockEntity cached ? cached : blockEntityFor(piece, be, level);
         if (phantom == null) return;
-        phantom.loadCustomOnly(nbt, level.registryAccess());
+        if (clientUpdate) phantom.handleUpdateTag(nbt, level.registryAccess());
+        else phantom.loadCustomOnly(nbt, level.registryAccess());
     }
 
     /**

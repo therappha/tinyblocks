@@ -55,14 +55,27 @@ final class GridShapes {
         return shape;
     }
 
+    /** A piece that is only a fluid (water, lava): no shape of its own, and a fluid in it. */
+    static boolean isBareFluid(PlacedPiece piece) {
+        if (!(piece.runtimeState instanceof BlockState state) || state.getFluidState().isEmpty()) return false;
+        try {
+            return state.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /** What a crosshair or a click hits: each piece's own shape, shrunk into its cell (SubgridBlockEntity#getOutlineShape). */
-    static VoxelShape outline(SubgridBlockEntity grid) {
+    static VoxelShape outline(SubgridBlockEntity grid, boolean fluidSources) {
         int gridSize = grid.gridSize;
         var whole = new BitSetDiscreteVoxelShape(gridSize, gridSize, gridSize);
         boolean anyWhole = false;
         List<VoxelShape> parts = new ArrayList<>();
         double cell = 1.0 / gridSize;
         for (PlacedPiece p : grid.getPieces()) {
+            // A fluid has no outline: a crosshair goes through water to what is behind it, as in a chunk. An empty
+            // bucket's aim stops at a source, as vanilla's does (ClipContext.Fluid.SOURCE_ONLY).
+            if (isBareFluid(p) && !(fluidSources && ((BlockState) p.runtimeState).getFluidState().isSource())) continue;
             VoxelShape shape = pieceShape(p);
             if (shape == null) {
                 for (int x = 0; x < p.footprint.getX(); x++)

@@ -20,7 +20,9 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkSource;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.entity.LevelEntityGetter;
 import net.minecraft.world.level.gameevent.GameEvent;
@@ -158,6 +160,18 @@ public class FakeLevel extends Level implements FakeSpace {
 
     @Override
     public boolean isLoaded(BlockPos pos) { return true; }
+
+    /**
+     * The same question asked of a chunk without loading it (Create's pipes look for a neighbour's chunk before
+     * reaching for it): a virtual position's chunk isn't loaded in the real level, so the grid's own chunk, which is,
+     * answers for it. Asked to load, it goes to the real level as before.
+     */
+    @Override
+    public ChunkAccess getChunk(int x, int z, ChunkStatus status, boolean load) {
+        if (load) return super.getChunk(x, z, status, true);
+        ChunkAccess there = real.getChunk(x, z, status, false);
+        return there != null ? there : real.getChunk(realPos.getX() >> 4, realPos.getZ() >> 4, status, false);
+    }
 
     @Override
     public int getMinBuildHeight() { return -65536; }

@@ -8,7 +8,10 @@ import com.therappha.tinyblocks.TinyBlocks;
 import com.therappha.tinyblocks.diff.RealSpaceView;
 import com.therappha.tinyblocks.diff.SpaceDiff;
 import com.therappha.tinyblocks.diff.TinySpaceView;
+import com.therappha.tinyblocks.compat.create.Structures;
+import com.therappha.tinyblocks.subgrid.GridRay;
 import com.therappha.tinyblocks.subgrid.PlacedPiece;
+import com.therappha.tinyblocks.v2.VanillaBlockPiece;
 import com.therappha.tinyblocks.subgrid.SubgridBlock;
 import com.therappha.tinyblocks.subgrid.SubgridBlockEntity;
 import com.therappha.tinyblocks.v2.FakeCellGetter;
@@ -25,6 +28,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -50,6 +54,7 @@ public class TinyBlocksCommand {
                 .then(Commands.literal("v2test2").executes(TinyBlocksCommand::executeV2Test2))
                 .then(Commands.literal("v2test3").executes(TinyBlocksCommand::executeV2Test3))
                 .then(Commands.literal("help").executes(TinyBlocksCommand::executeHelp))
+                .then(Commands.literal("structure").executes(TinyBlocksCommand::executeStructure))
                 .then(Commands.literal("diff").requires(source -> source.hasPermission(2))
                     .then(Commands.argument("real", BlockPosArgument.blockPos())
                     .then(Commands.argument("grid", BlockPosArgument.blockPos())
@@ -213,8 +218,45 @@ public class TinyBlocksCommand {
         ctx.getSource().sendSuccess(() -> Component.literal(
             "[TinyGears] Commands:\n" +
             "  /tinyblocks status — info about the SubgridBlock you're looking at\n" +
+            "  /tinyblocks structure — the Create multiblock (tank, vault) of the piece or block you're looking at\n" +
             "  /tinyblocks help   — this message"
         ), false);
+        return 1;
+    }
+
+    /**
+     * The Create multiblock (a tank, a vault) of the piece or block in the crosshair: its controller, its size, and every
+     * part that doesn't name that controller. A piece is asked through its phantom bound to its grid, so parts standing
+     * in the grids next to it are found as Create itself finds them.
+     */
+    private static int executeStructure(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        if (!(source.getEntity() instanceof Player player)) {
+            source.sendFailure(Component.literal("Must be run by a player"));
+            return 0;
+        }
+        if (!(player.pick(5.0, 0f, false) instanceof BlockHitResult hit) || hit.getType() == HitResult.Type.MISS) {
+            source.sendFailure(Component.literal("Not looking at a block"));
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        BlockPos pos = hit.getBlockPos();
+        BlockEntity target;
+        if (level.getBlockEntity(pos) instanceof SubgridBlockEntity grid) {
+            var cell = GridRay.cellAt(pos, hit.getLocation(), hit.getDirection(), grid.getGridSize());
+            PlacedPiece piece = grid.getPieceAt(cell.getX(), cell.getY(), cell.getZ());
+            target = piece != null && piece.definition instanceof VanillaBlockPiece
+                    ? VanillaBlockPiece.boundPhantom(piece, grid, level) : null;
+        } else {
+            target = level.getBlockEntity(pos);
+        }
+        if (target == null) {
+            source.sendFailure(Component.literal("No block entity there"));
+            return 0;
+        }
+        for (String line : Structures.report(target)) {
+            source.sendSuccess(() -> Component.literal("[structure] " + line), false);
+        }
         return 1;
     }
 

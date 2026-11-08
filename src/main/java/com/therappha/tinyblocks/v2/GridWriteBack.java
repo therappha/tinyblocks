@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
@@ -81,6 +82,9 @@ public final class GridWriteBack {
             // position, so it needs the raw, alias-bypassing accessor.
             BlockState now = cells.getStateRaw(p.anchor);
             if (!now.equals(before.get(p.anchor))) {
+                // Changed meanwhile by another grid's write (a Create tank's controller reshaping this part): keep that,
+                // and lay on it only what this call changed.
+                now = merged(VanillaBlockPiece.stateOf(p), before.get(p.anchor), now);
                 if (now.isAir()) {
                     // A piece's own updateShape/handleNeighborChanged (e.g. a crop losing its
                     // farmland support) decided it can no longer exist here — matches vanilla's
@@ -183,6 +187,28 @@ public final class GridWriteBack {
                 }
                 continue;
             }
+            if (!touchedState.isAir() && !be.inBounds(pos.getX(), pos.getY(), pos.getZ())
+                    && be.resolve(pos.getX(), pos.getY(), pos.getZ()) instanceof SubgridBlockEntity.CellRef.InAdjacentGrid a
+                    && a.grid().getPieceAt(a.x(), a.y(), a.z()) instanceof PlacedPiece there
+                    && there.definition instanceof VanillaBlockPiece && there.anchor.equals(new BlockPos(a.x(), a.y(), a.z()))
+                    && VanillaBlockPiece.stateOf(there).getBlock() == touchedState.getBlock()) {
+                // A new state of the same block for a piece of the next grid, as for one of this grid's above: a Create
+                // tank's controller reshaping the parts of its tank that stand in the grid next to it.
+                // placePieceCrossBoundary below would refuse the occupied cell and the write would be lost. A different
+                // block there (a piston's moving block arriving) stays that grid's own business, as before.
+                BlockState was = VanillaBlockPiece.stateOf(there);
+                BlockState read = cells.originalState(pos);
+                BlockState now = merged(was, read != null ? read : was, touchedState);
+                if (!now.equals(was)) {
+                    there.runtimeState = now;
+                    followStateChange(a.grid(), there, was, now);
+                    if (cells.isSettled(pos)) a.grid().markPiecesChanged();
+                    else a.grid().notifyNeighbors(there);
+                    a.grid().notifyUpdate();
+                    anyChanged = true;
+                }
+                continue;
+            }
             if (touchedState.isAir() || before.containsKey(pos) || be.getPieceAt(pos.getX(), pos.getY(), pos.getZ()) != null) {
                 continue;
             }
@@ -231,6 +257,28 @@ public final class GridWriteBack {
         }
         if (anyChanged) be.notifyUpdate();
         if (cells instanceof SubgridFakeCellGetter own && own.be == be) own.live = false;
+    }
+
+    /**
+     * What a cell holds after a write of {@code written} by code that read {@code read} there, when the cell holds
+     * {@code current} now. Unchanged since the read, simply what was written. Changed meanwhile (two grids each
+     * writing a whole state, each from its own read: a tank part setting its top and bottom while its controller,
+     * in the next grid, sets its window), the write's own changes, property by property, laid on what is there now,
+     * so neither is lost. A different block is not merged: the write stands.
+     */
+    static BlockState merged(BlockState current, BlockState read, BlockState written) {
+        if (read == null || current.equals(read) || current.getBlock() != written.getBlock() || read.getBlock() != written.getBlock()) {
+            return written;
+        }
+        BlockState out = current;
+        for (var property : written.getProperties()) {
+            if (!written.getValue(property).equals(read.getValue(property))) out = withValue(out, written, property);
+        }
+        return out;
+    }
+
+    private static <T extends Comparable<T>> BlockState withValue(BlockState to, BlockState from, Property<T> property) {
+        return to.setValue(property, from.getValue(property));
     }
 
     /**

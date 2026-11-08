@@ -3,6 +3,7 @@ package com.therappha.tinyblocks.compat.create;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.belt.BeltBlockEntity;
 import com.simibubi.create.content.kinetics.belt.transport.TransportedItemStack;
+import com.simibubi.create.foundation.blockEntity.IMultiBlockEntityContainer;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.content.kinetics.KineticNetwork;
 import com.therappha.tinyblocks.mixin.create.KineticNetworkAccessor;
@@ -19,7 +20,8 @@ import java.util.TreeMap;
 /**
  * What SpaceDiff compares of Create's block entities: how fast it turns, the stress its network carries against what it
  * can, and whether it is overstressed; on a belt which part of which belt it is and what lies on that
- * segment; and what it holds, through its item handler: a depot's item, a basin's, what a deployer has in hand.
+ * segment; which multiblock it is part of (a tank, a vault: Structures); and what it holds, through its item handler: a
+ * depot's item, a basin's, what a deployer has in hand.
  */
 public final class CreateFacts {
 
@@ -35,6 +37,7 @@ public final class CreateFacts {
             facts.put(prefix + "belt", belt.index + " of " + belt.beltLength);
             facts.put(prefix + "on_belt", onSegment(belt));
         }
+        if (be instanceof IMultiBlockEntityContainer part) facts.put(prefix + "structure", Structures.of(be, part));
         if (be instanceof SmartBlockEntity && !(be instanceof BeltBlockEntity) && be.getLevel() != null) {
             IItemHandler handler = be.getLevel().getCapability(Capabilities.ItemHandler.BLOCK, be.getBlockPos(), be.getBlockState(), be, null);
             if (handler != null) facts.put(prefix + "held", held(handler));

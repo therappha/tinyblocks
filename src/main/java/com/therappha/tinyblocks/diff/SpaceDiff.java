@@ -9,6 +9,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ComparatorBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,6 +51,10 @@ public final class SpaceDiff {
         }
         if (be instanceof Container container) facts.put(WORKING + "items", items(container));
         if (be != null) CreateFacts.add(be, WORKING, facts);
+        if (be != null && be.getLevel() != null) {
+            IFluidHandler fluids = be.getLevel().getCapability(Capabilities.FluidHandler.BLOCK, be.getBlockPos(), be.getBlockState(), be, null);
+            if (fluids != null) facts.put(WORKING + "fluids", fluids(fluids));
+        }
         return facts;
     }
 
@@ -65,6 +72,16 @@ public final class SpaceDiff {
                     .append('x').append(stack.getCount());
         }
         return text.isEmpty() ? "empty" : text.toString();
+    }
+
+    /** By fluid and not by tank: a tank's other blocks answer for its controller, and a basin's tanks are its own business. */
+    private static String fluids(IFluidHandler handler) {
+        Map<String, Integer> totals = new java.util.TreeMap<>();
+        for (int tank = 0; tank < handler.getTanks(); tank++) {
+            FluidStack stack = handler.getFluidInTank(tank);
+            if (!stack.isEmpty()) totals.merge(BuiltInRegistries.FLUID.getKey(stack.getFluid()).getPath(), stack.getAmount(), Integer::sum);
+        }
+        return totals.isEmpty() ? "empty" : totals.toString();
     }
 
     public static List<Difference> compare(SpaceView left, SpaceView right, Iterable<BlockPos> cells) {

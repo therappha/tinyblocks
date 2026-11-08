@@ -135,7 +135,7 @@ public class NetworkSetup {
         ctx.enqueueWork(() -> {
             Level level = ctx.player().level();
             if (!(level.getBlockEntity(payload.pos()) instanceof SubgridBlockEntity subgrid)) return;
-            VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), level);
+            VanillaBlockPiece.applyPhantomData(subgrid, payload.cell(), payload.nbt(), payload.clientUpdate(), level);
             if (FlywheelLoaded.isLoaded()) {
                 FlywheelCompat.queueUpdate(subgrid);
             }

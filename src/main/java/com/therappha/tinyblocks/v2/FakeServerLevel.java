@@ -29,6 +29,8 @@ import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.PotionBrewing;
 import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.CustomSpawner;
 import net.minecraft.world.level.Level;
@@ -241,6 +243,12 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, SubLevelC
     @Override
     public boolean isLoaded(BlockPos pos) { return true; }
 
+    /** See FakeLevel. */
+    @Override
+    public ChunkAccess getChunk(int x, int z, ChunkStatus status, boolean load) {
+        return load ? super.getChunk(x, z, status, true) : delegate.getChunk(x, z, status, false);
+    }
+
     /** A vibration reaching a sensor asks this of the chunks along its way; see the chunk checks above. */
     @Override
     public boolean shouldTickBlocksAt(long chunkPos) { return true; }
@@ -391,21 +399,35 @@ public class FakeServerLevel extends ServerLevel implements FakeSpace, SubLevelC
         return true;
     }
 
-    /** The caches block entities keep of a neighbour's capability, told each use to look again (forgetCapabilities). */
-    private List<ICapabilityInvalidationListener> capabilityListeners;
+    /** A cache a block entity keeps of a neighbour's capability, and what was at that position when it last looked. */
+    private record WatchedCapability(BlockPos pos, ICapabilityInvalidationListener listener, Block block, @Nullable BlockEntity blockEntity) {}
+
+    private List<WatchedCapability> capabilityListeners;
 
     @Override
     public void registerCapabilityListener(BlockPos pos, ICapabilityInvalidationListener listener) {
-        capabilityListeners.add(listener);
+        BlockPos at = pos.immutable();
+        capabilityListeners.add(new WatchedCapability(at, listener, getBlockState(at).getBlock(), getBlockEntity(at)));
     }
 
     /**
-     * A chunk tells these listeners when the block entity at their position changes. Nothing tells a fake space that:
-     * a piece can go at any time, from any space. So a cache (a Create chute's, of what is below it) never outlives a
-     * use of the space.
+     * A chunk tells these listeners when the block or block entity at their position changes. Nothing tells a fake
+     * space that: a piece can go at any time, from any space. So each use looks for itself, and tells only the caches
+     * whose position changed, as a chunk would. Telling them all every use broke whatever keeps a cache for good once
+     * told: Create's pipes, whose network keeps its source's cache and finds it empty from then on.
      */
     public void forgetCapabilities() {
-        capabilityListeners.removeIf(listener -> !listener.onInvalidate());
+        for (int i = capabilityListeners.size() - 1; i >= 0; i--) {
+            WatchedCapability watched = capabilityListeners.get(i);
+            Block block = getBlockState(watched.pos()).getBlock();
+            BlockEntity blockEntity = getBlockEntity(watched.pos());
+            if (block == watched.block() && blockEntity == watched.blockEntity()) continue;
+            if (watched.listener().onInvalidate()) {
+                capabilityListeners.set(i, new WatchedCapability(watched.pos(), watched.listener(), block, blockEntity));
+            } else {
+                capabilityListeners.remove(i);
+            }
+        }
     }
 
     // --- The rest of this section exists because ServerLevel re-overrides essentially every

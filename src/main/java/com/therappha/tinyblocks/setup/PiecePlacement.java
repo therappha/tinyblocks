@@ -86,6 +86,9 @@ final class PiecePlacement {
         // torch, a sign or a wall sign) by the clicked face.
         BlockState state = ((BlockItemAccessor) blockItem).tinyblocks$getPlacementState(placeCtx);
         if (state == null || !state.canSurvive(fakeLevel, at)) return;
+        // A replaceable piece in the cell (water) gives way only now: the new block's state was read with it there,
+        // so a slab placed into water comes out waterlogged, as in a chunk.
+        if (be.getPieceAt(nx, ny, nz) != null) be.removePieceAt(nx, ny, nz);
 
         PlacedPiece piece = new PlacedPiece(VanillaBlockPiece.INSTANCE, fakeAnchor, face);
         piece.runtimeState = state;
@@ -116,6 +119,17 @@ final class PiecePlacement {
             serverLevel.sendBlockUpdated(subgridPos, serverLevel.getBlockState(subgridPos), serverLevel.getBlockState(subgridPos), Block.UPDATE_CLIENTS);
             resyncLater(serverLevel, subgridPos, serverLevel.getBlockState(subgridPos).getBlock());
         }
+    }
+
+    /**
+     * Whether a block item may take the place of {@code piece}, as vanilla's BlockItem would replace the block: a
+     * replaceable state (water, tall grass), not of the block being placed.
+     */
+    static boolean replaceable(PlacedPiece piece, BlockItem blockItem) {
+        return piece.definition instanceof VanillaBlockPiece
+                && piece.runtimeState instanceof BlockState state
+                && state.canBeReplaced()
+                && !state.is(blockItem.getBlock());
     }
 
     /**

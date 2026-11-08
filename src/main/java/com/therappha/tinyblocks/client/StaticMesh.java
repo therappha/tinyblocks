@@ -92,7 +92,8 @@ final class StaticMesh {
             float g = Mth.clamp((color >> 8 & 0xFF) / 255f, 0, 1);
             float b = Mth.clamp((color & 0xFF) / 255f, 0, 1);
             PieceTransforms.Slice slice = PieceTransforms.slices(piece, be.getGridSize()).get(0);
-            var modelData = ModelData.EMPTY;
+            // What it looks up around it can change only with the grid's pieces, which rebuild this mesh.
+            var modelData = SubgridRenderer.gatheredModelData(be, piece, state, blockRenderer);
             for (RenderType rt : bakedModel.getRenderTypes(state, RandomSource.create(42), modelData)) {
                 List<BakedQuad> quads = new ArrayList<>();
                 for (Direction side : Direction.values()) {
